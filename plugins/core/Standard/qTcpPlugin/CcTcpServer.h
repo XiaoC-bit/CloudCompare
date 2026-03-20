@@ -13,14 +13,16 @@ class CcTcpServer : public QTcpServer
 
   signals:
 	// 跨线程信号——Qt 自动排队到主线程
-	void commandReceived(QJsonObject cmd);
+	void commandReceived(QJsonObject cmd, QTcpSocket* socket);
+
+  public slots:
+	void sendResponse(QTcpSocket* socket, bool ok, const QString& msg);
 
   protected:
 	void incomingConnection(qintptr socketDescriptor) override;
 
   private slots:
 	void onReadyRead();
-	void sendResponse(QTcpSocket* socket, bool ok, const QString& msg);
 
   private:
 	QByteArray m_buffer;

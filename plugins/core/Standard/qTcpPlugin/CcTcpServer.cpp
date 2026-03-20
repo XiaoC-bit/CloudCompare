@@ -38,9 +38,9 @@ void CcTcpServer::onReadyRead()
 		return;
 	}
 
-	// 解析成功，清空缓冲区，发射信号
+	// 解析成功，清空缓冲区，发射信号（包含socket指针）
 	m_buffer.clear();
-	emit commandReceived(doc.object());
+	emit commandReceived(doc.object(), socket);
 }
 
 void CcTcpServer::sendResponse(QTcpSocket* socket, bool ok, const QString& msg)
@@ -49,4 +49,5 @@ void CcTcpServer::sendResponse(QTcpSocket* socket, bool ok, const QString& msg)
 	resp["ok"]  = ok;
 	resp["msg"] = msg;
 	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
+	socket->flush();
 }

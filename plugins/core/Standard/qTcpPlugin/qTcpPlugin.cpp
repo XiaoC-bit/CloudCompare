@@ -57,7 +57,7 @@ void qTcpPlugin::startServer()
 	}
 
 	m_server     = new CcTcpServer(this);
-	m_dispatcher = new CommandDispatcher(m_app, this);
+	m_dispatcher = new CommandDispatcher(m_app, m_server, this);
 
 	connect(m_server, &CcTcpServer::commandReceived, m_dispatcher, &CommandDispatcher::dispatch, Qt::QueuedConnection);
 
