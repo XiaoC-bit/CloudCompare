@@ -1,0 +1,41 @@
+[submodule "plugins/core/IO/qE57IO/extern/libE57Format"]
+	path = plugins/core/IO/qE57IO/extern/libE57Format
+	url = https://github.com/asmaloney/libE57Format
+[submodule "extern/CCCoreLib"]
+	path = libs/qCC_db/extern/CCCoreLib
+	url = https://github.com/CloudCompare/CCCoreLib
+[submodule "plugins/core/Standard/qPoissonRecon/extern/PoissonRecon"]
+	path = plugins/core/Standard/qPoissonRecon/extern/PoissonRecon
+	url = https://github.com/cloudcompare/PoissonRecon
+[submodule "plugins/core/Standard/qMPlane"]
+	path = plugins/core/Standard/qMPlane
+	url = https://github.com/hvs-ait/mplane-plugin
+[submodule "plugins/core/Standard/qColorimetricSegmenter"]
+	path = plugins/core/Standard/qColorimetricSegmenter
+	url = https://gitlab.univ-nantes.fr/E164955Z/ptrans
+[submodule "plugins/core/Standard/qMasonry"]
+	path = plugins/core/Standard/qMasonry
+	url = https://github.com/CyberbuildLab/masonry-cc
+[submodule "plugins/core/Standard/qJSonRPCPlugin"]
+	path = plugins/core/Standard/qJSonRPCPlugin
+	url = https://gitlab.com/theadib/JSonRPCPlugin.git
+[submodule "plugins/core/Standard/qCanupo/contrib/dlib"]
+	path = plugins/core/Standard/qCanupo/contrib/dlib
+	url = https://github.com/davisking/dlib.git
+[submodule "plugins/core/Standard/cc-treeiso-plugin"]
+	path = plugins/core/Standard/qTreeIso
+	url = https://github.com/truebelief/cc-treeiso-plugin
+	branch = main
+[submodule "plugins/core/Standard/q3DMASC"]
+	path = plugins/core/Standard/q3DMASC
+	url = https://github.com/dgirardeau/q3DMASC.git
+	branch = master
+[submodule "libs/CCAppCommon/QDarkStyleSheet"]
+	path = libs/CCAppCommon/QDarkStyleSheet
+	url = https://github.com/ColinDuquesnoy/QDarkStyleSheet
+[submodule "plugins/core/Standard/qVoxFall"]
+	path = plugins/core/Standard/qVoxFall
+	url = ../../farmakis/qVoxFall.git
+[submodule "plugins/core/Standard/qG3Point"]
+	path = plugins/core/Standard/qG3Point
+	url = https://github.com/p-leroy/qG3Point
