@@ -1,0 +1,36 @@
+option( PLUGIN_STANDARD_QTCP "Install qTcpPlugin" OFF )
+
+if( PLUGIN_STANDARD_QTCP )
+	project( qTcpPlugin )
+	
+    find_package( Qt5 COMPONENTS Network REQUIRED )  # 加这一行
+	AddPlugin( NAME ${PROJECT_NAME} )
+	
+	target_sources( ${PROJECT_NAME} PRIVATE
+		qTcpPlugin.h
+		qTcpPlugin.cpp
+		CcTcpServer.h
+		CcTcpServer.cpp
+		CommandDispatcher.h
+		CommandDispatcher.cpp
+	)
+	
+	target_link_libraries( ${PROJECT_NAME} 
+		CCCoreLib
+		
+	Qt5::OpenGL
+	Qt5::OpenGLExtensions
+    Qt5::Network    
+	)
+	
+	set_property(GLOBAL APPEND PROPERTY CC_PLUGINS ${PROJECT_NAME})
+	
+	message(STATUS "\n==================")
+	message(STATUS "qTcpPlugin plugin enabled")
+	message(STATUS "==================\n")
+	
+	message(STATUS "\n==================")
+	message(STATUS "Note: You need to manually add 'add_subdirectory(qTcpPlugin)' to")
+	message(STATUS "plugins/core/Standard/CMakeLists.txt to compile this plugin.")
+	message(STATUS "==================\n")
+endif()

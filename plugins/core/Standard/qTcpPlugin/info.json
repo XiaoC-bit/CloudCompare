@@ -1,0 +1,14 @@
+{
+	"type" : "Standard",
+	"core" : true,
+	"name" : "TCP Remote Control",
+	"description": "TCP JSON server for remote control",
+	"authors" : [
+		{
+			"name" : "Plugin Developer",
+			"email" : "developer@example.com"
+		}
+	],
+	"maintainers" : [
+	]
+}
