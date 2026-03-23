@@ -23,5 +23,6 @@ class CommandDispatcher : public QObject
 	void handleLoad(const QJsonObject& params, QTcpSocket* socket);
 	void handleFilter(const QJsonObject& params, QTcpSocket* socket);
 	void handleICP(const QJsonObject& params, QTcpSocket* socket);
-	void handleCamera(const QJsonObject& params, QTcpSocket* socket);						
+	void handleCamera(const QJsonObject& params, QTcpSocket* socket);
+	void handleApplyViewport(const QJsonObject& params, QTcpSocket* socket);						
 };

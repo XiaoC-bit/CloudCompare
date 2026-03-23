@@ -2,12 +2,12 @@
 #include "CommandDispatcher.h"
 #include "CcTcpServer.h"
 
-#include <ccIOPluginInterface.h>
+#include <FileIOFilter.h>
 #include <ccMainAppInterface.h>
 #include <ccGLWindowInterface.h>
 #include <ccPointCloud.h>
+#include <cc2DViewportObject.h>
 #include <QFileInfo>
-#include <FileIOFilter.h>
 
 CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* server, QObject* parent)
     : QObject(parent)
@@ -28,6 +28,8 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 		handleICP(cmd["params"].toObject(), socket);
 	else if (action == "camera")
 		handleCamera(cmd["params"].toObject(), socket);
+	else if (action == "applyViewport")
+		handleApplyViewport(cmd["params"].toObject(), socket);
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
@@ -48,7 +50,6 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 
 	QString modelName = params["name"].toString();
 
-	// 使用 CC 的文件加载机制
 	FileIOFilter::Shared filter = FileIOFilter::FindBestFilterForExtension(QFileInfo(path).suffix());
 	if (!filter)
 	{
@@ -62,17 +63,9 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 	auto result = filter->loadFile(path, *container, FileIOFilter::LoadParameters());
 	if (result == CC_FERR_NO_ERROR)
 	{
-		// 设置模型名字（如果提供）
 		if (!modelName.isEmpty())
 		{
-			for (int i = 0; i < container->getChildrenNumber(); ++i)
-			{
-				ccHObject* child = container->getChild(i);
-				if (child)
-				{
-					child->setName(modelName);
-				}
-			}
+			container->setName(modelName);
 		}
 		
 		m_app->addToDB(container);
@@ -129,4 +122,85 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 {
 	if (m_server)
 		m_server->sendResponse(socket, false, "ICP not implemented");
+}
+
+void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocket* socket)
+{
+	QString name = params["name"].toString();
+	if (name.isEmpty())
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Empty name parameter");
+		return;
+	}
+
+	// Get the active GL window
+	ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
+	if (!glWindow)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "No active GL window");
+		return;
+	}
+
+	// Search for the root object in the database
+	ccHObject* rootObject = nullptr;
+	ccHObject* dbRoot = m_app->dbRootObject();
+	if (dbRoot)
+	{
+		
+		for (int i = 0; i < dbRoot->getChildrenNumber(); ++i)
+		{
+			ccHObject* child = dbRoot->getChild(i);
+			if (child)
+			{
+				if (child->getName() == name)
+				{
+					rootObject = child->getChild(0);
+					break;
+				}
+			}
+		}
+	}
+
+	if (!rootObject)
+	{
+		m_app->dispToConsole("[TcpPlugin] Object not found: " + name, ccMainAppInterface::ERR_CONSOLE_MESSAGE);
+		if (m_server)
+			m_server->sendResponse(socket, false, "Object not found: " + name);
+		return;
+	}
+
+	cc2DViewportObject* viewportObject = nullptr;
+	for (int i = 0; i < rootObject->getChildrenNumber(); ++i)
+	{
+		ccHObject* obj = rootObject->getChild(i);
+		if (obj)
+		{
+			if (obj->isKindOf(CC_TYPES::VIEWPORT_2D_OBJECT))
+			{
+				viewportObject = static_cast<cc2DViewportObject*>(obj);
+				break;
+			}
+		}
+	}
+
+	if (!viewportObject)
+	{
+		m_app->dispToConsole("[TcpPlugin] Viewport object not found in hierarchy", ccMainAppInterface::ERR_CONSOLE_MESSAGE);
+		if (m_server)
+			m_server->sendResponse(socket, false, "Viewport object not found in hierarchy");
+		return;
+	}
+
+	cc2DViewportObject* viewport = ccHObjectCaster::To2DViewportObject(viewportObject);
+	assert(viewport);
+	if (!viewport)
+	{
+		return;
+	}
+
+	glWindow->setViewportParameters(viewport->getParameters());
+	glWindow->redraw();
+
 }
