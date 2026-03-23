@@ -48,6 +48,7 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 
 	QString modelName = params["name"].toString();
 
+	// 使用 CC 的文件加载机制
 	FileIOFilter::Shared filter = FileIOFilter::FindBestFilterForExtension(QFileInfo(path).suffix());
 	if (!filter)
 	{
@@ -61,9 +62,17 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 	auto result = filter->loadFile(path, *container, FileIOFilter::LoadParameters());
 	if (result == CC_FERR_NO_ERROR)
 	{
+		// 设置模型名字（如果提供）
 		if (!modelName.isEmpty())
 		{
-			container->setName(modelName);
+			for (int i = 0; i < container->getChildrenNumber(); ++i)
+			{
+				ccHObject* child = container->getChild(i);
+				if (child)
+				{
+					child->setName(modelName);
+				}
+			}
 		}
 		
 		m_app->addToDB(container);
