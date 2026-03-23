@@ -249,13 +249,38 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 		return nullptr;
 	};
 
-	// 查找目标 Mesh
-	ccHObject* meshObj    = findByName(dbRoot, meshName)->getChild(0);
-	ccMesh*    targetMesh = meshObj ? ccHObjectCaster::ToMesh(meshObj) : nullptr;
-	if (!targetMesh)
+	// 查找目标对象（Mesh 或 PointCloud）
+	ccHObject* targetObj = findByName(dbRoot, meshName)->getChild(0);
+	if (!targetObj)
 	{
 		if (m_server)
-			m_server->sendResponse(socket, false, "Mesh not found: " + meshName);
+			m_server->sendResponse(socket, false, "Object not found: " + meshName);
+		return;
+	}
+
+	// 检查对象类型
+	ccMesh* targetMesh = nullptr;
+	ccGenericPointCloud* targetCloud = nullptr;
+	
+	if (targetObj->isKindOf(CC_TYPES::MESH))
+	{
+		targetMesh = ccHObjectCaster::ToMesh(targetObj);
+	}
+	else if (targetObj->isKindOf(CC_TYPES::POINT_CLOUD))
+	{
+		targetCloud = ccHObjectCaster::ToGenericPointCloud(targetObj);
+	}
+	else
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Object is not a mesh or point cloud: " + meshName);
+		return;
+	}
+
+	if (!targetMesh && !targetCloud)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Failed to cast object to mesh or point cloud");
 		return;
 	}
 
@@ -372,13 +397,21 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	}
 
 	// 获取点云
-	ccGenericPointCloud* cloud = ccHObjectCaster::ToGenericPointCloud(targetMesh);
-	if (!cloud)
+	ccGenericPointCloud* cloud = nullptr;
+	if (targetMesh)
 	{
-		delete segPoly2D;
-		if (m_server)
-			m_server->sendResponse(socket, false, "Mesh has no associated point cloud");
-		return;
+		cloud = ccHObjectCaster::ToGenericPointCloud(targetMesh);
+		if (!cloud)
+		{
+			delete segPoly2D;
+			if (m_server)
+				m_server->sendResponse(socket, false, "Mesh has no associated point cloud");
+			return;
+		}
+	}
+	else if (targetCloud)
+	{
+		cloud = targetCloud;
 	}
 
 	if (!cloud->isVisibilityTableInstantiated() && !cloud->resetVisibilityArray())
@@ -417,8 +450,42 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 		}
 	}
 
-	// 生成新 Mesh
-	ccMesh* segmentedMesh = targetMesh->createNewMeshFromSelection(false);
+	// 生成新对象
+	ccHObject* segmentedObject = nullptr;
+	QString objectName;
+
+	if (targetMesh)
+	{
+		// 生成新 Mesh
+		ccMesh* segmentedMesh = targetMesh->createNewMeshFromSelection(false);
+		if (!segmentedMesh || segmentedMesh->size() == 0)
+		{
+			delete segmentedMesh;
+			delete segPoly2D;
+			if (m_server)
+				m_server->sendResponse(socket, false, "Segmentation result is empty");
+			return;
+		}
+		segmentedObject = segmentedMesh;
+		objectName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
+		segmentedMesh->setName(objectName);
+	}
+	else if (targetCloud)
+	{
+		// 生成新 PointCloud
+		ccGenericPointCloud* segmentedCloud = targetCloud->createNewCloudFromVisibilitySelection();
+		if (!segmentedCloud || segmentedCloud->size() == 0)
+		{
+			delete segmentedCloud;
+			delete segPoly2D;
+			if (m_server)
+				m_server->sendResponse(socket, false, "Segmentation result is empty");
+			return;
+		}
+		segmentedObject = segmentedCloud;
+		objectName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
+		segmentedCloud->setName(objectName);
+	}
 
 	// 恢复原始点云可见性
 	cloud->resetVisibilityArray();
@@ -426,17 +493,9 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	// 释放临时 2D polyline
 	delete segPoly2D;
 
-	if (!segmentedMesh || segmentedMesh->size() == 0)
-	{
-		delete segmentedMesh;
-		if (m_server)
-			m_server->sendResponse(socket, false, "Segmentation result is empty");
-		return;
-	}
-
-	segmentedMesh->setName(outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName);
-	m_app->addToDB(segmentedMesh);
-	m_app->dispToConsole("[TcpPlugin] Segment OK: " + segmentedMesh->getName());
+	// 添加到数据库
+	m_app->addToDB(segmentedObject);
+	m_app->dispToConsole("[TcpPlugin] Segment OK: " + objectName);
 	if (m_server)
-		m_server->sendResponse(socket, true, "Segmentation completed: " + segmentedMesh->getName());
+		m_server->sendResponse(socket, true, "Segmentation completed: " + objectName);
 }
