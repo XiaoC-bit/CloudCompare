@@ -2,11 +2,12 @@
 #include "CommandDispatcher.h"
 #include "CcTcpServer.h"
 
-#include <FileIOFilter.h>
+#include <ccIOPluginInterface.h>
 #include <ccMainAppInterface.h>
 #include <ccGLWindowInterface.h>
 #include <ccPointCloud.h>
 #include <QFileInfo>
+#include <FileIOFilter.h>
 
 CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* server, QObject* parent)
     : QObject(parent)
@@ -45,7 +46,9 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 		return;
 	}
 
-	auto filter = FileIOFilter::FindBestFilterForExtension(QFileInfo(path).suffix());
+	QString modelName = params["name"].toString();
+
+	FileIOFilter::Shared filter = FileIOFilter::FindBestFilterForExtension(QFileInfo(path).suffix());
 	if (!filter)
 	{
 		m_app->dispToConsole("[TcpPlugin] Unsupported file format", ccMainAppInterface::ERR_CONSOLE_MESSAGE);
@@ -58,6 +61,11 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 	auto result = filter->loadFile(path, *container, FileIOFilter::LoadParameters());
 	if (result == CC_FERR_NO_ERROR)
 	{
+		if (!modelName.isEmpty())
+		{
+			container->setName(modelName);
+		}
+		
 		m_app->addToDB(container);
 		m_app->dispToConsole("[TcpPlugin] Loaded: " + path);
 		if (m_server)
