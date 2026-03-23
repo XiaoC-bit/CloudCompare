@@ -335,9 +335,26 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 			m_server->sendResponse(socket, false, "No active GL window");
 		return;
 	}
+	{
+
+		ccGLCameraParameters camera;
+		glWindow->getGLCameraParameters(camera);
+
+		const double half_w = camera.viewport[2] / 2.0;
+		const double half_h = camera.viewport[3] / 2.0;
+	}
 
 	glWindow->setViewportParameters(vpObject->getParameters());
-	glWindow->redraw(true, false);
+	glWindow->redraw();
+
+	{
+		//此处测试
+		// 强制同步重绘，而不是排队异步请求
+		//glWindow->requestUpdate();
+	}
+	
+
+
 
 	ccGLCameraParameters camera;
 	glWindow->getGLCameraParameters(camera);
