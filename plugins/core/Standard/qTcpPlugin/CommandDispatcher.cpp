@@ -1,7 +1,7 @@
 // CommandDispatcher.cpp
 #include "CommandDispatcher.h"
 #include "CcTcpServer.h"
-
+#include <qjsondocument.h>
 #include <FileIOFilter.h>
 #include <ccMainAppInterface.h>
 #include <ccGLWindowInterface.h>
@@ -14,6 +14,8 @@
 #include <ccGLMatrix.h>
 #include <ccHObjectCaster.h>
 #include <ccShiftedObject.h>
+#include <registrationTools.h>
+#include "ccRegistrationTools.h"
 
 CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* server, QObject* parent)
     : QObject(parent)
@@ -44,6 +46,8 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 	{
 		handleSegment(cmd["params"].toObject(), socket);
 	}
+	else if (action == "delete")
+		handleDelete(cmd["params"].toObject(), socket);
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
@@ -132,11 +136,6 @@ void CommandDispatcher::handleFilter(const QJsonObject& params, QTcpSocket* sock
 		m_server->sendResponse(socket, false, "Filter not implemented");
 }
 
-void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
-{
-	if (m_server)
-		m_server->sendResponse(socket, false, "ICP not implemented");
-}
 
 void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocket* socket)
 {
@@ -222,10 +221,11 @@ void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocke
 
 void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* socket)
 {
-	QString meshName   = params["meshName"].toString();
-	QString binName    = params["binName"].toString();
-	bool    keepInside = params["keepInside"].toBool(true);
-	QString outputName = params["outputName"].toString();
+	QString meshName     = params["meshName"].toString();
+	QString binName      = params["binName"].toString();
+	bool    keepInside   = params["keepInside"].toBool(true);
+	bool    modifySource = params["modifySource"].toBool(false);
+	QString outputName   = params["outputName"].toString();
 
 	if (meshName.isEmpty() || binName.isEmpty())
 	{
@@ -257,18 +257,25 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	};
 
 	// 查找目标对象（Mesh 或 PointCloud）
-	ccHObject* targetObj = findByName(dbRoot, meshName)->getChild(0);
-	if (!targetObj)
+	ccHObject* targetParent = findByName(dbRoot, meshName);
+	if (!targetParent)
 	{
 		if (m_server)
 			m_server->sendResponse(socket, false, "Object not found: " + meshName);
 		return;
 	}
+	ccHObject* targetObj = targetParent->getChild(0);
+	if (!targetObj)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Object has no children: " + meshName);
+		return;
+	}
 
 	// 检查对象类型
-	ccMesh* targetMesh = nullptr;
+	ccMesh*              targetMesh  = nullptr;
 	ccGenericPointCloud* targetCloud = nullptr;
-	
+
 	if (targetObj->isKindOf(CC_TYPES::MESH))
 	{
 		targetMesh = ccHObjectCaster::ToMesh(targetObj);
@@ -342,26 +349,9 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 			m_server->sendResponse(socket, false, "No active GL window");
 		return;
 	}
-	{
-
-		ccGLCameraParameters camera;
-		glWindow->getGLCameraParameters(camera);
-
-		const double half_w = camera.viewport[2] / 2.0;
-		const double half_h = camera.viewport[3] / 2.0;
-	}
 
 	glWindow->setViewportParameters(vpObject->getParameters());
 	glWindow->redraw();
-
-	{
-		//此处测试
-		// 强制同步重绘，而不是排队异步请求
-		//glWindow->requestUpdate();
-	}
-	
-
-
 
 	ccGLCameraParameters camera;
 	glWindow->getGLCameraParameters(camera);
@@ -369,8 +359,7 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	const double half_w = camera.viewport[2] / 2.0;
 	const double half_h = camera.viewport[3] / 2.0;
 
-	// ---------- 关键：将 polyline 顶点从 3D 转换到 2D 屏幕坐标 ----------
-	// 对应 CC 源码 doActionUseExistingPolyline() 中的转换逻辑
+	// 将 polyline 顶点从 3D 转换到 2D 屏幕坐标
 	ccPointCloud* polyVertices2D = new ccPointCloud();
 	ccPolyline*   segPoly2D      = new ccPolyline(polyVertices2D);
 	segPoly2D->addChild(polyVertices2D);
@@ -474,54 +463,125 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 		}
 	}
 
-	// 生成新对象
-	ccHObject* segmentedObject = nullptr;
-	QString objectName;
-
+	// ---- 生成结果对象 ----
 	if (targetMesh)
 	{
-		// 生成新 Mesh
-		ccMesh* segmentedMesh = targetMesh->createNewMeshFromSelection(false);
-		if (!segmentedMesh || segmentedMesh->size() == 0)
+		if (modifySource)
 		{
-			delete segmentedMesh;
+			// createNewMeshFromSelection(true)：
+			// - 返回值是"被选中的部分"（圆内）
+			// - 同时从 targetMesh 中移除这些三角面（源被掏洞）
+			ccMesh* removedPart = targetMesh->createNewMeshFromSelection(true);
+			if (!removedPart || removedPart->size() == 0)
+			{
+				delete removedPart;
+				delete segPoly2D;
+				cloud->resetVisibilityArray();
+				if (m_server)
+					m_server->sendResponse(socket, false, "Segmentation result is empty");
+				return;
+			}
+
+			// 圆内部分作为新 mesh 加入 DB
+			QString newPartName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
+			removedPart->setName(newPartName);
+			m_app->addToDB(removedPart); // ← 补上这一步
+
+			// 源 mesh 已经被掏洞，刷新显示
+			targetMesh->prepareDisplayForRefresh_recursive();
+			cloud->resetVisibilityArray();
 			delete segPoly2D;
+			m_app->refreshAll();
+			m_app->dispToConsole("[TcpPlugin] Source mesh punched, new part: " + newPartName);
 			if (m_server)
-				m_server->sendResponse(socket, false, "Segmentation result is empty");
-			return;
+				m_server->sendResponse(socket, true, "Source mesh punched, new part: " + newPartName);
 		}
-		segmentedObject = segmentedMesh;
-		objectName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
-		segmentedMesh->setName(objectName);
+		else
+		{
+			// 生成新 mesh，源不动
+			ccMesh* segmentedMesh = targetMesh->createNewMeshFromSelection(false);
+			if (!segmentedMesh || segmentedMesh->size() == 0)
+			{
+				delete segmentedMesh;
+				delete segPoly2D;
+				cloud->resetVisibilityArray();
+				if (m_server)
+					m_server->sendResponse(socket, false, "Segmentation result is empty");
+				return;
+			}
+			QString objectName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
+			segmentedMesh->setName(objectName);
+			m_app->addToDB(segmentedMesh);
+			cloud->resetVisibilityArray();
+			delete segPoly2D;
+			m_app->refreshAll();
+			m_app->dispToConsole("[TcpPlugin] Segment OK: " + objectName);
+			if (m_server)
+				m_server->sendResponse(socket, true, "Segmentation completed: " + objectName);
+		}
 	}
 	else if (targetCloud)
 	{
-		// 生成新 PointCloud
-		ccGenericPointCloud* segmentedCloud = targetCloud->createNewCloudFromVisibilitySelection();
-		if (!segmentedCloud || segmentedCloud->size() == 0)
+		if (modifySource)
 		{
-			delete segmentedCloud;
+			// visibilityArray 当前状态：
+			// keepInside=true  → 圆内VISIBLE，圆外HIDDEN
+			// keepInside=false → 圆外VISIBLE，圆内HIDDEN
+			// createNewCloudFromVisibilitySelection(true)：
+			// - 返回VISIBLE的点组成的新点云
+			// - 同时从源点云中移除这些VISIBLE的点
+			// 所以我们需要让"要删除的点"变成VISIBLE
+			// 即：圆内的点应该是VISIBLE（keepInside=true时已经是这个状态，不需要反转）
+
+			ccGenericPointCloud* removedPart = targetCloud->createNewCloudFromVisibilitySelection(true);
+			if (!removedPart || removedPart->size() == 0)
+			{
+				delete removedPart;
+				delete segPoly2D;
+				cloud->resetVisibilityArray();
+				if (m_server)
+					m_server->sendResponse(socket, false, "Segmentation result is empty");
+				return;
+			}
+
+			// 圆内被删除的点，作为新点云加入 DB
+			QString newPartName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
+			removedPart->setName(newPartName);
+			m_app->addToDB(removedPart);
+
+			// 源点云已经被掏洞（圆内的点已移除），刷新显示
+			targetCloud->prepareDisplayForRefresh_recursive();
+			cloud->resetVisibilityArray();
 			delete segPoly2D;
+			m_app->refreshAll();
+			m_app->dispToConsole("[TcpPlugin] Source cloud punched, removed part: " + newPartName);
 			if (m_server)
-				m_server->sendResponse(socket, false, "Segmentation result is empty");
-			return;
+				m_server->sendResponse(socket, true, "Source cloud punched, removed part: " + newPartName);
 		}
-		segmentedObject = segmentedCloud;
-		objectName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
-		segmentedCloud->setName(objectName);
+		else
+		{
+			// 生成新点云，源不动
+			ccGenericPointCloud* segmentedCloud = targetCloud->createNewCloudFromVisibilitySelection(false);
+			if (!segmentedCloud || segmentedCloud->size() == 0)
+			{
+				delete segmentedCloud;
+				delete segPoly2D;
+				cloud->resetVisibilityArray();
+				if (m_server)
+					m_server->sendResponse(socket, false, "Segmentation result is empty");
+				return;
+			}
+			QString objectName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
+			segmentedCloud->setName(objectName);
+			m_app->addToDB(segmentedCloud);
+			cloud->resetVisibilityArray();
+			delete segPoly2D;
+			m_app->refreshAll();
+			m_app->dispToConsole("[TcpPlugin] Segment OK: " + objectName);
+			if (m_server)
+				m_server->sendResponse(socket, true, "Segmentation completed: " + objectName);
+		}
 	}
-
-	// 恢复原始点云可见性
-	cloud->resetVisibilityArray();
-
-	// 释放临时 2D polyline
-	delete segPoly2D;
-
-	// 添加到数据库
-	m_app->addToDB(segmentedObject);
-	m_app->dispToConsole("[TcpPlugin] Segment OK: " + objectName);
-	if (m_server)
-		m_server->sendResponse(socket, true, "Segmentation completed: " + objectName);
 }
 
 
@@ -633,4 +693,279 @@ void CommandDispatcher::handleApplyTransformation(const QJsonObject& params, QTc
 	m_app->dispToConsole("[TcpPlugin] Transformation applied to: " + objectName);
 	if (m_server)
 		m_server->sendResponse(socket, true, "Transformation applied to: " + objectName);
+}
+
+
+void CommandDispatcher::handleDelete(const QJsonObject& params, QTcpSocket* socket)
+{
+	QString objectName = params["name"].toString();
+	if (objectName.isEmpty())
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Missing 'name' parameter");
+		return;
+	}
+
+	ccHObject* dbRoot = m_app->dbRootObject();
+	if (!dbRoot)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "DB root is null");
+		return;
+	}
+
+	std::function<ccHObject*(ccHObject*, const QString&)> findByName =
+	    [&](ccHObject* obj, const QString& name) -> ccHObject*
+	{
+		if (obj->getName() == name)
+			return obj;
+		for (unsigned i = 0; i < obj->getChildrenNumber(); ++i)
+		{
+			ccHObject* found = findByName(obj->getChild(i), name);
+			if (found)
+				return found;
+		}
+		return nullptr;
+	};
+
+	ccHObject* target = findByName(dbRoot, objectName);
+	if (!target)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Object not found: " + objectName);
+		return;
+	}
+
+	// removeFromDB 会连同子节点一起删除
+	m_app->removeFromDB(target);
+	m_app->refreshAll();
+
+	m_app->dispToConsole("[TcpPlugin] Deleted: " + objectName);
+	if (m_server)
+		m_server->sendResponse(socket, true, "Deleted: " + objectName);
+}
+
+
+void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
+{
+	// ---- 1. 解析参数 ----
+	QString dataName  = params["data"].toString();  // 要移动的点云
+	QString modelName = params["model"].toString(); // 参考点云（不动）
+
+	if (dataName.isEmpty() || modelName.isEmpty())
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Missing 'data' or 'model' parameter");
+		return;
+	}
+
+	// ICP 参数，带默认值
+	double minRMSDecrease       = params["minRMSDecrease"].toDouble(1e-5);
+	int    maxIterations        = params["maxIterations"].toInt(20);
+	double finalOverlapRatio    = params["finalOverlap"].toDouble(1.0); // 0~1，对应 0%~100%
+	bool   adjustScale          = params["adjustScale"].toBool(false);
+	bool   removeFarthestPoints = params["removeFarthestPoints"].toBool(false);
+	int    samplingLimit        = params["samplingLimit"].toInt(50000);
+	int    maxThreadCount       = params["maxThreadCount"].toInt(0); // 0 = 自动
+
+	// ---- 2. 查找对象 ----
+	ccHObject* dbRoot = m_app->dbRootObject();
+	if (!dbRoot)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "DB root is null");
+		return;
+	}
+
+	std::function<ccHObject*(ccHObject*, const QString&)> findByName =
+	    [&](ccHObject* obj, const QString& name) -> ccHObject*
+	{
+		if (obj->getName() == name)
+			return obj;
+		for (unsigned i = 0; i < obj->getChildrenNumber(); ++i)
+		{
+			ccHObject* found = findByName(obj->getChild(i), name);
+			if (found)
+				return found;
+		}
+		return nullptr;
+	};
+
+	// 查找 data 对象（点云或 mesh）
+	ccHObject* dataParent = findByName(dbRoot, dataName)->getChild(0);
+	if (!dataParent)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Data object not found: " + dataName);
+		return;
+	}
+	ccHObject* dataObj = nullptr;
+	for (unsigned i = 0; i < dataParent->getChildrenNumber(); ++i)
+	{
+		ccHObject* child = dataParent->getChild(i);
+		if (child->isKindOf(CC_TYPES::POINT_CLOUD) || child->isKindOf(CC_TYPES::MESH))
+		{
+			dataObj = child;
+			break;
+		}
+	}
+	if (!dataObj)
+		dataObj = dataParent; // 直接就是点云/mesh 本身
+
+	// 查找 model 对象
+	ccHObject* modelParent = findByName(dbRoot, modelName)->getChild(0);
+	if (!modelParent)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Model object not found: " + modelName);
+		return;
+	}
+	ccHObject* modelObj = nullptr;
+	for (unsigned i = 0; i < modelParent->getChildrenNumber(); ++i)
+	{
+		ccHObject* child = modelParent->getChild(i);
+		if (child->isKindOf(CC_TYPES::POINT_CLOUD) || child->isKindOf(CC_TYPES::MESH))
+		{
+			modelObj = child;
+			break;
+		}
+	}
+	if (!modelObj)
+		modelObj = modelParent;
+
+	// 类型检查
+	if ((!dataObj->isKindOf(CC_TYPES::POINT_CLOUD) && !dataObj->isKindOf(CC_TYPES::MESH))
+	    || (!modelObj->isKindOf(CC_TYPES::POINT_CLOUD) && !modelObj->isKindOf(CC_TYPES::MESH)))
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Both objects must be point clouds or meshes");
+		return;
+	}
+
+	// ---- 3. 构建 ICP 参数 ----
+	CCCoreLib::ICPRegistrationTools::Parameters parameters;
+	parameters.convType                 = CCCoreLib::ICPRegistrationTools::CONVERGENCE_TYPE::MAX_ERROR_CONVERGENCE;
+	parameters.minRMSDecrease           = minRMSDecrease;
+	parameters.nbMaxIterations          = static_cast<unsigned>(maxIterations);
+	parameters.adjustScale              = adjustScale;
+	parameters.filterOutFarthestPoints  = removeFarthestPoints;
+	parameters.samplingLimit            = static_cast<unsigned>(samplingLimit);
+	parameters.finalOverlapRatio        = finalOverlapRatio;
+	parameters.transformationFilters    = CCCoreLib::RegistrationTools::SKIP_NONE;
+	parameters.maxThreadCount           = maxThreadCount;
+	parameters.useC2MSignedDistances    = false;
+	parameters.robustC2MSignedDistances = false;
+	parameters.normalsMatching          = CCCoreLib::ICPRegistrationTools::NO_NORMAL;
+
+	// ---- 4. 执行 ICP ----
+	ccGLMatrix transMat;
+	double     finalError      = 0.0;
+	double     finalScale      = 1.0;
+	unsigned   finalPointCount = 0;
+
+	if ((!dataObj->isKindOf(CC_TYPES::POINT_CLOUD) && !dataObj->isKindOf(CC_TYPES::MESH))
+	    || (!modelObj->isKindOf(CC_TYPES::POINT_CLOUD) && !modelObj->isKindOf(CC_TYPES::MESH)))
+	{
+		//ccConsole::Error(tr("Select 2 point clouds or meshes!"));
+		return;
+	}
+
+
+	bool success = ccRegistrationTools::ICP(
+	    dataObj,
+	    modelObj,
+	    transMat,
+	    finalScale,
+	    finalError,
+	    finalPointCount,
+	    parameters,
+	    false, // useDataSFAsWeights
+	    false, // useModelSFAsWeights
+	   (QWidget*)(m_app->getMainWindow()));
+
+	if (!success)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "ICP failed");
+		return;
+	}
+
+	// ---- 5. 应用变换 ----
+	ccGenericPointCloud* pc = nullptr;
+
+	if (dataObj->isKindOf(CC_TYPES::POINT_CLOUD))
+	{
+		pc = ccHObjectCaster::ToGenericPointCloud(dataObj);
+	}
+	else if (dataObj->isKindOf(CC_TYPES::MESH))
+	{
+		ccGenericMesh* mesh = ccHObjectCaster::ToGenericMesh(dataObj);
+		pc                  = mesh->getAssociatedCloud();
+		if (pc && pc->isLocked())
+		{
+			if (m_server)
+				m_server->sendResponse(socket, false, "Mesh vertices are locked, cannot apply transformation");
+			return;
+		}
+	}
+
+	if (!pc)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Failed to get point cloud from data object");
+		return;
+	}
+
+	// 应用变换（对齐 CC 源码）
+	bool modelIsChildOfData = dataObj->isAncestorOf(modelObj);
+	if (modelIsChildOfData)
+	{
+		pc->applyRigidTransformation(transMat);
+	}
+	else
+	{
+		pc->applyGLTransformation_recursive(&transMat);
+	}
+
+	// mesh 需要刷新包围盒
+	if (dataObj->isKindOf(CC_TYPES::MESH))
+	{
+		ccHObjectCaster::ToGenericMesh(dataObj)->refreshBB();
+	}
+
+	// 同步 Global Shift（对齐 CC 源码逻辑）
+	ccGenericPointCloud* refPC = ccHObjectCaster::ToGenericPointCloud(modelObj);
+	if (refPC && refPC->isShifted())
+	{
+		const CCVector3d& Pshift = refPC->getGlobalShift();
+		double            scale  = refPC->getGlobalScale();
+		pc->setGlobalShift(Pshift);
+		pc->setGlobalScale(scale);
+		m_app->dispToConsole(
+		    QString("[TcpPlugin][ICP] Global shift updated: (%1,%2,%3) x%4")
+		        .arg(Pshift.x)
+		        .arg(Pshift.y)
+		        .arg(Pshift.z)
+		        .arg(scale));
+	}
+
+	dataObj->prepareDisplayForRefresh_recursive();
+	m_app->refreshAll();
+	m_app->updateUI();
+
+	// ---- 6. 返回结果 ----
+	QString matrixStr = transMat.toString(6, ' ');
+	m_app->dispToConsole(QString("[TcpPlugin][ICP] Final RMS: %1 (on %2 points)").arg(finalError).arg(finalPointCount));
+	m_app->dispToConsole(QString("[TcpPlugin][ICP] Transformation matrix:\n") + matrixStr);
+
+	// 构建响应 JSON，包含 RMS 和变换矩阵
+	QJsonObject result;
+	result["finalRMS"]        = finalError;
+	result["finalPointCount"] = static_cast<int>(finalPointCount);
+	result["finalScale"]      = finalScale;
+	result["matrix"]          = matrixStr;
+
+	QJsonDocument doc(result);
+	if (m_server)
+		m_server->sendResponse(socket, true, doc.toJson(QJsonDocument::Compact));
 }
