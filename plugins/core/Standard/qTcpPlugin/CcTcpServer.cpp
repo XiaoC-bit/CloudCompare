@@ -1,6 +1,7 @@
 // CcTcpServer.cpp
 #include "CcTcpServer.h"
 
+#include "CommLogger.h"
 #include <QJsonDocument>
 #include <QThreadPool>
 
@@ -40,6 +41,11 @@ void CcTcpServer::onReadyRead()
 
 	// 解析成功，清空缓冲区，发射信号（包含socket指针）
 	m_buffer.clear();
+
+	// 记录接收内容
+	CommLogger::instance().logReceived(QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+
+
 	emit commandReceived(doc.object(), socket);
 }
 
@@ -48,6 +54,14 @@ void CcTcpServer::sendResponse(QTcpSocket* socket, bool ok, const QString& msg)
 	QJsonObject resp;
 	resp["ok"]  = ok;
 	resp["msg"] = msg;
+
+	
+    QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n";
+
+    // 记录发送内容
+	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+
+
 	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
 	socket->flush();
 }

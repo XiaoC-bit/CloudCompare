@@ -3,8 +3,9 @@
 
 #include "CcTcpServer.h"
 #include "CommandDispatcher.h"
-
+#include "CommLogger.h"
 #include <ccMainAppInterface.h>
+#include <QCoreApplication>
 
 qTcpPlugin::qTcpPlugin(QObject* parent)
     : QObject(parent)
@@ -26,7 +27,10 @@ void qTcpPlugin::onNewSelection(const ccHObject::Container&)
 void qTcpPlugin::setMainAppInterface(ccMainAppInterface* app)
 {
 	ccStdPluginInterface::setMainAppInterface(app);
-	startServer(); 
+	startServer();
+
+	// 插件初始化时调用一次
+	CommLogger::instance().init(QCoreApplication::applicationDirPath());
 }
 
 QList<QAction*> qTcpPlugin::getActions()
