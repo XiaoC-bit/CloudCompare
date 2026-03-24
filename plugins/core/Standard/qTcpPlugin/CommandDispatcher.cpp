@@ -15,6 +15,8 @@
 #include <ccHObjectCaster.h>
 #include <ccShiftedObject.h>
 #include <registrationTools.h>
+#include <GeometricalAnalysisTools.h>
+#include <ccSphere.h>
 #include "ccRegistrationTools.h"
 
 CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* server, QObject* parent)
@@ -48,6 +50,8 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 	}
 	else if (action == "delete")
 		handleDelete(cmd["params"].toObject(), socket);
+	else if (action == "fit")
+		handleFit(cmd["params"].toObject(), socket);
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
@@ -162,7 +166,7 @@ void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocke
 	if (dbRoot)
 	{
 		
-		for (int i = 0; i < dbRoot->getChildrenNumber(); ++i)
+		for (unsigned int i = 0; i < dbRoot->getChildrenNumber(); ++i)
 		{
 			ccHObject* child = dbRoot->getChild(i);
 			if (child)
@@ -185,7 +189,7 @@ void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocke
 	}
 
 	cc2DViewportObject* viewportObject = nullptr;
-	for (int i = 0; i < rootObject->getChildrenNumber(); ++i)
+	for (unsigned int i = 0; i < rootObject->getChildrenNumber(); ++i)
 	{
 		ccHObject* obj = rootObject->getChild(i);
 		if (obj)
@@ -967,6 +971,149 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 	result["matrix"]          = matrixStr;
 
 	QJsonDocument doc(result);
+	if (m_server)
+		m_server->sendResponse(socket, true, doc.toJson(QJsonDocument::Compact));
+}
+void CommandDispatcher::handleFit(const QJsonObject& params, QTcpSocket* socket)
+{
+	QString type = params["type"].toString();
+
+	if (type == "sphere")
+		handleFitSphere(params, socket);
+	// 以后扩展：
+	// else if (type == "plane")
+	//     handleFitPlane(params, socket);
+	// else if (type == "cylinder")
+	//     handleFitCylinder(params, socket);
+	else
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Unknown fit type: " + type);
+	}
+}
+
+
+void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* socket)
+{
+	// ---- 1. 解析参数 ----
+	QString objectName       = params["name"].toString();
+	double  outliersRatio    = params["outliersRatio"].toDouble(0.5);
+	double  confidence       = params["confidence"].toDouble(0.99);
+	bool    autoDetectRadius = params["autoDetectRadius"].toBool(true);
+	double  radius           = params["radius"].toDouble(0.0);
+
+	if (objectName.isEmpty())
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Missing 'name' parameter");
+		return;
+	}
+
+	// ---- 2. 查找对象 ----
+	ccHObject* dbRoot = m_app->dbRootObject();
+	if (!dbRoot)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "DB root is null");
+		return;
+	}
+
+	std::function<ccHObject*(ccHObject*, const QString&)> findByName =
+	    [&](ccHObject* obj, const QString& name) -> ccHObject*
+	{
+		if (obj->getName() == name)
+			return obj;
+		for (unsigned i = 0; i < obj->getChildrenNumber(); ++i)
+		{
+			ccHObject* found = findByName(obj->getChild(i), name);
+			if (found)
+				return found;
+		}
+		return nullptr;
+	};
+
+	// 找到点云（支持直接是点云，或文件夹下的点云）
+	auto findPointCloud = [&](const QString& name) -> ccPointCloud*
+	{
+		ccHObject* found = findByName(dbRoot, name);
+		if (!found)
+			return nullptr;
+
+		if (found->isA(CC_TYPES::POINT_CLOUD))
+			return static_cast<ccPointCloud*>(found);
+
+		// 在子节点里找
+		for (unsigned i = 0; i < found->getChildrenNumber(); ++i)
+		{
+			ccHObject* child = found->getChild(i);
+			if (child->isA(CC_TYPES::POINT_CLOUD))
+				return static_cast<ccPointCloud*>(child);
+		}
+		return nullptr;
+	};
+
+	ccPointCloud* cloud = findPointCloud(objectName);
+	if (!cloud)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Point cloud not found: " + objectName);
+		return;
+	}
+
+	// ---- 3. 执行球体拟合 ----
+	CCVector3           center;
+	PointCoordinateType fitRadius = autoDetectRadius ? 0 : static_cast<PointCoordinateType>(radius);
+	double              rms       = std::numeric_limits<double>::quiet_NaN();
+
+	CCCoreLib::GeometricalAnalysisTools::ErrorCode result =
+	    CCCoreLib::GeometricalAnalysisTools::DetectSphereRobust(
+	        cloud,
+	        outliersRatio,
+	        center,
+	        fitRadius,
+	        rms,
+	        !autoDetectRadius, // forceRadius
+	        nullptr,           // 无进度条
+	        confidence);
+
+	if (result != CCCoreLib::GeometricalAnalysisTools::NoError)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, QString("Sphere fitting failed on '%1' (error code: %2)").arg(objectName).arg(result));
+		return;
+	}
+
+	m_app->dispToConsole(
+	    QString("[TcpPlugin][FitSphere] Cloud '%1': center (%2,%3,%4) - radius = %5 [RMS = %6]")
+	        .arg(cloud->getName())
+	        .arg(center.x)
+	        .arg(center.y)
+	        .arg(center.z)
+	        .arg(fitRadius)
+	        .arg(rms));
+
+	// ---- 4. 创建球体对象并加入 DB（对齐 CC 源码）----
+	ccGLMatrix trans;
+	trans.setTranslation(center);
+	ccSphere* sphere = new ccSphere(fitRadius, &trans, QString("Sphere r=%1").arg(fitRadius));
+	sphere->copyGlobalShiftAndScale(*cloud);
+	sphere->setMetaData("RMS", rms);
+	cloud->addChild(sphere);
+	sphere->prepareDisplayForRefresh();
+	m_app->addToDB(sphere, false, false, false);
+
+	m_app->refreshAll();
+	m_app->updateUI();
+
+	// ---- 5. 返回结果 ----
+	QJsonObject resultJson;
+	resultJson["center_x"] = static_cast<double>(center.x);
+	resultJson["center_y"] = static_cast<double>(center.y);
+	resultJson["center_z"] = static_cast<double>(center.z);
+	resultJson["radius"]   = static_cast<double>(fitRadius);
+	resultJson["rms"]      = rms;
+
+	QJsonDocument doc(resultJson);
 	if (m_server)
 		m_server->sendResponse(socket, true, doc.toJson(QJsonDocument::Compact));
 }

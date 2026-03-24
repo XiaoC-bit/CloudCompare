@@ -28,4 +28,8 @@ class CommandDispatcher : public QObject
 	void handleSegment(const QJsonObject& params, QTcpSocket* socket);
 	void handleDelete(const QJsonObject& params, QTcpSocket* socket);
 	void handleApplyTransformation(const QJsonObject& params, QTcpSocket* socket);
+
+
+	void handleFit(const QJsonObject& params, QTcpSocket* socket);
+	void handleFitSphere(const QJsonObject& params, QTcpSocket* socket);
 };
