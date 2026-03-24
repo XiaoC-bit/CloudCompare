@@ -13,6 +13,8 @@ if( PLUGIN_STANDARD_QTCP )
 		CcTcpServer.cpp
 		CommandDispatcher.h
 		CommandDispatcher.cpp
+		CommLogger.h
+		CommLogger.cpp
 	)
 	
 	target_link_libraries( ${PROJECT_NAME} 
