@@ -52,6 +52,8 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 		handleDelete(cmd["params"].toObject(), socket);
 	else if (action == "fit")
 		handleFit(cmd["params"].toObject(), socket);
+	else if (action == "clearDB")
+		handleClearDB(cmd["params"].toObject(), socket);
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
@@ -1116,4 +1118,30 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	QJsonDocument doc(resultJson);
 	if (m_server)
 		m_server->sendResponse(socket, true, doc.toJson(QJsonDocument::Compact));
+}
+void CommandDispatcher::handleClearDB(const QJsonObject& params, QTcpSocket* socket)
+{
+	ccHObject* dbRoot = m_app->dbRootObject();
+	if (!dbRoot)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "DB root is null");
+		return;
+	}
+
+	// 先收集所有顶层子节点，再逐一删除
+	// 不能边遍历边删除，所以先收集
+	std::vector<ccHObject*> toDelete;
+	for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i)
+		toDelete.push_back(dbRoot->getChild(i));
+
+	for (ccHObject* obj : toDelete)
+		m_app->removeFromDB(obj);
+
+	m_app->refreshAll();
+	m_app->updateUI();
+
+	m_app->dispToConsole("[TcpPlugin] DB cleared");
+	if (m_server)
+		m_server->sendResponse(socket, true, "DB cleared");
 }
