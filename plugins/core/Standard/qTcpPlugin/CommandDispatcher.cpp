@@ -11,6 +11,9 @@
 #include <ccPolyline.h>
 #include <ccMesh.h>
 #include <ManualSegmentationTools.h>
+#include <ccGLMatrix.h>
+#include <ccHObjectCaster.h>
+#include <ccShiftedObject.h>
 
 CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* server, QObject* parent)
     : QObject(parent)
@@ -33,6 +36,10 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 		handleCamera(cmd["params"].toObject(), socket);
 	else if (action == "applyViewport")
 		handleApplyViewport(cmd["params"].toObject(), socket);
+	else if (action == "applyTransformation")
+	{
+		handleApplyTransformation(cmd["params"].toObject(), socket);
+	}
 	else if (action == "segment")
 	{
 		handleSegment(cmd["params"].toObject(), socket);
@@ -515,4 +522,115 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	m_app->dispToConsole("[TcpPlugin] Segment OK: " + objectName);
 	if (m_server)
 		m_server->sendResponse(socket, true, "Segmentation completed: " + objectName);
+}
+
+
+
+void CommandDispatcher::handleApplyTransformation(const QJsonObject& params, QTcpSocket* socket)
+{
+	// ---- 1. 解析参数 ----
+	QString objectName    = params["name"].toString();
+	QString matrixText    = params["matrix"].toString();
+	bool    applyToGlobal = params["applyToGlobal"].toBool(false);
+	bool    inverse       = params["inverse"].toBool(false);
+
+	if (objectName.isEmpty())
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Missing 'name' parameter");
+		return;
+	}
+	if (matrixText.isEmpty())
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Missing 'matrix' parameter");
+		return;
+	}
+
+	// ---- 2. 解析矩阵 ----
+	bool        valid = false;
+	ccGLMatrixd mat   = ccGLMatrixd::FromString(matrixText, valid);
+	if (!valid)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Invalid matrix format");
+		return;
+	}
+	if (inverse)
+		mat.invert();
+
+	// ---- 3. 查找对象（复用你的 findByName 逻辑）----
+	ccHObject* dbRoot = m_app->dbRootObject();
+	if (!dbRoot)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "DB root is null");
+		return;
+	}
+
+	std::function<ccHObject*(ccHObject*, const QString&)> findByName =
+	    [&](ccHObject* obj, const QString& name) -> ccHObject*
+	{
+		if (obj->getName() == name)
+			return obj;
+		for (unsigned i = 0; i < obj->getChildrenNumber(); ++i)
+		{
+			ccHObject* found = findByName(obj->getChild(i), name);
+			if (found)
+				return found;
+		}
+		return nullptr;
+	};
+
+	ccHObject* entity = findByName(dbRoot, objectName);
+	if (!entity)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Object not found: " + objectName);
+		return;
+	}
+
+	// ---- 4. 计算实际应用的 transMat（对齐 CC 源码逻辑）----
+	ccGLMatrixd transMat = mat;
+
+	if (applyToGlobal)
+	{
+		ccShiftedObject* shiftedEntity = dynamic_cast<ccShiftedObject*>(entity);
+		if (shiftedEntity)
+		{
+			CCVector3d globalShift = shiftedEntity->getGlobalShift();
+			double     globalScale = shiftedEntity->getGlobalScale();
+
+			CCVector3d rotatedGlobalShift = globalShift;
+			mat.applyRotation(rotatedGlobalShift);
+			CCVector3d localTranslation = globalScale * (globalShift - rotatedGlobalShift + mat.getTranslationAsVec3D());
+
+			transMat.setTranslation(localTranslation);
+		}
+	}
+
+	// ---- 5. 锁定检查（点云类型才需要）----
+	bool                 lockedVertices = false;
+	ccGenericPointCloud* cloud          = ccHObjectCaster::ToGenericPointCloud(entity, &lockedVertices);
+	if (cloud && lockedVertices)
+	{
+		if (m_server)
+			m_server->sendResponse(socket, false, "Vertices are locked: " + objectName);
+		return;
+	}
+	// 变换前先删除 octree，避免依赖回调问题
+	if (cloud)
+		cloud->deleteOctree();
+
+	// ---- 6. 应用变换（对齐 CC 源码）----
+	entity->setGLTransformation(ccGLMatrix(transMat.data()));
+	entity->applyGLTransformation_recursive();
+	entity->prepareDisplayForRefresh_recursive();
+
+	m_app->updateUI();
+	m_app->refreshAll();
+
+	m_app->dispToConsole("[TcpPlugin] Transformation applied to: " + objectName);
+	if (m_server)
+		m_server->sendResponse(socket, true, "Transformation applied to: " + objectName);
 }
