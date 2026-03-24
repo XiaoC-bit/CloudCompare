@@ -105,6 +105,7 @@ Desktop.ini
 *.egg-info
 dist
 build
+Install
 eggs
 parts
 bin
