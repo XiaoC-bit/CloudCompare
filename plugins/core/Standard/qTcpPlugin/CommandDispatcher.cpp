@@ -792,7 +792,7 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 	};
 
 	// 查找 data 对象（点云或 mesh）
-	ccHObject* dataParent = findByName(dbRoot, dataName)->getChild(0);
+	ccHObject* dataParent = findByName(dbRoot, dataName);
 	if (!dataParent)
 	{
 		if (m_server)
@@ -813,7 +813,7 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 		dataObj = dataParent; // 直接就是点云/mesh 本身
 
 	// 查找 model 对象
-	ccHObject* modelParent = findByName(dbRoot, modelName)->getChild(0);
+	ccHObject* modelParent = findByName(dbRoot, modelName);
 	if (!modelParent)
 	{
 		if (m_server)
@@ -848,13 +848,14 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 	parameters.minRMSDecrease           = minRMSDecrease;
 	parameters.nbMaxIterations          = static_cast<unsigned>(maxIterations);
 	parameters.adjustScale              = adjustScale;
+	//此项为试验项，暂不建议使用，会崩溃
 	parameters.filterOutFarthestPoints  = removeFarthestPoints;
 	parameters.samplingLimit            = static_cast<unsigned>(samplingLimit);
 	parameters.finalOverlapRatio        = finalOverlapRatio;
 	parameters.transformationFilters    = CCCoreLib::RegistrationTools::SKIP_NONE;
 	parameters.maxThreadCount           = maxThreadCount;
 	parameters.useC2MSignedDistances    = false;
-	parameters.robustC2MSignedDistances = false;
+	parameters.robustC2MSignedDistances = true;
 	parameters.normalsMatching          = CCCoreLib::ICPRegistrationTools::NO_NORMAL;
 
 	// ---- 4. 执行 ICP ----
