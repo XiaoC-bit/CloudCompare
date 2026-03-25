@@ -16,7 +16,7 @@ class CcTcpServer : public QTcpServer
 	void commandReceived(QJsonObject cmd, QTcpSocket* socket);
 
   public slots:
-	void sendResponse(QTcpSocket* socket, bool ok, const QString& msg);
+	void sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode = "");
 
   protected:
 	void incomingConnection(qintptr socketDescriptor) override;

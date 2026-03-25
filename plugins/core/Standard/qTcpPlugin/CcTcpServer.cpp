@@ -49,11 +49,13 @@ void CcTcpServer::onReadyRead()
 	emit commandReceived(doc.object(), socket);
 }
 
-void CcTcpServer::sendResponse(QTcpSocket* socket, bool ok, const QString& msg)
+void CcTcpServer::sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode)
 {
 	QJsonObject resp;
 	resp["ok"]  = ok;
 	resp["msg"] = msg;
+	if (!idCode.isEmpty())
+		resp["IDCode"] = idCode;
 
 	
     QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n";

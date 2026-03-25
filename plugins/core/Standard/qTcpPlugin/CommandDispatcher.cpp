@@ -29,23 +29,23 @@ CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* serve
 //  Helpers
 // ============================================================
 
-void CommandDispatcher::sendOk(QTcpSocket* socket, const QString& msg)
+void CommandDispatcher::sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode)
 {
 	if (m_server)
-		m_server->sendResponse(socket, true, msg);
+		m_server->sendResponse(socket, true, msg, idCode);
 }
 
-void CommandDispatcher::sendError(QTcpSocket* socket, const QString& msg)
+void CommandDispatcher::sendError(QTcpSocket* socket, const QString& msg, const QString& idCode)
 {
 	if (m_server)
-		m_server->sendResponse(socket, false, msg);
+		m_server->sendResponse(socket, false, msg, idCode);
 }
 
-ccHObject* CommandDispatcher::getDbRoot(QTcpSocket* socket)
+ccHObject* CommandDispatcher::getDbRoot(QTcpSocket* socket, const QString& idCode)
 {
 	ccHObject* root = m_app->dbRootObject();
 	if (!root)
-		sendError(socket, "DB root is null");
+		sendError(socket, "DB root is null", idCode);
 	return root;
 }
 
@@ -67,21 +67,22 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 {
 	const QString     action = cmd["action"].toString();
 	const QJsonObject params = cmd["params"].toObject();
+	const QString     idCode = cmd["IDCode"].toString();
 
-	if      (action == "load")                handleLoad(params, socket);
-	else if (action == "filter")              handleFilter(params, socket);
-	else if (action == "icp")                 handleICP(params, socket);
-	else if (action == "camera")              handleCamera(params, socket);
-	else if (action == "applyViewport")       handleApplyViewport(params, socket);
-	else if (action == "applyTransformation") handleApplyTransformation(params, socket);
-	else if (action == "segment")             handleSegment(params, socket);
-	else if (action == "delete")              handleDelete(params, socket);
-	else if (action == "fit")                 handleFit(params, socket);
-	else if (action == "clearDB")             handleClearDB(params, socket);
+	if      (action == "load")                handleLoad(params, socket, idCode);
+	else if (action == "filter")              handleFilter(params, socket, idCode);
+	else if (action == "icp")                 handleICP(params, socket, idCode);
+	else if (action == "camera")              handleCamera(params, socket, idCode);
+	else if (action == "applyViewport")       handleApplyViewport(params, socket, idCode);
+	else if (action == "applyTransformation") handleApplyTransformation(params, socket, idCode);
+	else if (action == "segment")             handleSegment(params, socket, idCode);
+	else if (action == "delete")              handleDelete(params, socket, idCode);
+	else if (action == "fit")                 handleFit(params, socket, idCode);
+	else if (action == "clearDB")             handleClearDB(params, socket, idCode);
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
-		sendError(socket, "Unknown action: " + action);
+		sendError(socket, "Unknown action: " + action, idCode);
 	}
 }
 
@@ -89,12 +90,12 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 //  Handlers
 // ============================================================
 
-void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString path = params["path"].toString();
 	if (path.isEmpty())
 	{
-		sendError(socket, "Empty path");
+		sendError(socket, "Empty path", idCode);
 		return;
 	}
 
@@ -102,7 +103,7 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 	if (!filter)
 	{
 		m_app->dispToConsole("[TcpPlugin] Unsupported file format", ccMainAppInterface::ERR_CONSOLE_MESSAGE);
-		sendError(socket, "Unsupported file format");
+		sendError(socket, "Unsupported file format", idCode);
 		return;
 	}
 
@@ -115,28 +116,28 @@ void CommandDispatcher::handleLoad(const QJsonObject& params, QTcpSocket* socket
 
 		m_app->addToDB(container);
 		m_app->dispToConsole("[TcpPlugin] Loaded: " + path);
-		sendOk(socket, "Loaded: " + path);
+		sendOk(socket, "Loaded: " + path, idCode);
 	}
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Failed to load: " + path, ccMainAppInterface::ERR_CONSOLE_MESSAGE);
-		sendError(socket, "Failed to load: " + path);
+		sendError(socket, "Failed to load: " + path, idCode);
 		delete container;
 	}
 }
 
-void CommandDispatcher::handleCamera(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleCamera(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	auto* glWindow = m_app->getActiveGLWindow();
 	if (!glWindow)
 	{
-		sendError(socket, "No active GL window");
+		sendError(socket, "No active GL window", idCode);
 		return;
 	}
 
 	if (!params.contains("viewPreset"))
 	{
-		sendError(socket, "Missing viewPreset parameter");
+		sendError(socket, "Missing viewPreset parameter", idCode);
 		return;
 	}
 
@@ -146,27 +147,27 @@ void CommandDispatcher::handleCamera(const QJsonObject& params, QTcpSocket* sock
 	else if (preset == "iso")   glWindow->setView(CC_ISO_VIEW_1);
 
 	glWindow->redraw();
-	sendOk(socket, "Camera view set to: " + preset);
+	sendOk(socket, "Camera view set to: " + preset, idCode);
 }
 
-void CommandDispatcher::handleFilter(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleFilter(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
-	sendError(socket, "Filter not implemented");
+	sendError(socket, "Filter not implemented", idCode);
 }
 
-void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString name = params["name"].toString();
 	if (name.isEmpty())
 	{
-		sendError(socket, "Empty name parameter");
+		sendError(socket, "Empty name parameter", idCode);
 		return;
 	}
 
 	ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
 	if (!glWindow)
 	{
-		sendError(socket, "No active GL window");
+		sendError(socket, "No active GL window", idCode);
 		return;
 	}
 
@@ -189,7 +190,7 @@ void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocke
 	if (!rootObject)
 	{
 		m_app->dispToConsole("[TcpPlugin] Object not found: " + name, ccMainAppInterface::ERR_CONSOLE_MESSAGE);
-		sendError(socket, "Object not found: " + name);
+		sendError(socket, "Object not found: " + name, idCode);
 		return;
 	}
 
@@ -207,7 +208,7 @@ void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocke
 	if (!viewportObject)
 	{
 		m_app->dispToConsole("[TcpPlugin] Viewport object not found in hierarchy", ccMainAppInterface::ERR_CONSOLE_MESSAGE);
-		sendError(socket, "Viewport object not found in hierarchy");
+		sendError(socket, "Viewport object not found in hierarchy", idCode);
 		return;
 	}
 
@@ -218,9 +219,10 @@ void CommandDispatcher::handleApplyViewport(const QJsonObject& params, QTcpSocke
 
 	glWindow->setViewportParameters(viewport->getParameters());
 	glWindow->redraw();
+	sendOk(socket, "Viewport applied", idCode);
 }
 
-void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString meshName     = params["meshName"].toString();
 	const QString binName      = params["binName"].toString();
@@ -230,11 +232,11 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 
 	if (meshName.isEmpty() || binName.isEmpty())
 	{
-		sendError(socket, "Missing meshName or binName");
+		sendError(socket, "Missing meshName or binName", idCode);
 		return;
 	}
 
-	ccHObject* root = getDbRoot(socket);
+	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 		return;
 
@@ -242,13 +244,13 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	ccHObject* targetParent = findByName(root, meshName);
 	if (!targetParent)
 	{
-		sendError(socket, "Object not found: " + meshName);
+		sendError(socket, "Object not found: " + meshName, idCode);
 		return;
 	}
 	ccHObject* targetObj = targetParent->getChild(0);
 	if (!targetObj)
 	{
-		sendError(socket, "Object has no children: " + meshName);
+		sendError(socket, "Object has no children: " + meshName, idCode);
 		return;
 	}
 
@@ -260,7 +262,7 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 		targetCloud = ccHObjectCaster::ToGenericPointCloud(targetObj);
 	else
 	{
-		sendError(socket, "Object is not a mesh or point cloud: " + meshName);
+		sendError(socket, "Object is not a mesh or point cloud: " + meshName, idCode);
 		return;
 	}
 
@@ -268,7 +270,7 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	ccHObject* binRoot = findByName(root, binName);
 	if (!binRoot)
 	{
-		sendError(socket, "Bin root not found: " + binName);
+		sendError(socket, "Bin root not found: " + binName, idCode);
 		return;
 	}
 
@@ -285,15 +287,15 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	};
 	findInHierarchy(binRoot);
 
-	if (!segPoly)   { sendError(socket, "Polyline not found in bin");        return; }
-	if (!segPoly->isClosed()) { sendError(socket, "Polyline is not closed"); return; }
-	if (!vpObject)  { sendError(socket, "Viewport object not found in bin"); return; }
+	if (!segPoly)   { sendError(socket, "Polyline not found in bin", idCode);        return; }
+	if (!segPoly->isClosed()) { sendError(socket, "Polyline is not closed", idCode); return; }
+	if (!vpObject)  { sendError(socket, "Viewport object not found in bin", idCode); return; }
 
 	// Apply viewport and capture camera
 	ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
 	if (!glWindow)
 	{
-		sendError(socket, "No active GL window");
+		sendError(socket, "No active GL window", idCode);
 		return;
 	}
 	glWindow->setViewportParameters(vpObject->getParameters());
@@ -316,7 +318,7 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	if (!polyVertices2D->reserve(vertices->size()) || !segPoly2D->reserve(segPoly->size()))
 	{
 		delete segPoly2D;
-		sendError(socket, "Not enough memory for polyline conversion");
+		sendError(socket, "Not enough memory for polyline conversion", idCode);
 		return;
 	}
 
@@ -354,14 +356,14 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	if (targetMesh && !cloud)
 	{
 		delete segPoly2D;
-		sendError(socket, "Mesh has no associated point cloud");
+		sendError(socket, "Mesh has no associated point cloud", idCode);
 		return;
 	}
 
 	if (!cloud->isVisibilityTableInstantiated() && !cloud->resetVisibilityArray())
 	{
 		delete segPoly2D;
-		sendError(socket, "Failed to initialize visibility array");
+		sendError(socket, "Failed to initialize visibility array", idCode);
 		return;
 	}
 
@@ -392,7 +394,7 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 	{
 		delete segPoly2D;
 		cloud->resetVisibilityArray();
-		sendError(socket, "Segmentation result is empty");
+		sendError(socket, "Segmentation result is empty", idCode);
 	};
 
 	if (targetMesh)
@@ -413,7 +415,7 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 		const QString msg = modifySource ? QString ("Source mesh punched, new part: ") + resultName
 		                                 : QString ("Segmentation completed: ") + resultName;
 		m_app->dispToConsole("[TcpPlugin] " + msg);
-		sendOk(socket, msg);
+		sendOk(socket, msg, idCode);
 	}
 	else
 	{
@@ -431,40 +433,40 @@ void CommandDispatcher::handleSegment(const QJsonObject& params, QTcpSocket* soc
 		m_app->refreshAll();
 
 		const QString msg = modifySource ? QString("Source cloud punched, removed part: ") + resultName
-		                                 : QString ("Segmentation completed: " )+ resultName;
+		                                 : QString ("Segmentation completed: ")+ resultName;
 		m_app->dispToConsole("[TcpPlugin] " + msg);
-		sendOk(socket, msg);
+		sendOk(socket, msg, idCode);
 	}
 }
 
-void CommandDispatcher::handleApplyTransformation(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleApplyTransformation(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString objectName    = params["name"].toString();
 	const QString matrixText    = params["matrix"].toString();
 	const bool    applyToGlobal = params["applyToGlobal"].toBool(false);
 	const bool    inverse       = params["inverse"].toBool(false);
 
-	if (objectName.isEmpty()) { sendError(socket, "Missing 'name' parameter");   return; }
-	if (matrixText.isEmpty()) { sendError(socket, "Missing 'matrix' parameter"); return; }
+	if (objectName.isEmpty()) { sendError(socket, "Missing 'name' parameter", idCode);   return; }
+	if (matrixText.isEmpty()) { sendError(socket, "Missing 'matrix' parameter", idCode); return; }
 
 	bool valid = false;
 	ccGLMatrixd mat = ccGLMatrixd::FromString(matrixText, valid);
 	if (!valid)
 	{
-		sendError(socket, "Invalid matrix format");
+		sendError(socket, "Invalid matrix format", idCode);
 		return;
 	}
 	if (inverse)
 		mat.invert();
 
-	ccHObject* root = getDbRoot(socket);
+	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 		return;
 
 	ccHObject* entity = findByName(root, objectName);
 	if (!entity)
 	{
-		sendError(socket, "Object not found: " + objectName);
+		sendError(socket, "Object not found: " + objectName, idCode);
 		return;
 	}
 
@@ -490,7 +492,7 @@ void CommandDispatcher::handleApplyTransformation(const QJsonObject& params, QTc
 	ccGenericPointCloud* cloud          = ccHObjectCaster::ToGenericPointCloud(entity, &lockedVertices);
 	if (cloud && lockedVertices)
 	{
-		sendError(socket, "Vertices are locked: " + objectName);
+		sendError(socket, "Vertices are locked: " + objectName, idCode);
 		return;
 	}
 	if (cloud)
@@ -504,26 +506,26 @@ void CommandDispatcher::handleApplyTransformation(const QJsonObject& params, QTc
 	m_app->refreshAll();
 
 	m_app->dispToConsole("[TcpPlugin] Transformation applied to: " + objectName);
-	sendOk(socket, "Transformation applied to: " + objectName);
+	sendOk(socket, "Transformation applied to: " + objectName, idCode);
 }
 
-void CommandDispatcher::handleDelete(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleDelete(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString objectName = params["name"].toString();
 	if (objectName.isEmpty())
 	{
-		sendError(socket, "Missing 'name' parameter");
+		sendError(socket, "Missing 'name' parameter", idCode);
 		return;
 	}
 
-	ccHObject* root = getDbRoot(socket);
+	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 		return;
 
 	ccHObject* target = findByName(root, objectName);
 	if (!target)
 	{
-		sendError(socket, "Object not found: " + objectName);
+		sendError(socket, "Object not found: " + objectName, idCode);
 		return;
 	}
 
@@ -531,17 +533,17 @@ void CommandDispatcher::handleDelete(const QJsonObject& params, QTcpSocket* sock
 	m_app->refreshAll();
 
 	m_app->dispToConsole("[TcpPlugin] Deleted: " + objectName);
-	sendOk(socket, "Deleted: " + objectName);
+	sendOk(socket, "Deleted: " + objectName, idCode);
 }
 
-void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString dataName  = params["data"].toString();
 	const QString modelName = params["model"].toString();
 
 	if (dataName.isEmpty() || modelName.isEmpty())
 	{
-		sendError(socket, "Missing 'data' or 'model' parameter");
+		sendError(socket, "Missing 'data' or 'model' parameter", idCode);
 		return;
 	}
 
@@ -560,7 +562,7 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 	icpParams.robustC2MSignedDistances  = true;
 	icpParams.normalsMatching           = CCCoreLib::ICPRegistrationTools::NO_NORMAL;
 
-	ccHObject* root = getDbRoot(socket);
+	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 		return;
 
@@ -570,7 +572,7 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 		ccHObject* parent = findByName(root, name);
 		if (!parent)
 		{
-			sendError(socket, role + " object not found: " + name);
+			sendError(socket, role + " object not found: " + name, idCode);
 			return nullptr;
 		}
 		for (unsigned i = 0; i < parent->getChildrenNumber(); ++i)
@@ -590,7 +592,7 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 	if ((!dataObj->isKindOf(CC_TYPES::POINT_CLOUD) && !dataObj->isKindOf(CC_TYPES::MESH))
 	    || (!modelObj->isKindOf(CC_TYPES::POINT_CLOUD) && !modelObj->isKindOf(CC_TYPES::MESH)))
 	{
-		sendError(socket, "Both objects must be point clouds or meshes");
+		sendError(socket, "Both objects must be point clouds or meshes", idCode);
 		return;
 	}
 
@@ -606,7 +608,7 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 
 	if (!success)
 	{
-		sendError(socket, "ICP failed");
+		sendError(socket, "ICP failed", idCode);
 		return;
 	}
 
@@ -622,14 +624,14 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 		pc = mesh->getAssociatedCloud();
 		if (pc && pc->isLocked())
 		{
-			sendError(socket, "Mesh vertices are locked, cannot apply transformation");
+			sendError(socket, "Mesh vertices are locked, cannot apply transformation", idCode);
 			return;
 		}
 	}
 
 	if (!pc)
 	{
-		sendError(socket, "Failed to get point cloud from data object");
+		sendError(socket, "Failed to get point cloud from data object", idCode);
 		return;
 	}
 
@@ -667,19 +669,19 @@ void CommandDispatcher::handleICP(const QJsonObject& params, QTcpSocket* socket)
 	result["finalPointCount"] = static_cast<int>(finalPointCount);
 	result["finalScale"]      = finalScale;
 	result["matrix"]          = matrixStr;
-	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact));
+	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
 }
 
-void CommandDispatcher::handleFit(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleFit(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString type = params["type"].toString();
 	if (type == "sphere")
-		handleFitSphere(params, socket);
+		handleFitSphere(params, socket, idCode);
 	else
-		sendError(socket, "Unknown fit type: " + type);
+		sendError(socket, "Unknown fit type: " + type, idCode);
 }
 
-void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	const QString objectName       = params["name"].toString();
 	const double  outliersRatio    = params["outliersRatio"].toDouble(0.5);
@@ -689,11 +691,11 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 
 	if (objectName.isEmpty())
 	{
-		sendError(socket, "Missing 'name' parameter");
+		sendError(socket, "Missing 'name' parameter", idCode);
 		return;
 	}
 
-	ccHObject* root = getDbRoot(socket);
+	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 		return;
 
@@ -714,7 +716,7 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	ccPointCloud* cloud = findPointCloud(objectName);
 	if (!cloud)
 	{
-		sendError(socket, "Point cloud not found: " + objectName);
+		sendError(socket, "Point cloud not found: " + objectName, idCode);
 		return;
 	}
 
@@ -728,7 +730,7 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 
 	if (fitResult != CCCoreLib::GeometricalAnalysisTools::NoError)
 	{
-		sendError(socket, QString("Sphere fitting failed on '%1' (error code: %2)").arg(objectName).arg(fitResult));
+		sendError(socket, QString("Sphere fitting failed on '%1' (error code: %2)").arg(objectName).arg(fitResult), idCode);
 		return;
 	}
 
@@ -755,12 +757,12 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	resultJson["center_z"] = static_cast<double>(center.z);
 	resultJson["radius"]   = static_cast<double>(fitRadius);
 	resultJson["rms"]      = rms;
-	sendOk(socket, QJsonDocument(resultJson).toJson(QJsonDocument::Compact));
+	sendOk(socket, QJsonDocument(resultJson).toJson(QJsonDocument::Compact), idCode);
 }
 
-void CommandDispatcher::handleClearDB(const QJsonObject& params, QTcpSocket* socket)
+void CommandDispatcher::handleClearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
-	ccHObject* root = getDbRoot(socket);
+	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 		return;
 
@@ -777,5 +779,5 @@ void CommandDispatcher::handleClearDB(const QJsonObject& params, QTcpSocket* soc
 	m_app->updateUI();
 
 	m_app->dispToConsole("[TcpPlugin] DB cleared");
-	sendOk(socket, "DB cleared");
+	sendOk(socket, "DB cleared", idCode);
 }

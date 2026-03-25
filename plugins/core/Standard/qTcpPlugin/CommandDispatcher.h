@@ -22,21 +22,21 @@ private:
 	CcTcpServer*        m_server;
 
 	// Helpers
-	void       sendOk(QTcpSocket* socket, const QString& msg);
-	void       sendError(QTcpSocket* socket, const QString& msg);
-	ccHObject* getDbRoot(QTcpSocket* socket);
+	void       sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode);
+	void       sendError(QTcpSocket* socket, const QString& msg, const QString& idCode);
+	ccHObject* getDbRoot(QTcpSocket* socket, const QString& idCode);
 	ccHObject* findByName(ccHObject* node, const QString& name);
 
 	// Handlers
-	void handleLoad(const QJsonObject& params, QTcpSocket* socket);
-	void handleFilter(const QJsonObject& params, QTcpSocket* socket);
-	void handleICP(const QJsonObject& params, QTcpSocket* socket);
-	void handleCamera(const QJsonObject& params, QTcpSocket* socket);
-	void handleApplyViewport(const QJsonObject& params, QTcpSocket* socket);
-	void handleSegment(const QJsonObject& params, QTcpSocket* socket);
-	void handleDelete(const QJsonObject& params, QTcpSocket* socket);
-	void handleApplyTransformation(const QJsonObject& params, QTcpSocket* socket);
-	void handleClearDB(const QJsonObject& params, QTcpSocket* socket);
-	void handleFit(const QJsonObject& params, QTcpSocket* socket);
-	void handleFitSphere(const QJsonObject& params, QTcpSocket* socket);
+	void handleLoad(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleFilter(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleICP(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleCamera(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleApplyViewport(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleSegment(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleDelete(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleApplyTransformation(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleClearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleFit(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 };
