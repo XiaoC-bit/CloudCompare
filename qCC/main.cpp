@@ -194,7 +194,7 @@ int main(int argc, char** argv)
 		}
 
 		// init splash screen
-		QPixmap pixmap(QString::fromUtf8(":/CC/images/imLogoV2Qt.png"));
+		QPixmap pixmap(QString::fromUtf8(":/CC/images/PointLab.png"));
 		splash.reset(new QSplashScreen(pixmap, Qt::WindowStaysOnTopHint));
 		splash->show();
 	}

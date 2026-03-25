@@ -9,12 +9,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>600</width>
-    <height>360</height>
+    <width>1138</width>
+    <height>825</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>About CloudCompare</string>
+   <string>About PointLab</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -25,14 +25,14 @@
         <string/>
        </property>
        <property name="pixmap">
-        <pixmap resource="../icons.qrc">:/CC/images/imLogoV2Qt.png</pixmap>
+        <pixmap resource="../icons.qrc">:/CC/images/PointLab.png</pixmap>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QLabel" name="labelText">
        <property name="text">
-        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;img src=&quot;:/CC/Icons/images/icon/cc_icon_64.png&quot;/&gt;&lt;br/&gt;&lt;span style=&quot; font-size:14pt; font-weight:600;&quot;&gt;CloudCompare &lt;/span&gt;&lt;span style=&quot; font-size:14pt; font-weight:600; font-style:italic;&quot;&gt;&lt;/span&gt;&lt;br/&gt;Version: %1&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;&lt;a href=&quot;http://www.cloudcompare.org/donate&quot;&gt;&lt;img src=&quot;:/CC/images/donate.png&quot; width=&quot;200&quot;/&gt;&lt;/a&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;&lt;a href=&quot;http://www.cloudcompare.org&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;www.cloudcompare.org&lt;br/&gt;&lt;/span&gt;&lt;/a&gt;License: GNU GPL (General Public Licence)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;img src=&quot;:/CC/Icons/images/icon/cc_icon.png&quot;/&gt;&lt;br/&gt;&lt;span style=&quot; font-size:14pt; font-weight:600;&quot;&gt;PointLab &lt;/span&gt;&lt;br/&gt;Version: %1&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
        </property>
        <property name="openExternalLinks">
         <bool>true</bool>

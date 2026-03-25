@@ -15,6 +15,8 @@ if( PLUGIN_STANDARD_QTCP )
 		CommandDispatcher.cpp
 		CommLogger.h
 		CommLogger.cpp
+		ccRegistrationTools.h
+		ccRegistrationTools.cpp
 	)
 	
 	target_link_libraries( ${PROJECT_NAME} 

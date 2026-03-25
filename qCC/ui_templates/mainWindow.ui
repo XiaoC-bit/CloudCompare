@@ -27,7 +27,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="../icons.qrc">
-    <normaloff>:/CC/Icons/images/icon/cc_icon_16.png</normaloff>:/CC/Icons/images/icon/cc_icon_16.png</iconset>
+    <normaloff>:/CC/Icons/images/icon/cc_icon.png</normaloff>:/CC/Icons/images/icon/cc_icon.png</iconset>
   </property>
   <property name="autoFillBackground">
    <bool>true</bool>
@@ -39,7 +39,7 @@
      <x>0</x>
      <y>0</y>
      <width>1028</width>
-     <height>22</height>
+     <height>23</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -126,11 +126,9 @@
     <property name="title">
      <string>&amp;Help</string>
     </property>
-    <addaction name="actionHelp"/>
     <addaction name="actionAbout"/>
     <addaction name="actionAboutPlugins"/>
     <addaction name="separator"/>
-    <addaction name="actionEnableQtWarnings"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
     <property name="title">

@@ -222,7 +222,7 @@ MainWindow::MainWindow()
 {
 	m_UI->setupUi(this);
 
-	setWindowTitle(QStringLiteral("CloudCompare v") + ccApp->versionLongStr(false));
+	setWindowTitle(QStringLiteral("PointLab v") + ccApp->versionLongStr(false));
 
 	m_pluginUIManager = new ccPluginUIManager(this, this);
 
@@ -776,11 +776,11 @@ void MainWindow::connectActions()
 	connect(m_UI->actionCascade3DViews, &QAction::triggered, m_mdiArea, &QMdiArea::cascadeSubWindows);
 	connect(m_UI->actionNext3DView, &QAction::triggered, m_mdiArea, &QMdiArea::activateNextSubWindow);
 	connect(m_UI->actionPrevious3DView, &QAction::triggered, m_mdiArea, &QMdiArea::activatePreviousSubWindow);
-
+	
 	//"About" menu entry
-	connect(m_UI->actionHelp, &QAction::triggered, this, &MainWindow::doActionShowHelpDialog);
+	//connect(m_UI->actionHelp, &QAction::triggered, this, &MainWindow::doActionShowHelpDialog);
 	connect(m_UI->actionAboutPlugins, &QAction::triggered, m_pluginUIManager, &ccPluginUIManager::showAboutDialog);
-	connect(m_UI->actionEnableQtWarnings, &QAction::toggled, this, &MainWindow::doEnableQtWarnings);
+	//connect(m_UI->actionEnableQtWarnings, &QAction::toggled, this, &MainWindow::doEnableQtWarnings);
 
 	connect(m_UI->actionAbout, &QAction::triggered, this, [this]()
 	        {
