@@ -17,6 +17,8 @@ if( PLUGIN_STANDARD_QTCP )
 		CommLogger.cpp
 		ccRegistrationTools.h
 		ccRegistrationTools.cpp
+		EigenUtils.h
+		EigenUtils.cpp
 	)
 	
 	target_link_libraries( ${PROJECT_NAME} 
