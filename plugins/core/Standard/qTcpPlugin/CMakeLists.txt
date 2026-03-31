@@ -28,6 +28,15 @@ if( PLUGIN_STANDARD_QTCP )
 	Qt5::OpenGLExtensions
     Qt5::Network    
 	)
+
+	target_include_directories( ${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+
+	target_compile_options( ${PROJECT_NAME} PRIVATE
+    /utf-8
+)
+	
 	
 	set_property(GLOBAL APPEND PROPERTY CC_PLUGINS ${PROJECT_NAME})
 	
