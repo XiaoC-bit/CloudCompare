@@ -688,6 +688,8 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	const double  confidence       = params["confidence"].toDouble(0.99);
 	const bool    autoDetectRadius = params["autoDetectRadius"].toBool(true);
 	const double  radius           = params["radius"].toDouble(0.0);
+	const double  rmsThreshold     = params["rms"].toDouble(-1.0);
+	const int     maxRetries       = params["retries"].toInt(0);
 
 	if (objectName.isEmpty())
 	{
@@ -720,23 +722,53 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 		return;
 	}
 
-	// Run sphere fitting
+	// Run sphere fitting with retry logic
 	CCVector3           center;
 	PointCoordinateType fitRadius = autoDetectRadius ? 0 : static_cast<PointCoordinateType>(radius);
 	double              rms       = std::numeric_limits<double>::quiet_NaN();
+	int                 retryCount = 0;
+	bool                success = false;
+	int                 fitResult = CCCoreLib::GeometricalAnalysisTools::NoError;
 
-	auto fitResult = CCCoreLib::GeometricalAnalysisTools::DetectSphereRobust(
-	    cloud, outliersRatio, center, fitRadius, rms, !autoDetectRadius, nullptr, confidence);
+	while (retryCount <= maxRetries)
+	{
+		fitResult = CCCoreLib::GeometricalAnalysisTools::DetectSphereRobust(
+		    cloud, outliersRatio, center, fitRadius, rms, !autoDetectRadius, nullptr, confidence);
 
-	if (fitResult != CCCoreLib::GeometricalAnalysisTools::NoError)
+		if (fitResult != CCCoreLib::GeometricalAnalysisTools::NoError)
+		{
+			break;
+		}
+
+		// Check if RMS threshold is set and if current RMS meets the threshold
+		if (rmsThreshold > 0 && rms >= rmsThreshold)
+		{
+			retryCount++;
+			if (retryCount > maxRetries)
+			{
+				// All retries failed
+				sendError(socket, QString("Sphere fitting failed to meet RMS threshold after %1 retries").arg(maxRetries), idCode);
+				return;
+			}
+			// Reset for next retry
+			rms = std::numeric_limits<double>::quiet_NaN();
+			fitRadius = autoDetectRadius ? 0 : static_cast<PointCoordinateType>(radius);
+			continue;
+		}
+
+		success = true;
+		break;
+	}
+
+	if (!success || fitResult != CCCoreLib::GeometricalAnalysisTools::NoError)
 	{
 		sendError(socket, QString("Sphere fitting failed on '%1' (error code: %2)").arg(objectName).arg(fitResult), idCode);
 		return;
 	}
 
 	m_app->dispToConsole(
-	    QString("[TcpPlugin][FitSphere] Cloud '%1': center (%2,%3,%4) - radius = %5 [RMS = %6]")
-	        .arg(cloud->getName()).arg(center.x).arg(center.y).arg(center.z).arg(fitRadius).arg(rms));
+	    QString("[TcpPlugin][FitSphere] Cloud '%1': center (%2,%3,%4) - radius = %5 [RMS = %6] (retries: %7)")
+	        .arg(cloud->getName()).arg(center.x).arg(center.y).arg(center.z).arg(fitRadius).arg(rms).arg(retryCount));
 
 	// Create sphere object and add to DB (aligns with CC source)
 	ccGLMatrix trans;
@@ -757,6 +789,7 @@ void CommandDispatcher::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	resultJson["center_z"] = static_cast<double>(center.z);
 	resultJson["radius"]   = static_cast<double>(fitRadius);
 	resultJson["rms"]      = rms;
+	resultJson["retries"]  = retryCount;
 	sendOk(socket, QJsonDocument(resultJson).toJson(QJsonDocument::Compact), idCode);
 }
 

@@ -1,8 +1,8 @@
 #ifndef EIGEN_UTILS_H
 #define EIGEN_UTILS_H
 
-#include "Eigen/Core"
-#include "Eigen/Geometry"
+#include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <vector>
 #include <stdexcept>
 
