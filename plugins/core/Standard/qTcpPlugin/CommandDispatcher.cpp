@@ -1,6 +1,9 @@
-﻿// CommandDispatcher.cpp
+﻿﻿// CommandDispatcher.cpp
 #include "CommandDispatcher.h"
 #include "CcTcpServer.h"
+
+#include <fstream>
+
 #include <qjsondocument.h>
 #include <qjsonarray.h>
 #include <FileIOFilter.h>
@@ -1257,6 +1260,17 @@ void CommandDispatcher::handleClone(const QJsonObject& params, QTcpSocket* socke
 }
 
 
+/*
+{
+  "action": "acquirePcd",
+  "params": {
+    "async":      false,
+    "outputName": "AcquiredCloud",
+    "savePcd":    true,
+    "savePath":   "D:/output/scan.pcd"
+  }
+}
+*/
 void CommandDispatcher::handleAcquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	// ----------------------------------------------------------------
@@ -1359,16 +1373,17 @@ void CommandDispatcher::handleAcquirePcd(const QJsonObject& params, QTcpSocket* 
 		return;
 	}
 
+
 	// ----------------------------------------------------------------
 	// Step 4: Convert height image -> ccPointCloud
 	// ----------------------------------------------------------------
 	const int   xNum   = getParam.x_pointnum;
 	const int   yNum   = getParam.y_linenum_acquired;
-	const float xPitch = 12.5f / 1000.0f; // µm -> mm，固定值同原代码
+	const float xPitch = 12.5f / 1000.0f; // µm -> mm
 	const float yPitch = 12.5f / 1000.0f;
 	const float zPitch = getParam.z_pitch_um / 1000.0f;
 
-	// Count valid points (0 = invalid, same as CsvConverter::SavePcd)
+	// Count valid points (0 = invalid)
 	unsigned validCount = 0;
 	for (int i = 0; i < yNum * xNum; ++i)
 		if (m_heightBuf[i] != 0)
@@ -1376,7 +1391,7 @@ void CommandDispatcher::handleAcquirePcd(const QJsonObject& params, QTcpSocket* 
 
 	if (validCount == 0)
 	{
-		sendError(socket, "Acquisition succeeded but all points are invalid (0)", idCode);
+		sendError(socket, "Acquisition succeeded but all points are invalid", idCode);
 		return;
 	}
 
@@ -1404,14 +1419,73 @@ void CommandDispatcher::handleAcquirePcd(const QJsonObject& params, QTcpSocket* 
 	}
 
 	// ----------------------------------------------------------------
-	// Step 5: Add to DB
+	// Step 5: Save PCD file (optional)
+	// ----------------------------------------------------------------
+	const bool    savePcd  = params["savePcd"].toBool(false);
+	const QString savePath = params["savePath"].toString();
+
+	if (savePcd)
+	{
+		if (savePath.isEmpty())
+		{
+			delete cloud;
+			sendError(socket, "savePcd is true but savePath is empty", idCode);
+			return;
+		}
+
+		std::ofstream stream(savePath.toStdString());
+		if (!stream)
+		{
+			delete cloud;
+			sendError(socket, "Failed to open file for writing: " + savePath, idCode);
+			return;
+		}
+
+		// PCD ASCII header
+		stream << "# .PCD v0.7 - Point Cloud Data file format\n";
+		stream << "VERSION 0.7\n";
+		stream << "FIELDS x y z\n";
+		stream << "SIZE 4 4 4\n";
+		stream << "TYPE F F F\n";
+		stream << "COUNT 1 1 1\n";
+		stream << "WIDTH " << validCount << "\n";
+		stream << "HEIGHT 1\n";
+		stream << "VIEWPOINT 0 0 0 1 0 0 0\n";
+		stream << "POINTS " << validCount << "\n";
+		stream << "DATA ascii\n";
+
+		// Point data — reuse same loop, same coordinate formula
+		char buf[64];
+		ptr = m_heightBuf.data();
+		for (int y = 0; y < yNum; ++y)
+		{
+			for (int x = 0; x < xNum; ++x, ++ptr)
+			{
+				if (*ptr == 0)
+					continue;
+
+				const float fx = x * xPitch;
+				const float fy = y * yPitch;
+				const float fz = static_cast<float>((*ptr - COLLECT_VALUE) * zPitch);
+
+				const int len = snprintf(buf, sizeof(buf), "%.4f %.4f %.4f\n", fx, fy, fz);
+				stream.write(buf, len);
+			}
+		}
+
+		stream.close();
+		m_app->dispToConsole("[TcpPlugin][AcquirePcd] PCD saved: " + savePath);
+	}
+
+	// ----------------------------------------------------------------
+	// Step 6: Add to DB
 	// ----------------------------------------------------------------
 	m_app->addToDB(cloud);
 	m_app->refreshAll();
 	m_app->updateUI();
 
 	m_app->dispToConsole(
-	    QString("[TcpPlugin][AcquirePcd] '%1': %2 valid points (%3x%4 grid)")
+	    QString("[TcpPlugin][AcquirePcd] '%1': %2 valid points (%3x%4)")
 	        .arg(outputName)
 	        .arg(validCount)
 	        .arg(xNum)
@@ -1422,8 +1496,8 @@ void CommandDispatcher::handleAcquirePcd(const QJsonObject& params, QTcpSocket* 
 	result["pointCount"] = static_cast<int>(validCount);
 	result["xPoints"]    = xNum;
 	result["yLines"]     = yNum;
-	result["xPitch_mm"]  = static_cast<double>(xPitch);
-	result["yPitch_mm"]  = static_cast<double>(yPitch);
-	result["zPitch_mm"]  = static_cast<double>(zPitch);
+	if (savePcd)
+		result["savedPath"] = savePath;
 	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
+
 }
