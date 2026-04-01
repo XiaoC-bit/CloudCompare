@@ -42,4 +42,5 @@ private:
 	void handleSubsample(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void handleMerge(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void handleClone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleAcquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 };

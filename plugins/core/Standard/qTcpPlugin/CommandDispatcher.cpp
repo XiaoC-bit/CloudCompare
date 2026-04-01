@@ -1,4 +1,4 @@
-﻿// CommandDispatcher.cpp
+﻿﻿// CommandDispatcher.cpp
 #include "CommandDispatcher.h"
 #include "CcTcpServer.h"
 #include <qjsondocument.h>
@@ -20,6 +20,11 @@
 #include <CloudSamplingTools.h>
 #include <ccSphere.h>
 #include "ccRegistrationTools.h"
+
+
+#include "LJS8_IF.h"
+#include "LJS8_ErrorCode.h"
+#include "LJS8_ACQ.h"
 
 #ifndef CC_ORIGINAL_CLOUD_INDEX_SF_NAME
 #define CC_ORIGINAL_CLOUD_INDEX_SF_NAME "Original cloud index"
@@ -91,6 +96,10 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 		handleMerge(params, socket, idCode);
 	else if (action == "clone")
 		handleClone(params, socket, idCode);
+	else if (action == "acquirePcd")
+	{
+		handleAcquirePcd(params, socket, idCode);
+	}
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
@@ -1241,4 +1250,180 @@ void CommandDispatcher::handleClone(const QJsonObject& params, QTcpSocket* socke
 	QJsonObject result;
 	result["outputName"] = resultName;
 	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
+}
+
+
+void CommandDispatcher::handleAcquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	//=====================================================================
+	// Acquire LJS8 image
+	//=====================================================================
+	// Basically you can acquire LJ-S image in just 3 steps.
+	//
+	//  Step1. Open device
+	//  Step2. Acquire
+	//  Step3. Close device
+
+	unsigned short* pwHeightImage;     // Height image
+	unsigned char*  pbyLuminanceImage; // Luminance image
+
+	//-----------------------------------------------------------------
+	// CHANGE THIS BLOCK TO MATCH YOUR SENSOR SETTINGS (FROM HERE)
+	//-----------------------------------------------------------------
+	int       deviceId           = 0;     // Set "0" if you use only 1 head.
+	int       xImageSize         = 3200;  // Number of X points.
+	const int maxLineSize        = 6400;  // Maximum number of line.
+	int       usePcImageFilter   = 1;     // Set "1" if you use Pc ImageFilter.
+	int       timeout_ms         = 20000; // Timeout value for the acquiring image (in milisecond).
+	int       useExternalTrigger = 0;     // Set "1" if you control the measure start timing externally. (e.g. terminal input)
+	std::string    outputFilePath1    = "sample_height.csv";
+	std::string    outputFilePath4    = "sample_height.pcd";
+	std::string    outputFilePath2    = "sample_height.tif";
+	std::string    outputFilePath3    = "sample_luminance.tif";
+
+	LJS8IF_ETHERNET_CONFIG EthernetConfig =
+	    {
+	        {192, 168, 0, 1}, // IP address
+	        24691             // Port number
+	    };
+
+	int HighSpeedPortNo = 24692; // Port number for high-speed communication
+	//-----------------------------------------------------------------
+	// CHANGE THIS BLOCK TO MATCH YOUR SENSOR SETTINGS (TO HERE)
+	//-----------------------------------------------------------------
+
+	// Allocate user memory
+	pwHeightImage     = (unsigned short*)malloc(sizeof(unsigned short) * xImageSize * maxLineSize);
+	pbyLuminanceImage = (unsigned char*)malloc(sizeof(unsigned char) * xImageSize * maxLineSize);
+	if (pwHeightImage == NULL || pbyLuminanceImage == NULL)
+	{
+		printf("Failed to allocate memory.\n");
+
+		if (pwHeightImage != NULL)
+		{
+			free(pwHeightImage);
+		}
+		if (pbyLuminanceImage != NULL)
+		{
+			free(pbyLuminanceImage);
+		}
+		LJS8IF_Finalize();
+		return;
+	}
+
+	// Prepare setting parameter
+	LJS8_ACQ_SETPARAM setParam;
+	{
+		setParam.timeout_ms         = timeout_ms;
+		setParam.useExternalTrigger = useExternalTrigger;
+		setParam.usePcImageFilter   = usePcImageFilter;
+	}
+
+	// Variable to store information of the acquired image
+	LJS8_ACQ_GETPARAM getParam;
+
+	LJS8IF_Initialize();
+
+	//------------------------------------------------------------
+	// Step1. Open device
+	//------------------------------------------------------------
+	int errCode = LJS8_ACQ_OpenDevice(deviceId, &EthernetConfig, HighSpeedPortNo);
+
+	if (errCode != LJS8IF_RC_OK)
+	{
+		printf("Failed to open device.\n");
+		// Free user memory
+		free(pwHeightImage);
+		free(pbyLuminanceImage);
+
+		LJS8IF_Finalize();
+		return;
+	}
+
+	//------------------------------------------------------------
+	// Step2. Acquire image
+	//------------------------------------------------------------
+	// There are two methods you can use.
+	//
+	// (1) Synchronous method
+	//	"Acquire" function does not return unless the acquisition is completed or a timeout occurs.
+	//	This is an easy method because you only call one function.
+	//  But it blocks execution of other code during acquisition.
+	//
+	// (2) Asynchronous methods
+	// "Start" the acquisition first, and "Acquire" later.
+	// "Acquire" function returns even if the acquisition is not completed.
+	// It doesn't block other code.
+
+#if 1 // Synchronous acquisition
+	errCode = LJS8_ACQ_Acquire(deviceId, pwHeightImage, pbyLuminanceImage, &setParam, &getParam);
+
+	if (errCode != LJS8IF_RC_OK)
+	{
+		printf("Failed to acquire image.\n");
+		// Free user memory
+		free(pwHeightImage);
+		free(pbyLuminanceImage);
+
+		LJS8IF_Finalize();
+		return;
+	}
+#else // Asynchronous acquisition
+	// Start asynchronous acquire
+	errCode = LJS8_ACQ_StartAsync(deviceId, &setParam);
+	if (errCode != LJS8IF_RC_OK)
+	{
+		printf("Failed to acquire image.\n");
+		// Free user memory
+		free(pwHeightImage);
+		free(pbyLuminanceImage);
+
+		LJS8IF_Finalize();
+		return;
+	}
+
+	// Acquire. Polling to confirm complete.
+	// Or wait until a timeout occurs.
+	printf(" [acquring image...(waiting in usercode)]\n");
+	DWORD start = timeGetTime();
+	while (true)
+	{
+		DWORD ts = timeGetTime() - start;
+		if (timeout_ms < ts)
+		{
+			break;
+		}
+		errCode = LJS8_ACQ_AcquireAsync(deviceId, pwHeightImage, pbyLuminanceImage, &setParam, &getParam);
+		if (errCode == LJS8IF_RC_OK)
+			break;
+	}
+
+	if (errCode != LJS8IF_RC_OK)
+	{
+		printf("Failed to acquire image (timeout).\n");
+		// Free user memory
+		free(pwHeightImage);
+		free(pbyLuminanceImage);
+
+		LJS8IF_Finalize();
+		return;
+	}
+
+#endif
+
+	//------------------------------------------------------------
+	// Step3. Close device
+	//------------------------------------------------------------
+	LJS8_ACQ_CloseDevice(deviceId);
+
+	// Information of the acquired image
+	printf("----------------------------------------\n");
+	printf(" Luminance output      : %d\n", getParam.luminance_enabled);
+	printf(" Number of X points    : %d\n", getParam.x_pointnum);
+	printf(" Number of Y lines     : %d\n", getParam.y_linenum_acquired);
+	printf(" X pitch in micrometer : %-.1f\n", getParam.x_pitch_um);
+	printf(" Y pitch in micrometer : %-.1f\n", getParam.y_pitch_um);
+	printf(" Z pitch in micrometer : %-.1f\n", getParam.z_pitch_um);
+	printf(" Process Timeout       : %d\n", getParam.isProcTimeoutOccurred);
+	printf("----------------------------------------\n");
 }
