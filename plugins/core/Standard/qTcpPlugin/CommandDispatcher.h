@@ -21,6 +21,10 @@ private:
 	ccMainAppInterface* m_app;
 	CcTcpServer*        m_server;
 
+	// Persistent acquisition buffers — reallocated only when size grows
+	std::vector<unsigned short> m_heightBuf;
+	std::vector<unsigned char>  m_luminanceBuf;
+
 	// Helpers
 	void       sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode);
 	void       sendError(QTcpSocket* socket, const QString& msg, const QString& idCode);
