@@ -39,4 +39,7 @@ private:
 	void handleClearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void handleFit(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleSubsample(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleMerge(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void handleClone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 };

@@ -1,7 +1,8 @@
-// CommandDispatcher.cpp
+﻿// CommandDispatcher.cpp
 #include "CommandDispatcher.h"
 #include "CcTcpServer.h"
 #include <qjsondocument.h>
+#include <qjsonarray.h>
 #include <FileIOFilter.h>
 #include <ccMainAppInterface.h>
 #include <ccGLWindowInterface.h>
@@ -16,8 +17,14 @@
 #include <ccShiftedObject.h>
 #include <registrationTools.h>
 #include <GeometricalAnalysisTools.h>
+#include <CloudSamplingTools.h>
 #include <ccSphere.h>
 #include "ccRegistrationTools.h"
+
+#ifndef CC_ORIGINAL_CLOUD_INDEX_SF_NAME
+#define CC_ORIGINAL_CLOUD_INDEX_SF_NAME "Original cloud index"
+#endif
+
 
 CommandDispatcher::CommandDispatcher(ccMainAppInterface* app, CcTcpServer* server, QObject* parent)
     : QObject(parent)
@@ -79,6 +86,11 @@ void CommandDispatcher::dispatch(QJsonObject cmd, QTcpSocket* socket)
 	else if (action == "delete")              handleDelete(params, socket, idCode);
 	else if (action == "fit")                 handleFit(params, socket, idCode);
 	else if (action == "clearDB")             handleClearDB(params, socket, idCode);
+	else if (action == "subsample")           handleSubsample(params, socket, idCode);
+	else if (action == "merge")
+		handleMerge(params, socket, idCode);
+	else if (action == "clone")
+		handleClone(params, socket, idCode);
 	else
 	{
 		m_app->dispToConsole("[TcpPlugin] Unknown action: " + action, ccMainAppInterface::WRN_CONSOLE_MESSAGE);
@@ -813,4 +825,420 @@ void CommandDispatcher::handleClearDB(const QJsonObject& params, QTcpSocket* soc
 
 	m_app->dispToConsole("[TcpPlugin] DB cleared");
 	sendOk(socket, "DB cleared", idCode);
+}
+
+/**
+ * @brief 
+
+ {
+  "action": "subsample",
+  "params": {
+    "name": "MyCloud",
+    "method": "random",      // "random" | "spatial" | "octree"
+    "parameter": 10000,      // random: 目标点数; spatial: 最小间距; octree: 细分等级(1-21)
+    "outputName": "MyCloud_sub"  // 可选
+  },
+  "IDCode": "xxx"
+}
+ * 
+ * @param params 
+ * @param socket 
+ * @param idCode 
+ */
+void CommandDispatcher::handleSubsample(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	const QString objectName = params["name"].toString();
+	const QString method     = params["method"].toString("random");
+	const QString outputName = params["outputName"].toString();
+
+	if (objectName.isEmpty())
+	{
+		sendError(socket, "Missing 'name' parameter", idCode);
+		return;
+	}
+
+	ccHObject* root = getDbRoot(socket, idCode);
+	if (!root)
+		return;
+
+	// 查找点云（直接匹配或取第一个子节点）
+	ccPointCloud* cloud = nullptr;
+	{
+		ccHObject* found = findByName(root, objectName);
+		if (!found)
+		{
+			sendError(socket, "Object not found: " + objectName, idCode);
+			return;
+		}
+		if (found->isA(CC_TYPES::POINT_CLOUD))
+		{
+			cloud = static_cast<ccPointCloud*>(found);
+		}
+		else
+		{
+			for (unsigned i = 0; i < found->getChildrenNumber(); ++i)
+			{
+				if (found->getChild(i)->isA(CC_TYPES::POINT_CLOUD))
+				{
+					cloud = static_cast<ccPointCloud*>(found->getChild(i));
+					break;
+				}
+			}
+		}
+	}
+
+	if (!cloud)
+	{
+		sendError(socket, "Point cloud not found: " + objectName, idCode);
+		return;
+	}
+
+	// 执行采样
+	CCCoreLib::ReferenceCloud* sampledRef = nullptr;
+
+	if (method == "random")
+	{
+		// parameter: 目标保留点数
+		const unsigned targetCount = static_cast<unsigned>(params["parameter"].toInt(10000));
+		if (targetCount == 0 || targetCount >= cloud->size())
+		{
+			sendError(socket, "Invalid parameter for random subsampling", idCode);
+			return;
+		}
+		sampledRef = CCCoreLib::CloudSamplingTools::subsampleCloudRandomly(cloud, targetCount);
+	}
+	else if (method == "spatial")
+	{
+		// parameter: 最小点间距
+		const double minDist = params["parameter"].toDouble(0.0);
+		if (minDist <= 0.0)
+		{
+			sendError(socket, "Invalid parameter for spatial subsampling: minDist must be > 0", idCode);
+			return;
+		}
+		CCCoreLib::CloudSamplingTools::SFModulationParams modParams;
+		modParams.enabled = false;
+		sampledRef        = CCCoreLib::CloudSamplingTools::resampleCloudSpatially(
+            cloud,
+            static_cast<PointCoordinateType>(minDist),
+            modParams);
+	}
+	else if (method == "octree")
+	{
+		// parameter: octree 细分等级 (1~21)
+		const int level = params["parameter"].toInt(8);
+		if (level < 1 || level > 21)
+		{
+			sendError(socket, "Invalid parameter for octree subsampling: level must be 1~21", idCode);
+			return;
+		}
+		ccOctree::Shared octree = cloud->getOctree();
+		if (!octree)
+			octree = cloud->computeOctree();
+		if (!octree)
+		{
+			sendError(socket, "Failed to compute octree for: " + objectName, idCode);
+			return;
+		}
+		sampledRef = CCCoreLib::CloudSamplingTools::subsampleCloudWithOctreeAtLevel(
+		    cloud,
+		    static_cast<unsigned char>(level),
+		    CCCoreLib::CloudSamplingTools::NEAREST_POINT_TO_CELL_CENTER,
+		    nullptr,
+		    octree.data());
+	}
+	else
+	{
+		sendError(socket, "Unknown method: " + method + ". Use 'random', 'spatial' or 'octree'", idCode);
+		return;
+	}
+
+	if (!sampledRef)
+	{
+		sendError(socket, "Subsampling failed on: " + objectName, idCode);
+		return;
+	}
+
+	// 从 ReferenceCloud 生成新点云
+	int           warnings = 0;
+	ccPointCloud* newCloud = cloud->partialClone(sampledRef, &warnings);
+	delete sampledRef;
+	sampledRef = nullptr;
+
+	if (!newCloud)
+	{
+		sendError(socket, "Not enough memory to clone subsampled cloud", idCode);
+		return;
+	}
+
+	if (warnings)
+		m_app->dispToConsole("[TcpPlugin][Subsample] Warning: colors/normals/SF may be missing", ccMainAppInterface::WRN_CONSOLE_MESSAGE);
+
+	// 配置新点云属性（对齐 CC 源码逻辑）
+	const QString resultName = outputName.isEmpty() ? cloud->getName() + ".subsampled" : outputName;
+	newCloud->setName(resultName);
+	newCloud->copyGlobalShiftAndScale(*cloud);
+	newCloud->setDisplay(cloud->getDisplay());
+	newCloud->prepareDisplayForRefresh();
+
+	if (cloud->getParent())
+		cloud->getParent()->addChild(newCloud);
+
+	m_app->addToDB(newCloud);
+	m_app->refreshAll();
+	m_app->updateUI();
+
+	m_app->dispToConsole(
+	    QString("[TcpPlugin][Subsample] '%1' -> '%2': %3 -> %4 points (%5)")
+	        .arg(cloud->getName())
+	        .arg(resultName)
+	        .arg(cloud->size())
+	        .arg(newCloud->size())
+	        .arg(method));
+
+	QJsonObject result;
+	result["inputCount"]  = static_cast<int>(cloud->size());
+	result["outputCount"] = static_cast<int>(newCloud->size());
+	result["outputName"]  = resultName;
+	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
+}
+
+
+/*
+
+{
+  "action": "merge",
+  "params": {
+    "names": ["Cloud1", "Cloud2", "Cloud3"],
+    "outputName": "MergedCloud",
+    "addSourceIndexSF": false
+  },
+  "IDCode": "xxx"
+}
+*/
+void CommandDispatcher::handleMerge(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	const QJsonArray nameArray   = params["names"].toArray();
+	const QString    outputName  = params["outputName"].toString();
+	const bool       addSourceSF = params["addSourceIndexSF"].toBool(false);
+
+	if (nameArray.size() < 2)
+	{
+		sendError(socket, "At least 2 cloud names required in 'names'", idCode);
+		return;
+	}
+
+	ccHObject* root = getDbRoot(socket, idCode);
+	if (!root)
+		return;
+
+	// ---- 1. 解析所有点云 ----
+	// 辅助函数：按名称找到 ccPointCloud（直接匹配或取第一个 POINT_CLOUD 子节点）
+	auto findCloud = [&](const QString& name) -> ccPointCloud*
+	{
+		ccHObject* found = findByName(root, name);
+		if (!found)
+			return nullptr;
+		if (found->isA(CC_TYPES::POINT_CLOUD))
+			return static_cast<ccPointCloud*>(found);
+		for (unsigned i = 0; i < found->getChildrenNumber(); ++i)
+			if (found->getChild(i)->isA(CC_TYPES::POINT_CLOUD))
+				return static_cast<ccPointCloud*>(found->getChild(i));
+		return nullptr;
+	};
+
+	std::vector<ccPointCloud*> clouds;
+	for (const QJsonValue& val : nameArray)
+	{
+		const QString name  = val.toString();
+		ccPointCloud* cloud = findCloud(name);
+		if (!cloud)
+		{
+			sendError(socket, "Point cloud not found: " + name, idCode);
+			return;
+		}
+		clouds.push_back(cloud);
+	}
+
+	// ---- 2. 预计算总点数 ----
+	unsigned totalSize = 0;
+	for (ccPointCloud* c : clouds)
+		totalSize += c->size();
+
+	// ---- 3. clone 第一个云作为合并目标（不破坏原始数据）----
+	ccPointCloud* mergedCloud = clouds[0]->cloneThis(nullptr, true);
+	if (!mergedCloud)
+	{
+		sendError(socket, "Not enough memory to clone base cloud", idCode);
+		return;
+	}
+
+	// 预分配最终所需点数
+	if (!mergedCloud->reserve(totalSize))
+	{
+		delete mergedCloud;
+		sendError(socket, "Not enough memory to reserve space for merged cloud", idCode);
+		return;
+	}
+
+	// ---- 4. 可选：添加来源索引标量场 ----
+	CCCoreLib::ScalarField* ocIndexSF = nullptr;
+	if (addSourceSF)
+	{
+		int sfIdx = mergedCloud->getScalarFieldIndexByName(CC_ORIGINAL_CLOUD_INDEX_SF_NAME);
+		if (sfIdx < 0)
+			sfIdx = mergedCloud->addScalarField(CC_ORIGINAL_CLOUD_INDEX_SF_NAME);
+		if (sfIdx < 0)
+		{
+			delete mergedCloud;
+			sendError(socket, "Failed to allocate source-index scalar field", idCode);
+			return;
+		}
+		ocIndexSF = mergedCloud->getScalarField(sfIdx);
+		if (ocIndexSF)
+		{
+			ocIndexSF->fill(0); // 第一个云的点索引为 0
+			mergedCloud->setCurrentDisplayedScalarField(sfIdx);
+		}
+	}
+
+	// ---- 5. 依次 append 后续点云 ----
+	for (size_t i = 1; i < clouds.size(); ++i)
+	{
+		ccPointCloud* pc          = clouds[i];
+		unsigned      countBefore = mergedCloud->size();
+		unsigned      countAdded  = pc->size();
+
+		// append 不重算 SF min/max（最后统一算，对齐 CC 源码）
+		mergedCloud->append(pc, countBefore, false, false);
+
+		if (mergedCloud->size() != countBefore + countAdded)
+		{
+			delete mergedCloud;
+			sendError(socket, QString("Merge failed at cloud '%1' (not enough memory?)").arg(pc->getName()), idCode);
+			return;
+		}
+
+		if (ocIndexSF)
+		{
+			ScalarType index = static_cast<ScalarType>(i);
+			for (unsigned j = 0; j < countAdded; ++j)
+				ocIndexSF->setValue(countBefore + j, index);
+		}
+	}
+
+	// ---- 6. 统一计算所有 SF 的 min/max（对齐 CC 源码）----
+	for (unsigned i = 0; i < mergedCloud->getNumberOfScalarFields(); ++i)
+		mergedCloud->getScalarField(i)->computeMinAndMax();
+
+	if (ocIndexSF)
+		mergedCloud->showSF(true);
+
+	// ---- 7. 设置名称、shift/scale，加入 DB ----
+	const QString resultName = outputName.isEmpty()
+	                               ? clouds[0]->getName() + "_merged"
+	                               : outputName;
+	mergedCloud->setName(resultName);
+	mergedCloud->copyGlobalShiftAndScale(*clouds[0]);
+	mergedCloud->setDisplay(clouds[0]->getDisplay());
+	mergedCloud->prepareDisplayForRefresh();
+
+	m_app->addToDB(mergedCloud);
+	m_app->refreshAll();
+	m_app->updateUI();
+
+	m_app->dispToConsole(
+	    QString("[TcpPlugin][Merge] %1 clouds -> '%2': %3 points total")
+	        .arg(clouds.size())
+	        .arg(resultName)
+	        .arg(mergedCloud->size()));
+
+	QJsonObject result;
+	result["outputName"]  = resultName;
+	result["outputCount"] = static_cast<int>(mergedCloud->size());
+	result["inputCount"]  = static_cast<int>(clouds.size());
+	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
+}
+
+
+/*
+
+{
+  "action": "clone",
+  "params": {
+    "name": "MyCloud",
+    "outputName": "MyCloud_copy"
+  },
+  "IDCode": "xxx"
+}
+*/
+void CommandDispatcher::handleClone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	const QString objectName = params["name"].toString();
+	const QString outputName = params["outputName"].toString();
+
+	if (objectName.isEmpty())
+	{
+		sendError(socket, "Missing 'name' parameter", idCode);
+		return;
+	}
+
+	ccHObject* root = getDbRoot(socket, idCode);
+	if (!root)
+		return;
+
+	ccHObject* entity = findByName(root, objectName);
+	if (!entity)
+	{
+		sendError(socket, "Object not found: " + objectName, idCode);
+		return;
+	}
+
+	// ---- 克隆 ----
+	ccHObject* clone = nullptr;
+
+	if (entity->isKindOf(CC_TYPES::POINT_CLOUD))
+	{
+		clone = ccHObjectCaster::ToGenericPointCloud(entity)->clone();
+	}
+	else if (entity->isKindOf(CC_TYPES::PRIMITIVE))
+	{
+		clone = static_cast<ccGenericPrimitive*>(entity)->clone();
+	}
+	else if (entity->isA(CC_TYPES::MESH))
+	{
+		clone = ccHObjectCaster::ToMesh(entity)->cloneMesh();
+	}
+	else if (entity->isA(CC_TYPES::POLY_LINE))
+	{
+		clone = ccHObjectCaster::ToPolyline(entity)->clone();
+	}
+	else
+	{
+		sendError(socket, "Unsupported entity type for cloning: " + objectName, idCode);
+		return;
+	}
+
+	if (!clone)
+	{
+		sendError(socket, "Clone failed (not enough memory?): " + objectName, idCode);
+		return;
+	}
+
+	// ---- 设置名称、变换历史、显示（对齐 CC 源码）----
+	const QString resultName = outputName.isEmpty()
+	                               ? entity->getName() + "_clone"
+	                               : outputName;
+	clone->setName(resultName);
+	clone->setGLTransformationHistory(entity->getGLTransformationHistory());
+	clone->setDisplay(entity->getDisplay());
+
+	m_app->addToDB(clone);
+	m_app->updateUI();
+
+	m_app->dispToConsole("[TcpPlugin][Clone] '" + objectName + "' -> '" + resultName + "'");
+
+	QJsonObject result;
+	result["outputName"] = resultName;
+	sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
 }
