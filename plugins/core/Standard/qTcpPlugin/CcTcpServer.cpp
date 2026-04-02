@@ -1,69 +1,45 @@
-// CcTcpServer.cpp
 #include "CcTcpServer.h"
+#include "CommandParser.h"
+#include "CommandDispatcher.h"
 
-#include "CommLogger.h"
-#include <QJsonDocument>
-#include <QThreadPool>
-
-CcTcpServer::CcTcpServer(QObject* parent)
-    : QTcpServer(parent)
-{
+CcTcpServer::CcTcpServer(QObject* parent) : QTcpServer(parent) {
+    m_parser = new CommandParser();
+    m_dispatcher = nullptr;
 }
 
-bool CcTcpServer::startListening(quint16 port)
-{
-	return listen(QHostAddress::LocalHost, port);
+bool CcTcpServer::startListening(quint16 port) {
+    return listen(QHostAddress::Any, port);
 }
 
-void CcTcpServer::incomingConnection(qintptr socketDescriptor)
-{
-	// 每个连接在主线程处理（消息量小，无需多线程）
-	auto* socket = new QTcpSocket(this);
-	socket->setSocketDescriptor(socketDescriptor);
-	connect(socket, &QTcpSocket::readyRead, this, &CcTcpServer::onReadyRead);
-	connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-	addPendingConnection(socket);
+void CcTcpServer::setCommandDispatcher(CommandDispatcher* dispatcher) {
+    m_dispatcher = dispatcher;
 }
 
-void CcTcpServer::onReadyRead()
-{
-	m_buffer.clear();
-	auto* socket = qobject_cast<QTcpSocket*>(sender());
-	m_buffer += socket->readAll();
-
-	QJsonParseError err;
-	auto            doc = QJsonDocument::fromJson(m_buffer, &err);
-	if (err.error != QJsonParseError::NoError)
-	{
-		// 数据可能还没收完，等下一次 readyRead
-		return;
-	}
-
-	// 解析成功，清空缓冲区，发射信号（包含socket指针）
-	m_buffer.clear();
-
-	// 记录接收内容
-	CommLogger::instance().logReceived(QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
-
-
-	emit commandReceived(doc.object(), socket);
+void CcTcpServer::incomingConnection(qintptr socketDescriptor) {
+    QTcpSocket* socket = new QTcpSocket(this);
+    socket->setSocketDescriptor(socketDescriptor);
+    connect(socket, &QTcpSocket::readyRead, this, &CcTcpServer::onReadyRead);
+    connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
 }
 
-void CcTcpServer::sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode)
-{
-	QJsonObject resp;
-	resp["ok"]  = ok;
-	resp["msg"] = msg;
-	if (!idCode.isEmpty())
-		resp["IDCode"] = idCode;
+void CcTcpServer::onReadyRead() {
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (!socket) {
+        return;
+    }
 
-	
-    QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n";
-
-    // 记录发送内容
-	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
-
-
-	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
-	socket->flush();
+    m_buffer.append(socket->readAll());
+    
+    // 简单的 JSON 解析，假设每个命令是一个完整的 JSON 对象
+    if (m_buffer.contains('{') && m_buffer.contains('}')) {
+        QString jsonStr = QString::fromUtf8(m_buffer);
+        Command cmd = m_parser->parse(jsonStr);
+        cmd.socket = socket;
+        
+        if (m_dispatcher && !cmd.type.empty()) {
+            m_dispatcher->dispatch(cmd);
+        }
+        
+        m_buffer.clear();
+    }
 }

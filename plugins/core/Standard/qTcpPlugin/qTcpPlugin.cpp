@@ -3,9 +3,13 @@
 
 #include "CcTcpServer.h"
 #include "CommandDispatcher.h"
+#include "PointCloudService.h"
+#include "MachineProxy.h"
+#include "Handlers.h"
 #include "CommLogger.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
+#include <memory>
 
 qTcpPlugin::qTcpPlugin(QObject* parent)
     : QObject(parent)
@@ -14,6 +18,8 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_stopAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
+    , m_pointCloudService(nullptr)
+    , m_machineProxy(nullptr)
 {
 }
 
@@ -60,10 +66,33 @@ void qTcpPlugin::startServer()
 		return;
 	}
 
-	m_server     = new CcTcpServer(this);
-	m_dispatcher = new CommandDispatcher(m_app, m_server, this);
-
-	connect(m_server, &CcTcpServer::commandReceived, m_dispatcher, &CommandDispatcher::dispatch, Qt::QueuedConnection);
+	// 1. 创建服务和代理
+	m_pointCloudService = new PointCloudService(m_app, this);
+	m_machineProxy = new MachineProxy(this);
+	
+	// 2. 创建命令分发器
+	m_dispatcher = new CommandDispatcher(m_pointCloudService, m_machineProxy, this);
+	
+	// 3. 注册 handler
+	m_dispatcher->registerHandler("load", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("filter", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("icp", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("camera", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("applyViewport", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("applyTransformation", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("segment", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("delete", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("fit", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("clearDB", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("subsample", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("merge", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("clone", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("acquirePcd", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
+	m_dispatcher->registerHandler("machine", std::make_unique<MachineCommandHandler>(m_machineProxy));
+	
+	// 4. 创建并启动 TCP 服务器
+	m_server = new CcTcpServer(this);
+	m_server->setCommandDispatcher(m_dispatcher);
 
 	quint16 port = 52700;
 	if (m_server->startListening(port))
@@ -78,6 +107,10 @@ void qTcpPlugin::startServer()
 		m_server = nullptr;
 		delete m_dispatcher;
 		m_dispatcher = nullptr;
+		delete m_pointCloudService;
+		m_pointCloudService = nullptr;
+		delete m_machineProxy;
+		m_machineProxy = nullptr;
 	}
 
 	updateActions();
@@ -98,6 +131,12 @@ void qTcpPlugin::stopServer()
 
 	delete m_dispatcher;
 	m_dispatcher = nullptr;
+
+	delete m_pointCloudService;
+	m_pointCloudService = nullptr;
+
+	delete m_machineProxy;
+	m_machineProxy = nullptr;
 
 	m_app->dispToConsole("[TcpPlugin] Server stopped");
 	updateActions();

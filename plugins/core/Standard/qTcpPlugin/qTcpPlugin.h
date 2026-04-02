@@ -4,6 +4,8 @@
 
 class CcTcpServer;
 class CommandDispatcher;
+class PointCloudService;
+class MachineProxy;
 class QAction;
 
 class qTcpPlugin : public QObject, public ccStdPluginInterface
@@ -30,4 +32,6 @@ private:
 	QAction*           m_stopAction;
     CcTcpServer *m_server;
     CommandDispatcher *m_dispatcher;
+    PointCloudService *m_pointCloudService;
+    MachineProxy *m_machineProxy;
 };

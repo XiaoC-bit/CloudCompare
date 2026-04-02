@@ -21,6 +21,18 @@ if( PLUGIN_STANDARD_QTCP )
 		EigenUtils.cpp
 		LJS8_ACQ.h
 		LJS8_ACQ.cpp
+		Command.h
+		CommandParser.h
+		CommandParser.cpp
+		ICommandHandler.h
+		PointCloudService.h
+		PointCloudService.cpp
+		TcpClient.h
+		TcpClient.cpp
+		MachineProxy.h
+		MachineProxy.cpp
+		Handlers.h
+		Handlers.cpp
 	)
 	
 	target_link_libraries( ${PROJECT_NAME} 
