@@ -1,5 +1,4 @@
-﻿﻿// CommandDispatcher.cpp
-#include "CommandDispatcher.h"
+﻿#include "CommandDispatcher.h"
 #include "CcTcpServer.h"
 
 #include <fstream>

@@ -19,11 +19,14 @@ if( PLUGIN_STANDARD_QTCP )
 		ccRegistrationTools.cpp
 		EigenUtils.h
 		EigenUtils.cpp
+		LJS8_ACQ.h
+		LJS8_ACQ.cpp
 	)
 	
 	target_link_libraries( ${PROJECT_NAME} 
 		CCCoreLib
 		
+    ${CMAKE_CURRENT_SOURCE_DIR}/LJS8_IF.lib
 	Qt5::OpenGL
 	Qt5::OpenGLExtensions
     Qt5::Network    
@@ -31,6 +34,7 @@ if( PLUGIN_STANDARD_QTCP )
 
 	target_include_directories( ${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 	)
 
 	target_compile_options( ${PROJECT_NAME} PRIVATE
