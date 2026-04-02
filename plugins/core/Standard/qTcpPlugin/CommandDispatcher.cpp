@@ -13,6 +13,7 @@ void CommandDispatcher::dispatch(const Command& cmd) {
     }
 }
 
-void CommandDispatcher::registerHandler(const std::string& commandType, std::unique_ptr<ICommandHandler> handler) {
-    m_handlers[commandType] = std::move(handler);
+void CommandDispatcher::registerHandler(const std::string& commandType, std::shared_ptr<ICommandHandler> handler)
+{
+	m_handlers[commandType] = handler;
 }

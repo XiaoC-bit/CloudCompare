@@ -74,21 +74,24 @@ void qTcpPlugin::startServer()
 	m_dispatcher = new CommandDispatcher(m_pointCloudService, m_machineProxy, this);
 	
 	// 3. 注册 handler
-	m_dispatcher->registerHandler("load", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("filter", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("icp", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("camera", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("applyViewport", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("applyTransformation", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("segment", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("delete", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("fit", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("clearDB", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("subsample", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("merge", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("clone", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("acquirePcd", std::make_unique<PointCloudCommandHandler>(m_pointCloudService));
-	m_dispatcher->registerHandler("machine", std::make_unique<MachineCommandHandler>(m_machineProxy));
+	auto handler = std::make_shared<PointCloudCommandHandler>(m_pointCloudService);
+	m_dispatcher->registerHandler("load", handler);
+	m_dispatcher->registerHandler("filter", handler);
+	m_dispatcher->registerHandler("icp", handler);
+	m_dispatcher->registerHandler("camera", handler);
+	m_dispatcher->registerHandler("applyViewport", handler);
+	m_dispatcher->registerHandler("applyTransformation", handler);
+	m_dispatcher->registerHandler("segment", handler);
+	m_dispatcher->registerHandler("delete", handler);
+	m_dispatcher->registerHandler("fit", handler);
+	m_dispatcher->registerHandler("clearDB", handler);
+	m_dispatcher->registerHandler("subsample", handler);
+	m_dispatcher->registerHandler("merge", handler);
+	m_dispatcher->registerHandler("clone", handler);
+	m_dispatcher->registerHandler("acquirePcd", handler);
+
+	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);
+	m_dispatcher->registerHandler("machine", machineHandler);
 	
 	// 4. 创建并启动 TCP 服务器
 	m_server = new CcTcpServer(this);

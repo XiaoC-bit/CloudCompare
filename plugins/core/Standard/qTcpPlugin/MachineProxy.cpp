@@ -4,7 +4,7 @@
 MachineProxy::MachineProxy(QObject* parent) : QObject(parent) {
     m_client = new TcpClient(this);
     // 这里可以添加默认的连接逻辑
-    // m_client->connectToHost("localhost", 52701);
+    m_client->connectToHost("localhost", 20002);
 }
 
 void MachineProxy::send(const Command& cmd) {
