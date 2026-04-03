@@ -21,6 +21,8 @@ public:
     static RigidTransform computeRigidTransform(
         const std::vector<Eigen::Vector3d>& scanner_points,
         const std::vector<Eigen::Vector3d>& machine_points);
+
+        void RTCP();
 };
 
 #endif // EIGEN_UTILS_H
