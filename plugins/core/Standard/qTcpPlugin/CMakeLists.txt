@@ -1,4 +1,4 @@
-option( PLUGIN_STANDARD_QTCP "Install qTcpPlugin" OFF )
+option( PLUGIN_STANDARD_QTCP "Install qTcpPlugin" ON )
 
 if( PLUGIN_STANDARD_QTCP )
 	project( qTcpPlugin )
@@ -9,6 +9,8 @@ if( PLUGIN_STANDARD_QTCP )
 	target_sources( ${PROJECT_NAME} PRIVATE
 		qTcpPlugin.h
 		qTcpPlugin.cpp
+		CalibrationDialog.h
+		CalibrationDialog.cpp
 		CcTcpServer.h
 		CcTcpServer.cpp
 		CommandDispatcher.h

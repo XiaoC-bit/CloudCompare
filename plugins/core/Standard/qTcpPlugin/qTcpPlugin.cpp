@@ -7,6 +7,7 @@
 #include "MachineProxy.h"
 #include "Handlers.h"
 #include "CommLogger.h"
+#include "CalibrationDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <memory>
@@ -16,6 +17,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , ccStdPluginInterface(":/CC/plugin/qTcpPlugin/info.json")
     , m_startAction(nullptr)
     , m_stopAction(nullptr)
+    , m_calibrationAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -53,8 +55,14 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_stopAction, &QAction::triggered, this, &qTcpPlugin::stopServer);
 	}
 
+	if (!m_calibrationAction)
+	{
+		m_calibrationAction = new QAction("标定", this);
+		connect(m_calibrationAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationDialog);
+	}
+
 	updateActions();
-	return {m_startAction, m_stopAction};
+	return {m_startAction, m_stopAction, m_calibrationAction};
 }
 
 void qTcpPlugin::startServer()
@@ -152,4 +160,20 @@ void qTcpPlugin::updateActions()
 		m_startAction->setEnabled(!running);
 	if (m_stopAction)
 		m_stopAction->setEnabled(running);
+}
+
+void qTcpPlugin::showCalibrationDialog()
+{
+	CalibrationDialog dialog( nullptr);
+	if (dialog.exec() == QDialog::Accepted)
+	{
+		QVector<QVector3D> positions = dialog.getPositions();
+		// 这里可以添加标定逻辑
+		m_app->dispToConsole(QString("[TcpPlugin] 标定开始，共 %1 个位置").arg(positions.size()));
+		for (int i = 0; i < positions.size(); ++i)
+		{
+			const QVector3D &pos = positions[i];
+			m_app->dispToConsole(QString("位置 %1: X=%2, Y=%3, Z=%4").arg(i + 1).arg(pos.x()).arg(pos.y()).arg(pos.z()));
+		}
+	}
 }

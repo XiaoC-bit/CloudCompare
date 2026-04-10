@@ -25,11 +25,13 @@ public:
 private slots:
 	void startServer();
 	void stopServer();
+	void showCalibrationDialog();
 
 private:
 	void               updateActions();
 	QAction*           m_startAction;
 	QAction*           m_stopAction;
+	QAction*           m_calibrationAction;
     CcTcpServer *m_server;
     CommandDispatcher *m_dispatcher;
     PointCloudService *m_pointCloudService;
