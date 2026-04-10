@@ -49,6 +49,7 @@ RigidTransform EigenUtils::computeRigidTransform(
     return { R, T };
 }
 
+constexpr double PI = 3.14159265358979323846;
 void EigenUtils::RTCP()
  {
     // === 参数定义 ===
@@ -108,7 +109,7 @@ void EigenUtils::RTCP()
     // =====================================================
     // 输出
     // =====================================================
-    std::cout << std::fixed << std::setprecision(3);
+    /*std::cout << std::fixed << std::setprecision(3);
     std::cout << "=== 输入参数 ===" << "\n";
     std::cout << "G54 in machine: " << g54_in_machine.transpose() << "\n";
     std::cout << "pivot_B in work: " << pivot_B_in_work.transpose() << "\n";
@@ -128,5 +129,5 @@ void EigenUtils::RTCP()
         << " Y=" << machine_after.y()
         << " Z=" << machine_after.z()
         << " B=" << machine_B
-        << " C=" << machine_C << "\n";
+        << " C=" << machine_C << "\n";*/
 }
