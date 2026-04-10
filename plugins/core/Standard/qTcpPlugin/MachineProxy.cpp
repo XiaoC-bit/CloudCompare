@@ -158,6 +158,8 @@ void MachineProxy::sendErrorToSocket(QTcpSocket*    socket,
                                      const QString& message,
                                      const QString& idCode)
 {
+	if (socket == nullptr)
+		return;
 	QJsonObject err;
 	err["success"] = false;
 	err["message"] = message;

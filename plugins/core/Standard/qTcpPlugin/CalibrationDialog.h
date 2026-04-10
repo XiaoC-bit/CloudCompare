@@ -7,6 +7,8 @@ class QVBoxLayout;
 class QHBoxLayout;
 class QPushButton;
 class QTableWidget;
+class MachineProxy;
+class PointCloudService;
 
 class CalibrationDialog : public QDialog
 {
@@ -21,7 +23,7 @@ private:
     };
 
 public:
-    explicit CalibrationDialog(QWidget *parent = nullptr);
+    explicit CalibrationDialog(MachineProxy *machineProxy, PointCloudService *pointCloudService, QWidget *parent = nullptr);
     ~CalibrationDialog() override;
     
     static QVector<QVector3D> getDefaultPositions();
@@ -36,6 +38,10 @@ private slots:
 private:
     void setupUI();
     void populateTable();
+    bool sendFileToMachine(const QString &filePath);
+    bool startMachine();
+    bool waitForMachineIdle();
+    bool acquirePointCloud();
     
     QVBoxLayout *m_mainLayout;
     QTableWidget *m_tableWidget;
@@ -45,6 +51,8 @@ private:
     QPushButton *m_cancelButton;
     QHBoxLayout *m_buttonLayout;
     
+    MachineProxy *m_machineProxy;
+    PointCloudService *m_pointCloudService;
     QVector<Position> m_positions;
     static const QVector<Position> DEFAULT_POSITIONS;
     static const int MAX_POSITIONS = 30;

@@ -8,4 +8,9 @@ struct Command {
     QJsonObject params;
     QTcpSocket* socket;
     QString idCode;
+
+	Command()
+	{
+		socket = nullptr;
+	}
 };

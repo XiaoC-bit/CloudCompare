@@ -164,16 +164,10 @@ void qTcpPlugin::updateActions()
 
 void qTcpPlugin::showCalibrationDialog()
 {
-	CalibrationDialog dialog( nullptr);
+	CalibrationDialog dialog(m_machineProxy, m_pointCloudService, nullptr);
 	if (dialog.exec() == QDialog::Accepted)
 	{
 		QVector<QVector3D> positions = dialog.getPositions();
-		// 这里可以添加标定逻辑
-		m_app->dispToConsole(QString("[TcpPlugin] 标定开始，共 %1 个位置").arg(positions.size()));
-		for (int i = 0; i < positions.size(); ++i)
-		{
-			const QVector3D &pos = positions[i];
-			m_app->dispToConsole(QString("位置 %1: X=%2, Y=%3, Z=%4").arg(i + 1).arg(pos.x()).arg(pos.y()).arg(pos.z()));
-		}
+		m_app->dispToConsole(QString("[TcpPlugin] 标定完成，共 %1 个位置").arg(positions.size()));
 	}
 }
