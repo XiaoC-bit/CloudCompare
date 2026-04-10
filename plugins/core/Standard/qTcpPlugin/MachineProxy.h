@@ -5,6 +5,8 @@
 #include <QMap>
 #include <QObject>
 #include <QTimer>
+#include <qmutex.h>
+#include <qwaitcondition.h>
 
 class TcpClient;
 
@@ -14,6 +16,7 @@ class MachineProxy : public QObject
   public:
 	explicit MachineProxy(QObject* parent = nullptr);
 	void send(const Command& cmd);
+	bool sendSync(const QJsonObject& params, QJsonObject& response, int timeout = 5000);
 
   private slots:
 	void onTcpConnected();
@@ -30,8 +33,18 @@ class MachineProxy : public QObject
 		QTimer* timer; // 每个命令独立的超时定时器
 	};
 
+	struct SyncPendingCommand
+	{
+		QJsonObject response;
+		bool received = false;
+		QMutex mutex;
+		QWaitCondition cond;
+	};
+
 	TcpClient*                    m_client;
 	QMap<QString, PendingCommand> m_pendingCommands;
+	QMutex m_syncMapMutex;
+	QMap<QString, SyncPendingCommand*> m_syncPendingCommands;
 
 	// 重连相关
 	QTimer* m_reconnectTimer;

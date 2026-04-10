@@ -164,7 +164,7 @@ void qTcpPlugin::updateActions()
 
 void qTcpPlugin::showCalibrationDialog()
 {
-	CalibrationDialog dialog(m_machineProxy, m_pointCloudService, nullptr);
+	CalibrationDialog dialog(m_app,m_pointCloudService, nullptr);
 	if (dialog.exec() == QDialog::Accepted)
 	{
 		QVector<QVector3D> positions = dialog.getPositions();

@@ -4,6 +4,10 @@
 
 #include <QJsonDocument>
 #include <QTcpSocket>
+#include <QMutex>
+#include <QWaitCondition>
+#include <QUuid>
+#include <QElapsedTimer>
 
 MachineProxy::MachineProxy(QObject* parent)
     : QObject(parent)
@@ -106,12 +110,107 @@ void MachineProxy::send(const Command& cmd)
 	m_client->send(cmd.params);
 }
 
+bool MachineProxy::sendSync(const QJsonObject& params, QJsonObject& response, int timeout)
+{
+	if (!m_client->isConnected())
+	{
+		return false;
+	}
+
+	QString idCode = QUuid::createUuid().toString();
+
+	SyncPendingCommand* syncCmd = new SyncPendingCommand();
+
+	// 1. 先锁住自身 mutex（关键）
+	syncCmd->mutex.lock();
+
+	// 2. 加入 map（需要全局锁，建议你类里加 m_syncMapMutex）
+	{
+		QMutexLocker locker(&m_syncMapMutex);
+		m_syncPendingCommands[idCode] = syncCmd;
+	}
+
+	// 3. 发送
+	QJsonObject cmdParams = params;
+	cmdParams["IDCode"]   = idCode;
+	m_client->send(cmdParams);
+
+	bool success = false;
+
+	// 4. 精确超时控制
+	QElapsedTimer timer;
+	timer.start();
+
+	while (!syncCmd->received)
+	{
+		int remain = timeout - timer.elapsed();
+		if (remain <= 0)
+		{
+			break;
+		}
+
+		syncCmd->cond.wait(&syncCmd->mutex, remain);
+	}
+
+	if (syncCmd->received)
+	{
+		response = syncCmd->response;
+		success  = true;
+	}
+
+	syncCmd->mutex.unlock();
+
+	// 5. 从 map 移除（必须加锁）
+	{
+		QMutexLocker locker(&m_syncMapMutex);
+		m_syncPendingCommands.remove(idCode);
+	}
+
+	delete syncCmd;
+
+	return success;
+}
 // ── 响应处理 ─────────────────────────────────────────────────
 
 void MachineProxy::onTcpResponseReceived(const QJsonObject& response)
 {
 	QString idCode = response["IDCode"].toString();
 
+	SyncPendingCommand* syncCmd = nullptr;
+
+	// 1. 从 map 取（加锁）
+	{
+		QMutexLocker locker(&m_syncMapMutex);
+		auto         it = m_syncPendingCommands.find(idCode);
+		if (it != m_syncPendingCommands.end())
+		{
+			syncCmd = it.value();
+		}
+	}
+
+	// 2. 同步命令处理
+	if (syncCmd)
+	{
+		QMutexLocker locker(&syncCmd->mutex);
+		syncCmd->response = response;
+		syncCmd->received = true;
+		syncCmd->cond.wakeOne();
+		return;
+	}
+
+	// 先检查是否是同步命令
+	auto syncIt = m_syncPendingCommands.find(idCode);
+	if (syncIt != m_syncPendingCommands.end())
+	{
+		SyncPendingCommand* syncCmd = syncIt.value();
+		QMutexLocker locker(&syncCmd->mutex);
+		syncCmd->response = response;
+		syncCmd->received = true;
+		syncCmd->cond.wakeOne();
+		return;
+	}
+
+	// 处理异步命令
 	auto it = m_pendingCommands.find(idCode);
 	if (it == m_pendingCommands.end())
 		return; // 已超时或重复响应
