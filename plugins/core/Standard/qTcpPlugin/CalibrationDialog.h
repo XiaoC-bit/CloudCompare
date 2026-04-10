@@ -30,6 +30,8 @@ public:
 private slots:
     void onAddPosition();
     void onStartCalibration();
+    void onReset();
+    void onDeleteRow();
 
 private:
     void setupUI();
@@ -38,6 +40,7 @@ private:
     QVBoxLayout *m_mainLayout;
     QTableWidget *m_tableWidget;
     QPushButton *m_addButton;
+    QPushButton *m_resetButton;
     QPushButton *m_startButton;
     QPushButton *m_cancelButton;
     QHBoxLayout *m_buttonLayout;

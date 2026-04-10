@@ -23,7 +23,7 @@ CalibrationDialog::CalibrationDialog(QWidget *parent)
     , m_positions(DEFAULT_POSITIONS)
 {
     setWindowTitle("标定");
-    setFixedSize(400, 400);
+    setMinimumSize(500, 500);
     setupUI();
     populateTable();
 }
@@ -37,9 +37,11 @@ void CalibrationDialog::setupUI()
     m_mainLayout = new QVBoxLayout(this);
     
     m_tableWidget = new QTableWidget(this);
-    m_tableWidget->setColumnCount(3);
-    m_tableWidget->setHorizontalHeaderLabels({"X", "Y", "Z"});
+    m_tableWidget->setColumnCount(4);
+    m_tableWidget->setHorizontalHeaderLabels({"X", "Y", "Z", "操作"});
     m_tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
+    m_tableWidget->setColumnWidth(3, 80);
     m_mainLayout->addWidget(m_tableWidget);
     
     m_addButton = new QPushButton("新增位置", this);
@@ -47,11 +49,14 @@ void CalibrationDialog::setupUI()
     m_mainLayout->addWidget(m_addButton);
     
     m_buttonLayout = new QHBoxLayout();
+    m_resetButton = new QPushButton("复位", this);
+    connect(m_resetButton, &QPushButton::clicked, this, &CalibrationDialog::onReset);
     m_startButton = new QPushButton("开始标定", this);
     connect(m_startButton, &QPushButton::clicked, this, &CalibrationDialog::onStartCalibration);
     m_cancelButton = new QPushButton("取消", this);
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
     
+    m_buttonLayout->addWidget(m_resetButton);
     m_buttonLayout->addWidget(m_startButton);
     m_buttonLayout->addWidget(m_cancelButton);
     m_mainLayout->addLayout(m_buttonLayout);
@@ -84,6 +89,11 @@ void CalibrationDialog::populateTable()
         zSpinBox->setMaximum(1000);
         zSpinBox->setDecimals(3);
         m_tableWidget->setCellWidget(i, 2, zSpinBox);
+        
+        QPushButton *deleteButton = new QPushButton("删除");
+        deleteButton->setProperty("row", i);
+        connect(deleteButton, &QPushButton::clicked, this, &CalibrationDialog::onDeleteRow);
+        m_tableWidget->setCellWidget(i, 3, deleteButton);
     }
 }
 
@@ -132,4 +142,26 @@ QVector<QVector3D> CalibrationDialog::getPositions() const
         positions.append(QVector3D(pos.x, pos.y, pos.z));
     }
     return positions;
+}
+
+void CalibrationDialog::onReset()
+{
+    m_positions = DEFAULT_POSITIONS;
+    populateTable();
+}
+
+void CalibrationDialog::onDeleteRow()
+{
+    QPushButton *button = qobject_cast<QPushButton*>(sender());
+    if (!button) return;
+    
+    int row = button->property("row").toInt();
+    
+    if (m_positions.size() <= DEFAULT_POSITIONS.size()) {
+        QMessageBox::warning(this, "警告", "数据组数不能少于默认值数量");
+        return;
+    }
+    
+    m_positions.removeAt(row);
+    populateTable();
 }
