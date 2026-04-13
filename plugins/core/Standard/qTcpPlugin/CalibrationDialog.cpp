@@ -90,13 +90,15 @@ CalibrationDialog::RigidTransform CalibrationDialog::computeRigidTransform(
 
 
 const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS = {
-    {0, 0, 0},
-    {5, 0, 0},
+    {0, 0, 0}
+    /*,
+    {5, 0, 0}
+	,
     {5, 5, 0},
     {5, 10, 0},
     {10, 10, 0},
     {0, 0, 2.5},
-    {0, 0, 5}
+    {0, 0, 5}*/
 };
 
 const QString CalibrationDialog::MACHINE_HOST = "localhost";
@@ -215,14 +217,19 @@ void CalibrationDialog::onStartCalibration()
     
     // 检查机床状态是否空闲
     QJsonObject statusParams;
-    statusParams["Command"] = "GetStatus";
-    statusParams["Device"] = "CNC";
+	/*
+	{"Command":"GetDeviceRun","DeviceName":"CNC_1","DeviceType":"Cnc","Timeout":5}
+	*/
+	statusParams["Command"]    = "GetDeviceRun";
+	statusParams["DeviceType"] = "Cnc";
+	statusParams["DeviceName"] = "CNC_1";
+	statusParams["Timeout"] = 5;
     QJsonObject statusResponse;
     if (!sendCommand(statusParams, statusResponse, 5000)) {
         return;
     }
     
-    if (!statusResponse.contains("Status") || statusResponse["Status"].toString() != "IDLE") {
+    if (!statusResponse.contains("Value") || statusResponse["Value"].toString() != "0") {
         QMessageBox::warning(this, "警告", "当前测量机未处于Ready状态");
         return;
     }
@@ -231,7 +238,8 @@ void CalibrationDialog::onStartCalibration()
     if (m_pointCloudService) {
         QJsonObject clearParams;
         // clearDB不需要参数
-        m_pointCloudService->clearDB(clearParams, nullptr, "");
+		// 信号槽 线程不同步 待修复
+       // m_pointCloudService->clearDB(clearParams, nullptr, "");
     }
 
 	std::vector<Eigen::Vector3d> machine_points, scanner_points;
@@ -300,6 +308,13 @@ void CalibrationDialog::onStartCalibration()
             calibrationSuccess = false;
             break;
         }
+
+		//设置主程序
+		if (!setMainProgram())
+		{
+			calibrationSuccess = false;
+			break;
+		}
         
         // 4. 发送启动机床命令
         if (!startMachine()) {
@@ -314,7 +329,8 @@ void CalibrationDialog::onStartCalibration()
         }
         
         // 6. 获取点云数据
-        if (!acquirePointCloud()) {
+		if (!acquirePointCloud(QString::number(i + 1)))
+		{
             calibrationSuccess = false;
             break;
         }
@@ -337,8 +353,8 @@ void CalibrationDialog::onStartCalibration()
     
     if (calibrationSuccess) {
 
-		CalibrationDialog::RigidTransform  transform   = CalibrationDialog::computeRigidTransform(scanner_points, machine_points);
-		Eigen::Matrix4d T_cam2robot = CalibrationDialog::toMatrix4d(transform);
+		//CalibrationDialog::RigidTransform  transform   = CalibrationDialog::computeRigidTransform(scanner_points, machine_points);
+		//Eigen::Matrix4d T_cam2robot = CalibrationDialog::toMatrix4d(transform);
 
 
         QMessageBox::information(this, "成功", "标定完成");
@@ -460,12 +476,29 @@ bool CalibrationDialog::sendCommand(const QJsonObject &params, QJsonObject &resp
 
 bool CalibrationDialog::sendFileToMachine(const QString &filePath)
 {
+
+	/*
+
+	{
+	"CNCFile": "O1236",
+	"CNCPath": "/c/",
+	"Command": "SendFile",
+	"DeviceName": "CNC_1",
+	"DeviceType": "Cnc",
+	"LocalFile": "D:\\SVN\\X-MASTER-PROJECT\\X-MASTER-8664-EDM-XIANHANGFA\\3 Source Code\\CloudCompare\\build\\qCC\\RelWithDebInfo\\Template\\Calibration_1.nc",
+	"Timeout": 5
+}
+	*/
     // 创建SendFile命令
     QJsonObject params;
 	QString     strCmd = "SendFile";
 	params["Command"]   = strCmd;
-    params["Device"] = "CNC";
-    params["LocalFile"] = filePath;
+	params["DeviceName"] = "CNC_1";
+	params["DeviceType"] = "Cnc";
+	params["CNCPath"] = "/c/";
+	params["CNCFile"]    = "O1236";
+	params["LocalFile"]  = filePath;
+	params["Timeout"]  = 20;
     
     QJsonObject response;
     if (!sendCommand(params, response, 10000)) {
@@ -481,13 +514,67 @@ bool CalibrationDialog::sendFileToMachine(const QString &filePath)
     return true;
 }
 
+
+bool CalibrationDialog::setMainProgram(){
+    /*
+    {
+    "Command": "SetMainProg",
+    "DeviceName": "CNC_1",
+    "DeviceType": "Cnc",
+    "MainProg": "O1236",
+    "Path": "/c/",
+    "Timeout": 5
+}
+    */
+        // 创建SetMainProg命令
+    QJsonObject params;
+    QString     strCmd = "SetMainProg";
+    params["Command"]   = strCmd;
+    params["DeviceType"] = "Cnc";
+    params["DeviceName"] = "CNC_1";
+    params["MainProg"] = "O1236";
+    params["Path"] = "/c/";
+    params["Timeout"] = 5;
+        
+    QJsonObject response;
+    if (!sendCommand(params, response, 10000)) {
+        return false;
+    }
+        
+    if (!response.contains(strCmd + "_Ret") || response[strCmd + "_Ret"].toString() != "0")
+	{
+        QMessageBox::critical(this, "错误", "设置主程序失败: " + response[strCmd + "_message"].toString());
+        return false;
+    }
+        
+    return true;
+}
+
 bool CalibrationDialog::startMachine()
 {
     // 创建Start命令
     QJsonObject params;
-	QString     strCmd = "Start";
+	/*
+	{
+	"Addr": "999",
+	"AddrType": "R",
+	"Bit": "0",
+	"Command": "WritePlc",
+	"DeviceName": "CNC_1",
+	"DeviceType": "Cnc",
+	"Timeout": 5,
+	"Value": "0"
+}
+	*/
+	QString     strCmd = "WritePlc";
 	params["Command"]   = strCmd;
-    params["Device"] = "CNC";
+    params["DeviceType"] = "Cnc";
+	params["DeviceName"] = "CNC_1";
+    params["Addr"] = "999";
+    params["AddrType"] = "R";
+    params["Bit"] = "0";
+    params["Timeout"] = 5;
+    params["Value"] = "1";
     
     QJsonObject response;
     if (!sendCommand(params, response, 10000)) {
@@ -499,6 +586,22 @@ bool CalibrationDialog::startMachine()
         QMessageBox::critical(this, "错误", "启动机床失败: " + response[strCmd + "_message"].toString());
         return false;
     }
+    //休眠200ms
+    QThread::msleep(200);
+
+    //复位机床
+    params["Value"] = "0";
+     if (!sendCommand(params, response, 10000)) {
+        return false;
+    }
+    
+    if (!response.contains(strCmd + "_Ret") || response[strCmd + "_Ret"].toString() != "0")
+	{
+        QMessageBox::critical(this, "错误", "启动机床失败: " + response[strCmd + "_message"].toString());
+        return false;
+    }
+    //休眠200ms
+    QThread::msleep(200);
     
     return true;
 }
@@ -512,9 +615,16 @@ bool CalibrationDialog::waitForMachineIdle()
     while (elapsedTime < maxWaitTime) {
         // 创建GetStatus命令
         QJsonObject params;
-        QString     strCmd = "GetStatus";
+
+        /*
+        
+	{"Command":"GetDeviceRun","DeviceName":"CNC_1","DeviceType":"Cnc","Timeout":5}
+        */
+        QString     strCmd = "GetDeviceRun";
         params["Command"]   = strCmd;
-        params["Device"] = "CNC";
+        params["DeviceName"] = "CNC_1";
+        params["DeviceType"] = "Cnc";
+        params["Timeout"] = 5;
         
         QJsonObject response;
         if (!sendCommand(params, response, 5000)) {
@@ -523,7 +633,7 @@ bool CalibrationDialog::waitForMachineIdle()
             continue;
         }
         
-        if (response.contains("Status") && response["Status"].toString() == "IDLE") {
+        if (response.contains("Value") && response["Value"].toString() == "0") {
             return true;
         }
         
@@ -535,7 +645,7 @@ bool CalibrationDialog::waitForMachineIdle()
     return false;
 }
 
-bool CalibrationDialog::acquirePointCloud()
+bool CalibrationDialog::acquirePointCloud(const QString& outputName)
 {
 	// ----------------------------------------------------------------
 	// Hardware config (hardcoded — change to match your sensor)
@@ -547,7 +657,7 @@ bool CalibrationDialog::acquirePointCloud()
 		int                    maxLineSize      = 6400;
 		int                    usePcImageFilter = 1;
 		int                    timeout_ms       = 20000;
-		LJS8IF_ETHERNET_CONFIG ethernet         = {{192, 168, 0, 1}, 24691};
+		LJS8IF_ETHERNET_CONFIG ethernet         = {{10, 10, 10, 234}, 24691};
 		int                    highSpeedPortNo  = 24692;
 	} cfg;
 
@@ -555,7 +665,6 @@ bool CalibrationDialog::acquirePointCloud()
 	// Runtime params from JSON
 	// ----------------------------------------------------------------
 	const bool    useAsync   = true;
-	const QString outputName = "";
 
 	// ----------------------------------------------------------------
 	// Allocate buffers

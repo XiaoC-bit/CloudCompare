@@ -1180,7 +1180,7 @@ void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket
             int maxLineSize = 6400;
             int usePcImageFilter = 1;
             int timeout_ms = 20000;
-            LJS8IF_ETHERNET_CONFIG ethernet = {{192, 168, 0, 1}, 24691};
+            LJS8IF_ETHERNET_CONFIG ethernet = {{10, 10, 10, 234}, 24691};
             int highSpeedPortNo = 24692;
         } cfg;
 

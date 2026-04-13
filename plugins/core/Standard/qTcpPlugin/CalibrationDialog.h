@@ -51,7 +51,8 @@ private:
     bool sendFileToMachine(const QString &filePath);
     bool startMachine();
     bool waitForMachineIdle();
-    bool acquirePointCloud();
+    bool acquirePointCloud(const QString &outputName);
+    bool setMainProgram();
     
     // 将 RigidTransform 转换为 4×4 齐次变换矩阵
     static Eigen::Matrix4d toMatrix4d(const RigidTransform& tf);
