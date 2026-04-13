@@ -3,6 +3,7 @@
 #include <QDialog>
 #include <QVector3D>
 #include <QTcpSocket>
+#include "Eigen/Dense"
 
 class QVBoxLayout;
 class QHBoxLayout;
@@ -21,6 +22,12 @@ private:
         double z;
         
         Position(double x = 0, double y = 0, double z = 0) : x(x), y(y), z(z) {}
+    };
+    
+    struct RigidTransform
+    {
+        Eigen::Matrix3d R; // 旋转矩阵
+        Eigen::Vector3d T; // 平移向量
     };
 
 public:
@@ -45,6 +52,18 @@ private:
     bool startMachine();
     bool waitForMachineIdle();
     bool acquirePointCloud();
+    
+    // 将 RigidTransform 转换为 4×4 齐次变换矩阵
+    static Eigen::Matrix4d toMatrix4d(const RigidTransform& tf);
+    
+    // 输入：
+    //   scanner_points  扫描仪坐标系下的 N 个球心
+    //   machine_points  机床坐标系下对应的 N 个球心
+    // 输出：
+    //   RigidTransform {R, T}，满足 machine = R * scanner + T
+    static RigidTransform computeRigidTransform(
+        const std::vector<Eigen::Vector3d>& scanner_points,
+        const std::vector<Eigen::Vector3d>& machine_points);
     
     QVBoxLayout *m_mainLayout;
     QTableWidget *m_tableWidget;

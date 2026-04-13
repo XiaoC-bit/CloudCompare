@@ -25,6 +25,70 @@
 #include "LJS8_ErrorCode.h"
 #include "LJS8_ACQ.h"
 
+// 将 RigidTransform 转换为 4×4 齐次变换矩阵
+Eigen::Matrix4d CalibrationDialog::toMatrix4d(const RigidTransform& tf)
+{
+	Eigen::Matrix4d T   = Eigen::Matrix4d::Identity();
+	T.block<3, 3>(0, 0) = tf.R;
+	T.block<3, 1>(0, 3) = tf.T;
+	return T;
+}
+
+// 输入：
+//   scanner_points  扫描仪坐标系下的 N 个球心
+//   machine_points  机床坐标系下对应的 N 个球心
+// 输出：
+//   RigidTransform {R, T}，满足 machine = R * scanner + T
+CalibrationDialog::RigidTransform CalibrationDialog::computeRigidTransform(
+    const std::vector<Eigen::Vector3d>& scanner_points,
+    const std::vector<Eigen::Vector3d>& machine_points)
+{
+	const size_t N = scanner_points.size();
+	if (N < 3 || N != machine_points.size())
+		throw std::runtime_error("至少需要 3 个对应点");
+
+	// 1. 计算质心
+	Eigen::Vector3d c_scanner = Eigen::Vector3d::Zero();
+	Eigen::Vector3d c_machine = Eigen::Vector3d::Zero();
+	for (size_t i = 0; i < N; ++i)
+	{
+		c_scanner += scanner_points[i];
+		c_machine += machine_points[i];
+	}
+	c_scanner /= static_cast<double>(N);
+	c_machine /= static_cast<double>(N);
+
+	// 2. 去质心
+	Eigen::MatrixXd Q_scanner(3, N), Q_machine(3, N);
+	for (size_t i = 0; i < N; ++i)
+	{
+		Q_scanner.col(i) = scanner_points[i] - c_scanner;
+		Q_machine.col(i) = machine_points[i] - c_machine;
+	}
+
+	// 3. 协方差矩阵 H = Q_scanner * Q_machine^T
+	Eigen::Matrix3d H = Q_scanner * Q_machine.transpose();
+
+	// 4. SVD 分解
+	Eigen::JacobiSVD<Eigen::Matrix3d> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+	Eigen::Matrix3d                   U = svd.matrixU();
+	Eigen::Matrix3d                   V = svd.matrixV();
+
+	// 5. 计算旋转矩阵，修正镜像情况（det < 0）
+	Eigen::Matrix3d R = V * U.transpose();
+	if (R.determinant() < 0)
+	{
+		V.col(2) *= -1;
+		R = V * U.transpose();
+	}
+
+	// 6. 计算平移向量
+	Eigen::Vector3d T = c_machine - R * c_scanner;
+
+	return {R, T};
+}
+
+
 const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS = {
     {0, 0, 0},
     {5, 0, 0},
@@ -169,11 +233,17 @@ void CalibrationDialog::onStartCalibration()
         // clearDB不需要参数
         m_pointCloudService->clearDB(clearParams, nullptr, "");
     }
+
+	std::vector<Eigen::Vector3d> machine_points, scanner_points;
+
     
     // 开始标定流程
     bool calibrationSuccess = true;
     
     for (int i = 0; i < m_positions.size(); ++i) {
+		Eigen::Vector3d machine_point(m_positions[i].x, m_positions[i].y, m_positions[i].z);
+		machine_points.push_back(machine_point);	
+
         const Position &pos = m_positions[i];
         
         // 1. 打开Template文件夹下的Calibration.nc文件
@@ -253,12 +323,24 @@ void CalibrationDialog::onStartCalibration()
         if (m_pointCloudService) {
             QJsonObject fitParams;
             fitParams["type"] = "sphere";
+			double          x, y, z, radius;
+
             // 假设最后获取的点云是当前要拟合的点云
-            m_pointCloudService->fit(fitParams, nullptr, "");
+			m_pointCloudService->handleFitSphere(fitParams, nullptr, "", x, y, z, radius);
+
+			
+			scanner_points.push_back(Eigen::Vector3d(x, y, z));
         }
     }
+
+
     
     if (calibrationSuccess) {
+
+		CalibrationDialog::RigidTransform  transform   = CalibrationDialog::computeRigidTransform(scanner_points, machine_points);
+		Eigen::Matrix4d T_cam2robot = CalibrationDialog::toMatrix4d(transform);
+
+
         QMessageBox::information(this, "成功", "标定完成");
         accept();
     } else {

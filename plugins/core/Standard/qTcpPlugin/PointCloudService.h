@@ -27,7 +27,10 @@ public:
     void clone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
     void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
-private:
+
+	void handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
+
+  private:
     ccMainAppInterface* m_app;
     std::vector<unsigned short> m_heightBuf;
     std::vector<unsigned char> m_luminanceBuf;
@@ -37,5 +40,4 @@ private:
     void sendError(QTcpSocket* socket, const QString& msg, const QString& idCode);
     class ccHObject* getDbRoot(QTcpSocket* socket, const QString& idCode);
     class ccHObject* findByName(class ccHObject* node, const QString& name);
-    void handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 };

@@ -655,14 +655,16 @@ void PointCloudService::fit(const QJsonObject& params, QTcpSocket* socket, const
     QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]() {
         const QString type = params["type"].toString();
         if (type == "sphere") {
-            handleFitSphere(params, socket, idCode);
+			double centerX, centerY, centerZ, rms;
+			handleFitSphere(params, socket, idCode, centerX, centerY, centerZ, rms);
         } else {
             sendError(socket, "Unknown fit type: " + type, idCode);
         }
     }, Qt::QueuedConnection);
 }
 
-void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+
+void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& outRms)
 {
 	const QString objectName       = params["name"].toString();
 	const double  outliersRatio    = params["outliersRatio"].toDouble(0.5);
@@ -788,7 +790,15 @@ void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	resultJson["rms"]      = rms;
 	resultJson["retries"]  = retryCount;
 	sendOk(socket, QJsonDocument(resultJson).toJson(QJsonDocument::Compact), idCode);
+
+	
+	centerX = center.x;
+	centerY = center.y;
+	centerZ = center.z;
+	outRms  = fitRadius;
+
 }
+
 
 void PointCloudService::clearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
     QMetaObject::invokeMethod(qApp, [this, socket, idCode]() {
