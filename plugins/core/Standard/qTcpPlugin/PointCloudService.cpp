@@ -39,6 +39,10 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 }
 
 void PointCloudService::sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode) {
+	if (socket == nullptr)
+	{
+		return;
+	}
 	QJsonObject resp;
 	resp["ok"]  = true;
 	resp["msg"] = msg;
@@ -55,6 +59,10 @@ void PointCloudService::sendOk(QTcpSocket* socket, const QString& msg, const QSt
 }
 
 void PointCloudService::sendError(QTcpSocket* socket, const QString& msg, const QString& idCode) {
+	if (socket == nullptr)
+	{
+		return;
+	}
 	QJsonObject resp;
 	resp["ok"]  = false;
 	resp["msg"] = msg;

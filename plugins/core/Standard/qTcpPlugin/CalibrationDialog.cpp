@@ -149,6 +149,27 @@ void CalibrationDialog::onStartCalibration()
         }
     }
     
+    // 检查机床状态是否空闲
+    QJsonObject statusParams;
+    statusParams["Command"] = "GetStatus";
+    statusParams["Device"] = "CNC";
+    QJsonObject statusResponse;
+    if (!sendCommand(statusParams, statusResponse, 5000)) {
+        return;
+    }
+    
+    if (!statusResponse.contains("Status") || statusResponse["Status"].toString() != "IDLE") {
+        QMessageBox::warning(this, "警告", "当前测量机未处于Ready状态");
+        return;
+    }
+    
+    // 清空当前所有点云
+    if (m_pointCloudService) {
+        QJsonObject clearParams;
+        // clearDB不需要参数
+        m_pointCloudService->clearDB(clearParams, nullptr, "");
+    }
+    
     // 开始标定流程
     bool calibrationSuccess = true;
     
@@ -226,6 +247,14 @@ void CalibrationDialog::onStartCalibration()
         if (!acquirePointCloud()) {
             calibrationSuccess = false;
             break;
+        }
+        
+        // 7. 拟合球体
+        if (m_pointCloudService) {
+            QJsonObject fitParams;
+            fitParams["type"] = "sphere";
+            // 假设最后获取的点云是当前要拟合的点云
+            m_pointCloudService->fit(fitParams, nullptr, "");
         }
     }
     
