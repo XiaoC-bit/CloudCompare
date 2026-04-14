@@ -201,38 +201,12 @@ void CalibrationDialog::onAddPosition()
 }
 
 void CalibrationDialog::onStartCalibration()
-{
-    // 保存当前表格中的值到m_positions
-    for (int i = 0; i < m_positions.size(); ++i) {
-        QDoubleSpinBox *xSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 0));
-        QDoubleSpinBox *ySpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 1));
-        QDoubleSpinBox *zSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 2));
-        
-        if (xSpinBox && ySpinBox && zSpinBox) {
-            m_positions[i].x = xSpinBox->value();
-            m_positions[i].y = ySpinBox->value();
-            m_positions[i].z = zSpinBox->value();
-        }
-    }
-    
-    // 检查机床状态是否空闲
-    QJsonObject statusParams;
-	/*
-	{"Command":"GetDeviceRun","DeviceName":"CNC_1","DeviceType":"Cnc","Timeout":5}
-	*/
-	statusParams["Command"]    = "GetDeviceRun";
-	statusParams["DeviceType"] = "Cnc";
-	statusParams["DeviceName"] = "CNC_1";
-	statusParams["Timeout"] = 5;
-    QJsonObject statusResponse;
-    if (!sendCommand(statusParams, statusResponse, 5000)) {
-        return;
-    }
-    
-    if (!statusResponse.contains("Value") || statusResponse["Value"].toString() != "0") {
-        QMessageBox::warning(this, "警告", "当前测量机未处于Ready状态");
-        return;
-    }
+{    
+    if (!waitForMachineIdle(1))
+	{
+		QMessageBox::warning(this, "警告", "当前测量机未处于Ready状态");
+		return;
+	}
 
     // 检查机床模式是否为Auto
     QString mode;
@@ -243,13 +217,48 @@ void CalibrationDialog::onStartCalibration()
         QMessageBox::warning(this, "警告", "当前测量机未处于Auto模式");
         return;
     }
+
+	
+    // 保存当前表格中的值到m_positions
+	for (int i = 0; i < m_positions.size(); ++i)
+	{
+		QDoubleSpinBox* xSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 0));
+		QDoubleSpinBox* ySpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 1));
+		QDoubleSpinBox* zSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 2));
+
+		if (xSpinBox && ySpinBox && zSpinBox)
+		{
+			m_positions[i].x = xSpinBox->value();
+			m_positions[i].y = ySpinBox->value();
+			m_positions[i].z = zSpinBox->value();
+		}
+	}
     
     // 清空当前所有点云
     if (m_pointCloudService) {
-        QJsonObject clearParams;
-        // clearDB不需要参数
-		// 信号槽 线程不同步 待修复
-       // m_pointCloudService->clearDB(clearParams, nullptr, "");
+
+		ccHObject* root = m_app->dbRootObject();
+		if (!root)
+		{
+			return;
+		}
+
+		// Collect first, then delete (avoid modifying while iterating)
+		std::vector<ccHObject*> toDelete;
+		toDelete.reserve(root->getChildrenNumber());
+		for (unsigned i = 0; i < root->getChildrenNumber(); ++i)
+		{
+			toDelete.push_back(root->getChild(i));
+		}
+
+		for (ccHObject* obj : toDelete)
+		{
+			m_app->removeFromDB(obj);
+		}
+
+		m_app->refreshAll();
+		m_app->updateUI();
+		m_app->dispToConsole("[TcpPlugin] DB cleared");
     }
 
 	std::vector<Eigen::Vector3d> machine_points, scanner_points;
@@ -349,29 +358,13 @@ void CalibrationDialog::onStartCalibration()
         if (m_pointCloudService) {
             QJsonObject fitParams;
             fitParams["type"] = "sphere";
-			
-            /*
-            
-            {
-    "action": "fit",
-    "params": {
-        "type": "sphere",
-        "name": "mesh",
-        "outliersRatio": 0.35,
-        "confidence": 0.99,
-        "autoDetectRadius": true,
-        "radius": 12.5
-    }
-}
-    */
-			
             fitParams["name"]             = QString::number(i + 1);
 			fitParams["outliersRatio"]    = 0.35;
 			fitParams["confidence"]       = 0.9999;;
             fitParams["autoDetectRadius"] = false;
 			fitParams["radius"]           = 12.5;
-           // fitParams["rms"].toDouble(-1.0);
-           // fitParams["retries"].toInt(0);
+            fitParams["rms"] = 0.012;
+			fitParams["retries"] = 10;
 
 
 			double          x, y, z, radius;
@@ -702,10 +695,10 @@ bool CalibrationDialog::startMachine()
     return true;
 }
 
-bool CalibrationDialog::waitForMachineIdle()
+bool CalibrationDialog::waitForMachineIdle(const int& timeOut)
 {
     // 等待机床空闲，最多等待60秒
-    int maxWaitTime = 60000; // 60秒
+	int maxWaitTime  = timeOut * 1000; // 60秒
     int waitInterval = 1000; // 1秒
     int elapsedTime = 0;    
     while (elapsedTime < maxWaitTime) {

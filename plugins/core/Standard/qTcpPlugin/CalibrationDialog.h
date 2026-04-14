@@ -51,7 +51,7 @@ private:
     bool sendCommand(const QJsonObject &params, QJsonObject &response, int timeout = 5000);
     bool sendFileToMachine(const QString &filePath);
     bool startMachine();
-    bool waitForMachineIdle();
+    bool waitForMachineIdle(const int &timeOut = 60);
     bool acquirePointCloud(const QString &outputName);
     bool setMainProgram();
     bool getMode(QString &mode);
