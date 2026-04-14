@@ -28,7 +28,7 @@ public:
     void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
 
-	void handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
+	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
   private:
     ccMainAppInterface* m_app;

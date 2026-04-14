@@ -91,14 +91,14 @@ CalibrationDialog::RigidTransform CalibrationDialog::computeRigidTransform(
 
 const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS = {
     {0, 0, 0}
-    /*,
+    ,
     {5, 0, 0}
 	,
     {5, 5, 0},
     {5, 10, 0},
     {10, 10, 0},
     {0, 0, 2.5},
-    {0, 0, 5}*/
+    {0, 0, 5}
 };
 
 const QString CalibrationDialog::MACHINE_HOST = "localhost";
@@ -233,6 +233,16 @@ void CalibrationDialog::onStartCalibration()
         QMessageBox::warning(this, "警告", "当前测量机未处于Ready状态");
         return;
     }
+
+    // 检查机床模式是否为Auto
+    QString mode;
+    if (!getMode(mode)) {
+        return;
+    }
+    if (mode != "Auto") {
+        QMessageBox::warning(this, "警告", "当前测量机未处于Auto模式");
+        return;
+    }
     
     // 清空当前所有点云
     if (m_pointCloudService) {
@@ -339,6 +349,31 @@ void CalibrationDialog::onStartCalibration()
         if (m_pointCloudService) {
             QJsonObject fitParams;
             fitParams["type"] = "sphere";
+			
+            /*
+            
+            {
+    "action": "fit",
+    "params": {
+        "type": "sphere",
+        "name": "mesh",
+        "outliersRatio": 0.35,
+        "confidence": 0.99,
+        "autoDetectRadius": true,
+        "radius": 12.5
+    }
+}
+    */
+			
+            fitParams["name"]             = QString::number(i + 1);
+			fitParams["outliersRatio"]    = 0.35;
+			fitParams["confidence"]       = 0.9999;;
+            fitParams["autoDetectRadius"] = false;
+			fitParams["radius"]           = 12.5;
+           // fitParams["rms"].toDouble(-1.0);
+           // fitParams["retries"].toInt(0);
+
+
 			double          x, y, z, radius;
 
             // 假设最后获取的点云是当前要拟合的点云
@@ -353,9 +388,43 @@ void CalibrationDialog::onStartCalibration()
     
     if (calibrationSuccess) {
 
-		//CalibrationDialog::RigidTransform  transform   = CalibrationDialog::computeRigidTransform(scanner_points, machine_points);
-		//Eigen::Matrix4d T_cam2robot = CalibrationDialog::toMatrix4d(transform);
+		CalibrationDialog::RigidTransform  transform   = CalibrationDialog::computeRigidTransform(scanner_points, machine_points);
 
+
+
+		Eigen::Matrix4d T_cam2robot = CalibrationDialog::toMatrix4d(transform);
+
+		QString matStr = QString(
+		                     "%1 %2 %3 %4\n"
+		                     "%5 %6 %7 %8\n"
+		                     "%9 %10 %11 %12\n"
+		                     "%13 %14 %15 %16")
+		                     .arg(T_cam2robot(0, 0))
+		                     .arg(T_cam2robot(0, 1))
+		                     .arg(T_cam2robot(0, 2))
+		                     .arg(T_cam2robot(0, 3))
+		                     .arg(T_cam2robot(1, 0))
+		                     .arg(T_cam2robot(1, 1))
+		                     .arg(T_cam2robot(1, 2))
+		                     .arg(T_cam2robot(1, 3))
+		                     .arg(T_cam2robot(2, 0))
+		                     .arg(T_cam2robot(2, 1))
+		                     .arg(T_cam2robot(2, 2))
+		                     .arg(T_cam2robot(2, 3))
+		                     .arg(T_cam2robot(3, 0))
+		                     .arg(T_cam2robot(3, 1))
+		                     .arg(T_cam2robot(3, 2))
+		                     .arg(T_cam2robot(3, 3));
+
+		m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n%1").arg(matStr));
+
+		for (size_t i = 0; i < scanner_points.size(); ++i)
+		{
+			Eigen::Vector3d calc  = transform.R * scanner_points[i] + transform.T;
+			double          error = (calc - machine_points[i]).norm();
+
+            m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n点 %1 残差: %2 mm\n").arg(i + 1).arg(error));
+		}
 
         QMessageBox::information(this, "成功", "标定完成");
         accept();
@@ -514,6 +583,33 @@ bool CalibrationDialog::sendFileToMachine(const QString &filePath)
     return true;
 }
 
+bool CalibrationDialog::getMode(QString &mode){
+    /*
+    {"Command":"GetDeviceMode","DeviceName":"CNC_1","DeviceType":"Cnc","Timeout":5}
+    */
+    QJsonObject params;
+    QString     strCmd = "GetDeviceMode";
+    params["Command"]   = strCmd;
+    params["DeviceType"] = "Cnc";
+    params["DeviceName"] = "CNC_1";
+    params["Timeout"] = 5;
+        
+    QJsonObject response;
+    if (!sendCommand(params, response, 10000)) {
+        return false;
+    }
+        
+    if (!response.contains(strCmd + "_Ret") || response[strCmd + "_Ret"].toString() != "0")
+	{
+        QMessageBox::critical(this, "错误", "获取机床模式失败: " + response[strCmd + "_message"].toString());
+        return false;
+    }
+    /*
+    {"DeviceName":"CNC_1","DeviceType":"Cnc","GetDeviceMode_Ret":"0","Msg":"Auto","Value":"1"}
+    */
+    mode = response["Msg"].toString();
+    return true;
+}
 
 bool CalibrationDialog::setMainProgram(){
     /*

@@ -664,7 +664,7 @@ void PointCloudService::fit(const QJsonObject& params, QTcpSocket* socket, const
 }
 
 
-void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& outRms)
+bool PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& outRms)
 {
 	const QString objectName       = params["name"].toString();
 	const double  outliersRatio    = params["outliersRatio"].toDouble(0.5);
@@ -677,13 +677,13 @@ void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	if (objectName.isEmpty())
 	{
 		sendError(socket, "Missing 'name' parameter", idCode);
-		return;
+		return false;
 	}
 
 	ccHObject* root = getDbRoot(socket, idCode);
 	if (!root)
 	{
-		return;
+		return false;
 	}
 
 	// Find a point cloud by name (direct match or first child)
@@ -712,7 +712,8 @@ void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	if (!cloud)
 	{
 		sendError(socket, "Point cloud not found: " + objectName, idCode);
-		return;
+
+		return false;
 	}
 
 	// Run sphere fitting with retry logic
@@ -741,7 +742,8 @@ void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 			{
 				// All retries failed
 				sendError(socket, QString("Sphere fitting failed to meet RMS threshold after %1 retries").arg(maxRetries), idCode);
-				return;
+
+				return false;
 			}
 			// Reset for next retry
 			rms       = std::numeric_limits<double>::quiet_NaN();
@@ -756,7 +758,7 @@ void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	if (!success || fitResult != CCCoreLib::GeometricalAnalysisTools::NoError)
 	{
 		sendError(socket, QString("Sphere fitting failed on '%1' (error code: %2)").arg(objectName).arg(fitResult), idCode);
-		return;
+		return false;
 	}
 
 	m_app->dispToConsole(
@@ -797,6 +799,7 @@ void PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	centerZ = center.z;
 	outRms  = fitRadius;
 
+	return true;
 }
 
 

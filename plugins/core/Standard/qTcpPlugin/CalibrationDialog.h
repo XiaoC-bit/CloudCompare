@@ -4,6 +4,7 @@
 #include <QVector3D>
 #include <QTcpSocket>
 #include "Eigen/Dense"
+#include "Eigen/Core"
 
 class QVBoxLayout;
 class QHBoxLayout;
@@ -53,6 +54,7 @@ private:
     bool waitForMachineIdle();
     bool acquirePointCloud(const QString &outputName);
     bool setMainProgram();
+    bool getMode(QString &mode);
     
     // 将 RigidTransform 转换为 4×4 齐次变换矩阵
     static Eigen::Matrix4d toMatrix4d(const RigidTransform& tf);
