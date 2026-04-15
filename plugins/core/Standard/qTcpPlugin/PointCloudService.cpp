@@ -1,4 +1,5 @@
 #include "PointCloudService.h"
+#include "CalibrationDialog.h"
 #include <QMetaObject>
 #include <qapplication.h>
 #include <ccMainAppInterface.h>
@@ -13,6 +14,13 @@
 #include <ccGLWindowInterface.h>
 #include <cc2DViewportObject.h>
 #include <QFileInfo>
+#include <QFile>
+#include <QDir>
+#include <QTextStream>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
+#include <QUuid>
 #include <ccPolyline.h>
 #include <ManualSegmentationTools.h>
 #include <ccGLMatrix.h>
@@ -27,12 +35,29 @@
 #include "LJS8_ACQ.h"
 #include "CommLogger.h"
 
+#include <limits>
+#include <stdexcept>
+
 #ifndef CC_ORIGINAL_CLOUD_INDEX_SF_NAME
 #define CC_ORIGINAL_CLOUD_INDEX_SF_NAME "Original cloud index"
 #endif
 
 static int    COLLECT_VALUE = 32768;
 static double INVALID_VALUE = -999.9999;
+
+namespace
+{
+const QString MACHINE_HOST = "localhost";
+const quint16 MACHINE_PORT = 20002;
+const QString MACHINE_DEVICE_NAME = "CNC_1";
+const QString MACHINE_DEVICE_TYPE = "Cnc";
+const QString CALIBRATION_CNC_FILE = "O1236";
+const QString CALIBRATION_CNC_PATH = "/c/";
+const double CALIBRATION_RADIUS = 12.5;
+const double CALIBRATION_RMS_THRESHOLD = 0.012;
+const double CALIBRATION_RESIDUAL_THRESHOLD = 0.12;
+const int CALIBRATION_MAX_FIT_RETRIES = 3;
+}
 
 PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent) 
     : QObject(parent), m_app(app) {
@@ -78,6 +103,32 @@ void PointCloudService::sendError(QTcpSocket* socket, const QString& msg, const 
 	socket->flush();
 }
 
+void PointCloudService::sendResponse(QTcpSocket* socket,
+                                     bool ok,
+                                     const QString& msg,
+                                     const QString& idCode,
+                                     const QJsonObject& extra)
+{
+	if (socket == nullptr)
+	{
+		return;
+	}
+
+	QJsonObject resp = extra;
+	resp["ok"]       = ok;
+	resp["msg"]      = msg;
+	if (!idCode.isEmpty())
+	{
+		resp["IDCode"] = idCode;
+	}
+
+	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n";
+	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+
+	socket->write(responseBytes);
+	socket->flush();
+}
+
 ccHObject* PointCloudService::getDbRoot(QTcpSocket* socket, const QString& idCode) {
     ccHObject* root = m_app->dbRootObject();
     if (!root) {
@@ -96,6 +147,330 @@ ccHObject* PointCloudService::findByName(ccHObject* node, const QString& name) {
         }
     }
     return nullptr;
+}
+
+bool PointCloudService::clearDbInternal(QTcpSocket* socket, const QString& idCode)
+{
+    ccHObject* root = getDbRoot(socket, idCode);
+    if (!root) {
+        return false;
+    }
+
+    std::vector<ccHObject*> toDelete;
+    toDelete.reserve(root->getChildrenNumber());
+    for (unsigned i = 0; i < root->getChildrenNumber(); ++i) {
+        toDelete.push_back(root->getChild(i));
+    }
+
+    for (ccHObject* obj : toDelete) {
+        m_app->removeFromDB(obj);
+    }
+
+    m_app->refreshAll();
+    m_app->updateUI();
+    m_app->dispToConsole("[TcpPlugin] DB cleared");
+    return true;
+}
+
+bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage, int timeout)
+{
+    QTcpSocket socket;
+    socket.connectToHost(MACHINE_HOST, MACHINE_PORT);
+    if (!socket.waitForConnected(5000)) {
+        if (errorMessage) {
+            *errorMessage = "Failed to connect machine middleware: " + socket.errorString();
+        }
+        return false;
+    }
+
+    QJsonObject command = params;
+    if (!command.contains("IDCode")) {
+        QString idCode = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        command["IDCode"] = idCode;
+    }
+
+    QByteArray data = QJsonDocument(command).toJson(QJsonDocument::Compact);
+    if (socket.write(data) == -1 || !socket.waitForBytesWritten(timeout)) {
+        if (errorMessage) {
+            *errorMessage = "Failed to send machine command: " + socket.errorString();
+        }
+        return false;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    QByteArray buffer;
+    while (timer.elapsed() < timeout) {
+        const int remain = timeout - static_cast<int>(timer.elapsed());
+        if (!socket.waitForReadyRead(remain)) {
+            continue;
+        }
+
+        buffer.append(socket.readAll());
+        QJsonParseError parseError;
+        QJsonDocument responseDoc = QJsonDocument::fromJson(buffer, &parseError);
+        if (parseError.error == QJsonParseError::NoError && responseDoc.isObject()) {
+            response = responseDoc.object();
+            return true;
+        }
+    }
+
+    if (errorMessage) {
+        *errorMessage = "Machine command response timeout";
+    }
+    return false;
+}
+
+bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
+                                               const QString& commandName,
+                                               QString* errorMessage,
+                                               const QString& messageKey)
+{
+    const QString retKey = commandName + "_Ret";
+    if (response.contains(retKey) && response[retKey].toString() == "0") {
+        return true;
+    }
+
+    if (errorMessage) {
+        const QString preferredKey = messageKey.isEmpty() ? (commandName + "_message") : messageKey;
+        QString detail = response.value(preferredKey).toString();
+        if (detail.isEmpty()) {
+            detail = response.value("Msg").toString();
+        }
+        if (detail.isEmpty()) {
+            detail = response.value("message").toString();
+        }
+        if (detail.isEmpty()) {
+            detail = QString("Machine command failed: %1").arg(commandName);
+        }
+        *errorMessage = detail;
+    }
+    return false;
+}
+
+bool PointCloudService::sendFileToMachine(const QString& filePath, QString* errorMessage)
+{
+    QJsonObject params;
+    params["Command"] = "SendFile";
+    params["DeviceName"] = MACHINE_DEVICE_NAME;
+    params["DeviceType"] = MACHINE_DEVICE_TYPE;
+    params["CNCPath"] = CALIBRATION_CNC_PATH;
+    params["CNCFile"] = CALIBRATION_CNC_FILE;
+    params["LocalFile"] = filePath;
+    params["Timeout"] = 20;
+
+    QJsonObject response;
+    return sendMachineCommand(params, response, errorMessage, 10000)
+        && checkMachineCommandRet(response, "SendFile", errorMessage);
+}
+
+bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
+{
+    QJsonObject params;
+    params["Command"] = "GetDeviceMode";
+    params["DeviceType"] = MACHINE_DEVICE_TYPE;
+    params["DeviceName"] = MACHINE_DEVICE_NAME;
+    params["Timeout"] = 5;
+
+    QJsonObject response;
+    if (!sendMachineCommand(params, response, errorMessage, 10000)) {
+        return false;
+    }
+    if (!checkMachineCommandRet(response, "GetDeviceMode", errorMessage)) {
+        return false;
+    }
+
+    mode = response["Msg"].toString();
+    return true;
+}
+
+bool PointCloudService::setMainProgram(QString* errorMessage)
+{
+    QJsonObject params;
+    params["Command"] = "SetMainProg";
+    params["DeviceType"] = MACHINE_DEVICE_TYPE;
+    params["DeviceName"] = MACHINE_DEVICE_NAME;
+    params["MainProg"] = CALIBRATION_CNC_FILE;
+    params["Path"] = CALIBRATION_CNC_PATH;
+    params["Timeout"] = 5;
+
+    QJsonObject response;
+    return sendMachineCommand(params, response, errorMessage, 10000)
+        && checkMachineCommandRet(response, "SetMainProg", errorMessage);
+}
+
+bool PointCloudService::startMachine(QString* errorMessage)
+{
+    QJsonObject params;
+    params["Command"] = "WritePlc";
+    params["DeviceType"] = MACHINE_DEVICE_TYPE;
+    params["DeviceName"] = MACHINE_DEVICE_NAME;
+    params["Addr"] = "999";
+    params["AddrType"] = "R";
+    params["Bit"] = "0";
+    params["Timeout"] = 5;
+
+    QJsonObject response;
+    params["Value"] = "1";
+    if (!sendMachineCommand(params, response, errorMessage, 10000)
+        || !checkMachineCommandRet(response, "WritePlc", errorMessage)) {
+        return false;
+    }
+
+    QThread::msleep(200);
+
+    params["Value"] = "0";
+    if (!sendMachineCommand(params, response, errorMessage, 10000)
+        || !checkMachineCommandRet(response, "WritePlc", errorMessage)) {
+        return false;
+    }
+
+    QThread::msleep(200);
+    return true;
+}
+
+bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMessage)
+{
+    const int maxWaitTime = timeoutSeconds * 1000;
+    const int waitInterval = 1000;
+    int elapsedTime = 0;
+
+    while (elapsedTime < maxWaitTime) {
+        QJsonObject params;
+        params["Command"] = "GetDeviceRun";
+        params["DeviceName"] = MACHINE_DEVICE_NAME;
+        params["DeviceType"] = MACHINE_DEVICE_TYPE;
+        params["Timeout"] = 5;
+
+        QJsonObject response;
+        QString currentError;
+        if (sendMachineCommand(params, response, &currentError, 5000)
+            && response.contains("Value")
+            && response["Value"].toString() == "0") {
+            return true;
+        }
+
+        if (!currentError.isEmpty() && errorMessage) {
+            *errorMessage = currentError;
+        }
+
+        QThread::msleep(waitInterval);
+        elapsedTime += waitInterval;
+    }
+
+    if (errorMessage && errorMessage->isEmpty()) {
+        *errorMessage = "Wait for machine idle timeout";
+    }
+    return false;
+}
+
+QVector<QVector3D> PointCloudService::resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage) const
+{
+    const QJsonValue positionsValue = params.value("positions");
+    if (positionsValue.isUndefined() || positionsValue.isNull()) {
+        return CalibrationDialog::getDefaultPositions();
+    }
+
+    if (!positionsValue.isArray()) {
+        if (errorMessage) {
+            *errorMessage = "'positions' must be an array";
+        }
+        return {};
+    }
+
+    const QJsonArray positionsArray = positionsValue.toArray();
+    if (positionsArray.isEmpty()) {
+        return CalibrationDialog::getDefaultPositions();
+    }
+
+    QVector<QVector3D> positions;
+    positions.reserve(positionsArray.size());
+
+    for (int i = 0; i < positionsArray.size(); ++i) {
+        const QJsonValue entry = positionsArray.at(i);
+        if (entry.isObject()) {
+            const QJsonObject obj = entry.toObject();
+            if (!obj.contains("x") || !obj.contains("y") || !obj.contains("z")) {
+                if (errorMessage) {
+                    *errorMessage = QString("positions[%1] is missing x/y/z").arg(i);
+                }
+                return {};
+            }
+            positions.push_back(QVector3D(static_cast<float>(obj["x"].toDouble()),
+                                          static_cast<float>(obj["y"].toDouble()),
+                                          static_cast<float>(obj["z"].toDouble())));
+            continue;
+        }
+
+        if (entry.isArray()) {
+            const QJsonArray arr = entry.toArray();
+            if (arr.size() < 3) {
+                if (errorMessage) {
+                    *errorMessage = QString("positions[%1] must contain at least 3 values").arg(i);
+                }
+                return {};
+            }
+            positions.push_back(QVector3D(static_cast<float>(arr.at(0).toDouble()),
+                                          static_cast<float>(arr.at(1).toDouble()),
+                                          static_cast<float>(arr.at(2).toDouble())));
+            continue;
+        }
+
+        if (errorMessage) {
+            *errorMessage = QString("positions[%1] must be an object or array").arg(i);
+        }
+        return {};
+    }
+
+    return positions;
+}
+
+PointCloudService::CalibrationRigidTransform PointCloudService::computeRigidTransform(
+    const std::vector<Eigen::Vector3d>& scanner_points,
+    const std::vector<Eigen::Vector3d>& machine_points)
+{
+    const size_t count = scanner_points.size();
+    if (count < 3 || count != machine_points.size()) {
+        throw std::runtime_error("At least 3 corresponding calibration points are required");
+    }
+
+    Eigen::Vector3d scannerCenter = Eigen::Vector3d::Zero();
+    Eigen::Vector3d machineCenter = Eigen::Vector3d::Zero();
+    for (size_t i = 0; i < count; ++i) {
+        scannerCenter += scanner_points[i];
+        machineCenter += machine_points[i];
+    }
+    scannerCenter /= static_cast<double>(count);
+    machineCenter /= static_cast<double>(count);
+
+    Eigen::MatrixXd scannerOffset(3, count);
+    Eigen::MatrixXd machineOffset(3, count);
+    for (size_t i = 0; i < count; ++i) {
+        scannerOffset.col(i) = scanner_points[i] - scannerCenter;
+        machineOffset.col(i) = machine_points[i] - machineCenter;
+    }
+
+    const Eigen::Matrix3d covariance = scannerOffset * machineOffset.transpose();
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix3d rotation = svd.matrixV() * svd.matrixU().transpose();
+    if (rotation.determinant() < 0) {
+        Eigen::Matrix3d V = svd.matrixV();
+        V.col(2) *= -1;
+        rotation = V * svd.matrixU().transpose();
+    }
+
+    CalibrationRigidTransform transform;
+    transform.R = rotation;
+    transform.T = machineCenter - rotation * scannerCenter;
+    return transform;
+}
+
+Eigen::Matrix4d PointCloudService::toMatrix4d(const CalibrationRigidTransform& tf)
+{
+    Eigen::Matrix4d matrix = Eigen::Matrix4d::Identity();
+    matrix.block<3, 3>(0, 0) = tf.R;
+    matrix.block<3, 1>(0, 3) = tf.T;
+    return matrix;
 }
 
 void PointCloudService::load(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
@@ -805,26 +1180,9 @@ bool PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 
 void PointCloudService::clearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
     QMetaObject::invokeMethod(qApp, [this, socket, idCode]() {
-        ccHObject* root = getDbRoot(socket, idCode);
-        if (!root) {
+        if (!clearDbInternal(socket, idCode)) {
             return;
         }
-
-        // Collect first, then delete (avoid modifying while iterating)
-        std::vector<ccHObject*> toDelete;
-        toDelete.reserve(root->getChildrenNumber());
-        for (unsigned i = 0; i < root->getChildrenNumber(); ++i) {
-            toDelete.push_back(root->getChild(i));
-        }
-
-        for (ccHObject* obj : toDelete) {
-            m_app->removeFromDB(obj);
-        }
-
-        m_app->refreshAll();
-        m_app->updateUI();
-
-        m_app->dispToConsole("[TcpPlugin] DB cleared");
         sendOk(socket, "DB cleared", idCode);
     }, Qt::QueuedConnection);
 }
@@ -1172,6 +1530,190 @@ void PointCloudService::clone(const QJsonObject& params, QTcpSocket* socket, con
     }, Qt::QueuedConnection);
 }
 
+bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
+                                           QTcpSocket* socket,
+                                           const QString& idCode,
+                                           QJsonObject* result)
+{
+        struct SensorConfig {
+            int deviceId = 0;
+            int xImageSize = 3200;
+            int maxLineSize = 6400;
+            int usePcImageFilter = 1;
+            int timeout_ms = 20000;
+            LJS8IF_ETHERNET_CONFIG ethernet = {{10, 10, 10, 234}, 24691};
+            int highSpeedPortNo = 24692;
+        } cfg;
+
+        const bool useAsync = params["async"].toBool(false);
+        const QString outputName = params["outputName"].toString("AcquiredCloud");
+        const int totalPixels = cfg.xImageSize * cfg.maxLineSize;
+
+        if (static_cast<int>(m_heightBuf.size()) < totalPixels) {
+            m_heightBuf.resize(totalPixels);
+            m_luminanceBuf.resize(totalPixels);
+        }
+
+        std::fill(m_heightBuf.begin(), m_heightBuf.begin() + totalPixels, 0u);
+        std::fill(m_luminanceBuf.begin(), m_luminanceBuf.begin() + totalPixels, 0u);
+
+        unsigned short* pwHeightImage = m_heightBuf.data();
+        unsigned char* pbyLuminanceImage = m_luminanceBuf.data();
+
+        LJS8_ACQ_SETPARAM setParam{};
+        setParam.timeout_ms = cfg.timeout_ms;
+        setParam.useExternalTrigger = 0;
+        setParam.usePcImageFilter = cfg.usePcImageFilter;
+
+        LJS8_ACQ_GETPARAM getParam{};
+
+        LJS8IF_Initialize();
+
+        int errCode = LJS8_ACQ_OpenDevice(cfg.deviceId, &cfg.ethernet, cfg.highSpeedPortNo);
+        if (errCode != LJS8IF_RC_OK) {
+            LJS8IF_Finalize();
+            sendError(socket, QString("Failed to open device (err=%1)").arg(errCode), idCode);
+            return false;
+        }
+
+        if (!useAsync) {
+            errCode = LJS8_ACQ_Acquire(cfg.deviceId, pwHeightImage, pbyLuminanceImage, &setParam, &getParam);
+        } else {
+            errCode = LJS8_ACQ_StartAsync(cfg.deviceId, &setParam);
+            if (errCode == LJS8IF_RC_OK) {
+                const DWORD start = timeGetTime();
+                while (true) {
+                    if (timeGetTime() - start > static_cast<DWORD>(cfg.timeout_ms)) {
+                        break;
+                    }
+                    errCode = LJS8_ACQ_AcquireAsync(cfg.deviceId, pwHeightImage, pbyLuminanceImage, &setParam, &getParam);
+                    if (errCode == LJS8IF_RC_OK) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        LJS8_ACQ_CloseDevice(cfg.deviceId);
+        LJS8IF_Finalize();
+
+        if (errCode != LJS8IF_RC_OK) {
+            sendError(socket, QString("Acquisition failed (err=%1)").arg(errCode), idCode);
+            return false;
+        }
+
+        const int xNum = getParam.x_pointnum;
+        const int yNum = getParam.y_linenum_acquired;
+        const float xPitch = 12.5f / 1000.0f;
+        const float yPitch = 12.5f / 1000.0f;
+        const float zPitch = getParam.z_pitch_um / 1000.0f;
+
+        unsigned validCount = 0;
+        for (int i = 0; i < yNum * xNum; ++i) {
+            if (m_heightBuf[i] != 0) {
+                ++validCount;
+            }
+        }
+
+        if (validCount == 0) {
+            sendError(socket, "Acquisition succeeded but all points are invalid", idCode);
+            return false;
+        }
+
+        ccPointCloud* cloud = new ccPointCloud(outputName);
+        if (!cloud->reserve(validCount)) {
+            delete cloud;
+            sendError(socket, "Not enough memory to allocate point cloud", idCode);
+            return false;
+        }
+
+        const unsigned short* ptr = m_heightBuf.data();
+        for (int y = 0; y < yNum; ++y) {
+            for (int x = 0; x < xNum; ++x, ++ptr) {
+                if (*ptr == 0) {
+                    continue;
+                }
+
+                cloud->addPoint(CCVector3(
+                    static_cast<PointCoordinateType>(x * xPitch),
+                    static_cast<PointCoordinateType>(y * yPitch),
+                    static_cast<PointCoordinateType>((*ptr - COLLECT_VALUE) * zPitch)));
+            }
+        }
+
+        const bool savePcd = params["savePcd"].toBool(false);
+        const QString savePath = params["savePath"].toString();
+
+        if (savePcd) {
+            if (savePath.isEmpty()) {
+                delete cloud;
+                sendError(socket, "savePcd is true but savePath is empty", idCode);
+                return false;
+            }
+
+            std::ofstream stream(savePath.toStdString());
+            if (!stream) {
+                delete cloud;
+                sendError(socket, "Failed to open file for writing: " + savePath, idCode);
+                return false;
+            }
+
+            stream << "# .PCD v0.7 - Point Cloud Data file format\n";
+            stream << "VERSION 0.7\n";
+            stream << "FIELDS x y z\n";
+            stream << "SIZE 4 4 4\n";
+            stream << "TYPE F F F\n";
+            stream << "COUNT 1 1 1\n";
+            stream << "WIDTH " << validCount << "\n";
+            stream << "HEIGHT 1\n";
+            stream << "VIEWPOINT 0 0 0 1 0 0 0\n";
+            stream << "POINTS " << validCount << "\n";
+            stream << "DATA ascii\n";
+
+            char buf[64];
+            ptr = m_heightBuf.data();
+            for (int y = 0; y < yNum; ++y) {
+                for (int x = 0; x < xNum; ++x, ++ptr) {
+                    if (*ptr == 0) {
+                        continue;
+                    }
+
+                    const float fx = x * xPitch;
+                    const float fy = y * yPitch;
+                    const float fz = static_cast<float>((*ptr - COLLECT_VALUE) * zPitch);
+                    const int len = snprintf(buf, sizeof(buf), "%.4f %.4f %.4f\n", fx, fy, fz);
+                    stream.write(buf, len);
+                }
+            }
+
+            stream.close();
+            m_app->dispToConsole("[TcpPlugin][AcquirePcd] PCD saved: " + savePath);
+        }
+
+        m_app->addToDB(cloud);
+        m_app->refreshAll();
+        m_app->updateUI();
+
+        m_app->dispToConsole(
+            QString("[TcpPlugin][AcquirePcd] '%1': %2 valid points (%3x%4)")
+                .arg(outputName)
+                .arg(validCount)
+                .arg(xNum)
+                .arg(yNum));
+
+        if (result) {
+            (*result)["outputName"] = outputName;
+            (*result)["pointCount"] = static_cast<int>(validCount);
+            (*result)["xPoints"] = xNum;
+            (*result)["yLines"] = yNum;
+            if (savePcd) {
+                (*result)["savedPath"] = savePath;
+            }
+        }
+
+        return true;
+}
+
 void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
     QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]() {
         // ----------------------------------------------------------------
@@ -1387,5 +1929,209 @@ void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket
             result["savedPath"] = savePath;
         }
         sendOk(socket, QJsonDocument(result).toJson(QJsonDocument::Compact), idCode);
+    }, Qt::QueuedConnection);
+}
+
+void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+    QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]() {
+        QString errorMessage;
+        const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
+        if (positions.isEmpty()) {
+            sendError(socket, errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage, idCode);
+            return;
+        }
+
+        if (!waitForMachineIdle(1, &errorMessage)) {
+            sendError(socket, errorMessage.isEmpty() ? "Machine is not idle" : errorMessage, idCode);
+            return;
+        }
+
+        QString mode;
+        if (!getMachineMode(mode, &errorMessage)) {
+            sendError(socket, errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage, idCode);
+            return;
+        }
+        if (mode != "Auto") {
+            sendError(socket, QString("Machine mode must be Auto, current mode is '%1'").arg(mode), idCode);
+            return;
+        }
+
+        if (!clearDbInternal(socket, idCode)) {
+            return;
+        }
+
+        std::vector<Eigen::Vector3d> machinePoints;
+        std::vector<Eigen::Vector3d> scannerPoints;
+        QJsonArray fitResults;
+        machinePoints.reserve(static_cast<size_t>(positions.size()));
+        scannerPoints.reserve(static_cast<size_t>(positions.size()));
+
+        QString appDir = QCoreApplication::applicationDirPath();
+        QString templateDir = appDir + "/Template";
+        QString templateFile = templateDir + "/Calibration.nc";
+
+        QDir dir(templateDir);
+        if (!dir.exists()) {
+            sendError(socket, "Calibration template directory does not exist", idCode);
+            return;
+        }
+
+        QFile templateNc(templateFile);
+        if (!templateNc.exists()) {
+            sendError(socket, "Calibration.nc template file does not exist", idCode);
+            return;
+        }
+
+        if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            sendError(socket, "Failed to open Calibration.nc template", idCode);
+            return;
+        }
+        const QString templateContent = QTextStream(&templateNc).readAll();
+        templateNc.close();
+
+        for (int i = 0; i < positions.size(); ++i) {
+            const QVector3D& pos = positions[i];
+            machinePoints.emplace_back(pos.x(), pos.y(), pos.z());
+
+            QString content = templateContent;
+            content.replace("{X}", QString::number(pos.x()));
+            content.replace("{Y}", QString::number(pos.y()));
+            content.replace("{Z}", QString::number(pos.z()));
+
+            const QString outputFile = templateDir + QString("/Calibration_%1.nc").arg(i + 1);
+            QFile outputNc(outputFile);
+            if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                sendError(socket, QString("Failed to write NC file for position %1").arg(i + 1), idCode);
+                return;
+            }
+            QTextStream out(&outputNc);
+            out << content;
+            outputNc.close();
+
+            if (!sendFileToMachine(outputFile, &errorMessage)) {
+                sendError(socket, QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
+                return;
+            }
+
+            if (!setMainProgram(&errorMessage)) {
+                sendError(socket, QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
+                return;
+            }
+
+            if (!startMachine(&errorMessage)) {
+                sendError(socket, QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
+                return;
+            }
+
+            if (!waitForMachineIdle(120, &errorMessage)) {
+                sendError(socket, QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
+                return;
+            }
+
+            bool fitSuccess = false;
+            double centerX = 0.0;
+            double centerY = 0.0;
+            double centerZ = 0.0;
+            double rms = 0.0;
+
+            for (int retry = 0; retry < CALIBRATION_MAX_FIT_RETRIES && !fitSuccess; ++retry) {
+                const QString cloudName = QString::number(i + 1);
+                QJsonObject acquireParams;
+                acquireParams["async"] = true;
+                acquireParams["outputName"] = cloudName;
+                if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr)) {
+                    continue;
+                }
+
+                QJsonObject fitParams;
+                fitParams["type"] = "sphere";
+                fitParams["name"] = cloudName;
+                fitParams["outliersRatio"] = 0.35;
+                fitParams["confidence"] = 0.9999;
+                fitParams["autoDetectRadius"] = false;
+                fitParams["radius"] = CALIBRATION_RADIUS;
+                fitParams["rms"] = CALIBRATION_RMS_THRESHOLD;
+                fitParams["retries"] = 3;
+
+                if (handleFitSphere(fitParams, nullptr, QString(), centerX, centerY, centerZ, rms) && rms < CALIBRATION_RMS_THRESHOLD) {
+                    fitSuccess = true;
+                    break;
+                }
+
+                ccHObject* root = m_app->dbRootObject();
+                if (root) {
+                    if (ccHObject* target = findByName(root, cloudName)) {
+                        m_app->removeFromDB(target);
+                    }
+                }
+            }
+
+            if (!fitSuccess) {
+                sendError(socket, QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES), idCode);
+                return;
+            }
+
+            scannerPoints.emplace_back(centerX, centerY, centerZ);
+
+            QJsonObject fitItem;
+            fitItem["index"] = i + 1;
+            fitItem["machine"] = QJsonArray{pos.x(), pos.y(), pos.z()};
+            fitItem["scanner"] = QJsonArray{centerX, centerY, centerZ};
+            fitItem["rms"] = rms;
+            fitResults.append(fitItem);
+        }
+
+        CalibrationRigidTransform transform;
+        try {
+            transform = computeRigidTransform(scannerPoints, machinePoints);
+        } catch (const std::exception& e) {
+            sendError(socket, QString("Calibration matrix computation failed: %1").arg(e.what()), idCode);
+            return;
+        }
+
+        const Eigen::Matrix4d matrix = toMatrix4d(transform);
+        QJsonArray matrixRows;
+        QJsonArray residuals;
+        bool residualOk = true;
+        for (int row = 0; row < 4; ++row) {
+            QJsonArray rowArray;
+            for (int col = 0; col < 4; ++col) {
+                rowArray.append(matrix(row, col));
+            }
+            matrixRows.append(rowArray);
+        }
+
+        for (size_t i = 0; i < scannerPoints.size(); ++i) {
+            const Eigen::Vector3d calc = transform.R * scannerPoints[i] + transform.T;
+            const double error = (calc - machinePoints[i]).norm();
+            residuals.append(error);
+            if (error > CALIBRATION_RESIDUAL_THRESHOLD) {
+                residualOk = false;
+            }
+            m_app->dispToConsole(QString("[TcpPlugin][Calibration] Point %1 residual: %2 mm").arg(static_cast<int>(i + 1)).arg(error));
+        }
+
+        QString matrixText;
+        for (int row = 0; row < 4; ++row) {
+            matrixText += QString("%1 %2 %3 %4")
+                              .arg(matrix(row, 0))
+                              .arg(matrix(row, 1))
+                              .arg(matrix(row, 2))
+                              .arg(matrix(row, 3));
+            if (row != 3) {
+                matrixText += "\n";
+            }
+        }
+        m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n%1").arg(matrixText));
+
+        QJsonObject response;
+        response["matrix"] = matrixRows;
+        response["fitResults"] = fitResults;
+        response["residuals"] = residuals;
+        response["residualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
+        response["residualOk"] = residualOk;
+        response["positionCount"] = positions.size();
+        sendResponse(socket, true, residualOk ? "Calibration completed" : "Calibration completed with residual warnings", idCode, response);
     }, Qt::QueuedConnection);
 }

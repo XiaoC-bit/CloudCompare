@@ -2,7 +2,11 @@
 #include <QObject>
 #include <vector>
 #include <QJsonObject>
+#include <QVector3D>
 #include <QTcpSocket>
+
+#include "Eigen/Core"
+#include "Eigen/Dense"
 
 class ccMainAppInterface;
 
@@ -29,11 +33,18 @@ public:
     void merge(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
     void clone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
     void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+    void startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
 
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
   private:
+    struct CalibrationRigidTransform
+    {
+        Eigen::Matrix3d R;
+        Eigen::Vector3d T;
+    };
+
     ccMainAppInterface* m_app;
     std::vector<unsigned short> m_heightBuf;
     std::vector<unsigned char> m_luminanceBuf;
@@ -43,4 +54,18 @@ public:
     void sendError(QTcpSocket* socket, const QString& msg, const QString& idCode);
     class ccHObject* getDbRoot(QTcpSocket* socket, const QString& idCode);
     class ccHObject* findByName(class ccHObject* node, const QString& name);
+    void sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());
+    bool clearDbInternal(QTcpSocket* socket, const QString& idCode);
+    bool acquirePcdInternal(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, QJsonObject* result = nullptr);
+    bool sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage = nullptr, int timeout = 10000);
+    bool checkMachineCommandRet(const QJsonObject& response, const QString& commandName, QString* errorMessage = nullptr, const QString& messageKey = QString());
+    bool sendFileToMachine(const QString& filePath, QString* errorMessage = nullptr);
+    bool getMachineMode(QString& mode, QString* errorMessage = nullptr);
+    bool setMainProgram(QString* errorMessage = nullptr);
+    bool startMachine(QString* errorMessage = nullptr);
+    bool waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);
+    QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
+    static CalibrationRigidTransform computeRigidTransform(const std::vector<Eigen::Vector3d>& scanner_points,
+                                                           const std::vector<Eigen::Vector3d>& machine_points);
+    static Eigen::Matrix4d toMatrix4d(const CalibrationRigidTransform& tf);
 };
