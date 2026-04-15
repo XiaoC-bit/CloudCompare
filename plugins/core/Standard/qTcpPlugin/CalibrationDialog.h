@@ -3,6 +3,8 @@
 #include <QDialog>
 #include <QVector3D>
 #include <QTcpSocket>
+#include <QProgressBar>
+#include <QLabel>
 #include "Eigen/Dense"
 #include "Eigen/Core"
 
@@ -16,13 +18,19 @@ class ccMainAppInterface;
 class CalibrationDialog : public QDialog
 {
 private:
+	friend class CalibrationGuard;
     struct Position
     {
         double x;
         double y;
         double z;
         
-        Position(double x = 0, double y = 0, double z = 0) : x(x), y(y), z(z) {}
+        Position(double x_, double y_, double z_)
+		    : x(x_)
+		    , y(y_)
+		    , z(z_)
+		{
+		}
     };
     
     struct RigidTransform
@@ -51,7 +59,7 @@ private:
     bool sendCommand(const QJsonObject &params, QJsonObject &response, int timeout = 5000);
     bool sendFileToMachine(const QString &filePath);
     bool startMachine();
-    bool waitForMachineIdle(const int &timeOut = 60);
+    bool waitForMachineIdle(const int &timeOut = 120);
     bool acquirePointCloud(const QString &outputName);
     bool setMainProgram();
     bool getMode(QString &mode);
@@ -75,6 +83,8 @@ private:
     QPushButton *m_startButton;
     QPushButton *m_cancelButton;
     QHBoxLayout *m_buttonLayout;
+    QProgressBar *m_progressBar;
+    QLabel *m_progressLabel;
     
     QTcpSocket *m_socket;
     PointCloudService *m_pointCloudService;
@@ -89,4 +99,29 @@ private:
 	
     std::vector<unsigned short> m_heightBuf;
 	std::vector<unsigned char>  m_luminanceBuf;
+
+	void setCalibrationRunning(bool running);
+	bool m_calibrationRunning = false;
+
+  protected:
+	void closeEvent(QCloseEvent* event) override;
+};
+
+
+
+
+// 在 .h 中或匿名命名空间里
+class CalibrationGuard
+{
+  public:
+	CalibrationDialog* dlg;
+	explicit CalibrationGuard(CalibrationDialog* d)
+	    : dlg(d)
+	{
+		dlg->setCalibrationRunning(true);
+	}
+	~CalibrationGuard()
+	{
+		dlg->setCalibrationRunning(false);
+	}
 };

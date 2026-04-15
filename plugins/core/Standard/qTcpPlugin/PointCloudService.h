@@ -9,6 +9,9 @@ class ccMainAppInterface;
 class PointCloudService : public QObject {
     Q_OBJECT
 public:
+
+	friend class CalibrationDialog;
+
     explicit PointCloudService(ccMainAppInterface* app, QObject* parent = nullptr);
     
     // 点云处理函数

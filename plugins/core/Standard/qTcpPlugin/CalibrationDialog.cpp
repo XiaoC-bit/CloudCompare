@@ -20,6 +20,7 @@
 #include <QThread>
 #include <QUuid>
 #include <ccPointCloud.h>
+#include <qevent.h>
 
 #include "LJS8_IF.h"
 #include "LJS8_ErrorCode.h"
@@ -97,8 +98,8 @@ const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS 
     {5, 5, 0},
     {5, 10, 0},
     {10, 10, 0},
-    {0, 0, 2.5},
-    {0, 0, 5}
+    {0, 0, -2.5},
+    {0, 0, -5}
 };
 
 const QString CalibrationDialog::MACHINE_HOST = "localhost";
@@ -140,6 +141,17 @@ void CalibrationDialog::setupUI()
     connect(m_addButton, &QPushButton::clicked, this, &CalibrationDialog::onAddPosition);
     m_mainLayout->addWidget(m_addButton);
     
+    // 添加进度条
+    m_progressLabel = new QLabel("准备就绪", this);
+    m_progressLabel->setAlignment(Qt::AlignCenter);
+    m_mainLayout->addWidget(m_progressLabel);
+    
+    m_progressBar = new QProgressBar(this);
+    m_progressBar->setRange(0, 100);
+    m_progressBar->setValue(0);
+    m_progressBar->setVisible(false);
+    m_mainLayout->addWidget(m_progressBar);
+    
     m_buttonLayout = new QHBoxLayout();
     m_resetButton = new QPushButton("复位", this);
     connect(m_resetButton, &QPushButton::clicked, this, &CalibrationDialog::onReset);
@@ -162,24 +174,24 @@ void CalibrationDialog::populateTable()
         const Position &pos = m_positions[i];
         
         QDoubleSpinBox *xSpinBox = new QDoubleSpinBox();
-        xSpinBox->setValue(pos.x);
         xSpinBox->setMinimum(-1000);
         xSpinBox->setMaximum(1000);
-        xSpinBox->setDecimals(3);
+		xSpinBox->setDecimals(3);
+		xSpinBox->setValue(pos.x);
         m_tableWidget->setCellWidget(i, 0, xSpinBox);
         
         QDoubleSpinBox *ySpinBox = new QDoubleSpinBox();
-        ySpinBox->setValue(pos.y);
         ySpinBox->setMinimum(-1000);
         ySpinBox->setMaximum(1000);
-        ySpinBox->setDecimals(3);
+		ySpinBox->setDecimals(3);
+		ySpinBox->setValue(pos.y);
         m_tableWidget->setCellWidget(i, 1, ySpinBox);
         
         QDoubleSpinBox *zSpinBox = new QDoubleSpinBox();
-        zSpinBox->setValue(pos.z);
         zSpinBox->setMinimum(-1000);
         zSpinBox->setMaximum(1000);
-        zSpinBox->setDecimals(3);
+		zSpinBox->setDecimals(3);
+		zSpinBox->setValue(pos.z);
         m_tableWidget->setCellWidget(i, 2, zSpinBox);
         
         QPushButton *deleteButton = new QPushButton("删除");
@@ -200,26 +212,83 @@ void CalibrationDialog::onAddPosition()
     populateTable();
 }
 
-void CalibrationDialog::onStartCalibration()
-{    
-    if (!waitForMachineIdle(1))
+void CalibrationDialog::closeEvent(QCloseEvent* event)
+{
+	if (m_calibrationRunning)
 	{
-		QMessageBox::warning(this, "警告", "当前测量机未处于Ready状态");
+		event->ignore(); // 标定中，禁止关闭
+	}
+	else
+	{
+		QDialog::closeEvent(event);
+	}
+}
+
+void CalibrationDialog::setCalibrationRunning(bool running)
+{
+	m_calibrationRunning = running;
+
+	// 禁用标题栏关闭按钮（视觉反馈）
+	//if (running)
+	//{
+	//	setWindowFlags(windowFlags() & ~Qt::WindowCloseButtonHint);
+	//}
+	//else
+	//{
+	//	setWindowFlags(windowFlags() | Qt::WindowCloseButtonHint);
+	//}
+	//show(); // 修改 windowFlags 后必须重新 show 才生效
+
+	// 禁用/启用所有按钮
+	m_addButton->setEnabled(!running);
+	m_resetButton->setEnabled(!running);
+	m_startButton->setEnabled(!running);
+	m_cancelButton->setEnabled(!running);
+	m_tableWidget->setEnabled(!running);
+
+	m_progressBar->setVisible(running);
+	if (!running)
+	{
+		//m_progressLabel->setText("准备就绪");
+	}
+}
+
+void CalibrationDialog::onStartCalibration()
+{
+	CalibrationGuard guard(this);
+	m_progressBar->setVisible(true);
+	m_progressBar->setValue(0);
+	m_progressLabel->setText("准备标定...");
+
+	int totalSteps  = m_positions.size() * 7;
+	int currentStep = 0;
+
+	if (!waitForMachineIdle(1))
+	{
+		m_progressLabel->setText("❌ 错误：当前测量机未处于Ready状态");
 		return;
 	}
 
-    // 检查机床模式是否为Auto
-    QString mode;
-    if (!getMode(mode)) {
-        return;
-    }
-    if (mode != "Auto") {
-        QMessageBox::warning(this, "警告", "当前测量机未处于Auto模式");
-        return;
-    }
+	currentStep++;
+	m_progressBar->setValue((currentStep * 100) / totalSteps);
+	m_progressLabel->setText("检查机床模式...");
 
-	
-    // 保存当前表格中的值到m_positions
+	QString mode;
+	if (!getMode(mode))
+	{
+		m_progressLabel->setText("❌ 错误：获取机床模式失败");
+		return;
+	}
+	if (mode != "Auto")
+	{
+		m_progressLabel->setText("❌ 错误：当前测量机未处于Auto模式");
+		return;
+	}
+
+	currentStep++;
+	m_progressBar->setValue((currentStep * 100) / totalSteps);
+	m_progressLabel->setText("保存标定位置...");
+
 	for (int i = 0; i < m_positions.size(); ++i)
 	{
 		QDoubleSpinBox* xSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(i, 0));
@@ -233,165 +302,222 @@ void CalibrationDialog::onStartCalibration()
 			m_positions[i].z = zSpinBox->value();
 		}
 	}
-    
-    // 清空当前所有点云
-    if (m_pointCloudService) {
 
+	currentStep++;
+	m_progressBar->setValue((currentStep * 100) / totalSteps);
+	m_progressLabel->setText("清空点云数据...");
+
+	if (m_pointCloudService)
+	{
 		ccHObject* root = m_app->dbRootObject();
 		if (!root)
 		{
+			m_progressLabel->setText("❌ 错误：无法获取数据库根节点");
 			return;
 		}
 
-		// Collect first, then delete (avoid modifying while iterating)
 		std::vector<ccHObject*> toDelete;
 		toDelete.reserve(root->getChildrenNumber());
 		for (unsigned i = 0; i < root->getChildrenNumber(); ++i)
-		{
 			toDelete.push_back(root->getChild(i));
-		}
 
 		for (ccHObject* obj : toDelete)
-		{
 			m_app->removeFromDB(obj);
-		}
 
 		m_app->refreshAll();
 		m_app->updateUI();
 		m_app->dispToConsole("[TcpPlugin] DB cleared");
-    }
+	}
 
 	std::vector<Eigen::Vector3d> machine_points, scanner_points;
+	bool                         calibrationSuccess = true;
 
-    
-    // 开始标定流程
-    bool calibrationSuccess = true;
-    
-    for (int i = 0; i < m_positions.size(); ++i) {
-		Eigen::Vector3d machine_point(m_positions[i].x, m_positions[i].y, m_positions[i].z);
-		machine_points.push_back(machine_point);	
+	for (int i = 0; i < m_positions.size(); ++i)
+	{
+		currentStep++;
+		m_progressBar->setValue((currentStep * 100) / totalSteps);
+		m_progressLabel->setText(QString("处理第 %1/%2 个位置...").arg(i + 1).arg(m_positions.size()));
 
-        const Position &pos = m_positions[i];
-        
-        // 1. 打开Template文件夹下的Calibration.nc文件
-        QString appDir = QCoreApplication::applicationDirPath();
-        QString templateDir = appDir + "/Template";
-        QString templateFile = templateDir + "/Calibration.nc";
-        QString outputFile = templateDir + "/Calibration_" + QString::number(i+1) + ".nc";
-        
-        // 检查Template文件夹是否存在
-        QDir dir(templateDir);
-        if (!dir.exists()) {
-            QMessageBox::critical(this, "错误", "Template文件夹不存在");
-            calibrationSuccess = false;
-            break;
-        }
-        
-        // 检查Calibration.nc文件是否存在
-        QFile templateNc(templateFile);
-        if (!templateNc.exists()) {
-            QMessageBox::critical(this, "错误", "Calibration.nc文件不存在");
-            calibrationSuccess = false;
-            break;
-        }
-        
-        // 2. 替换文件中的{X}, {Y}, {Z}
-        if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QMessageBox::critical(this, "错误", "无法打开Calibration.nc文件");
-            calibrationSuccess = false;
-            break;
-        }
-        
-        QTextStream in(&templateNc);
-        QString content = in.readAll();
-        templateNc.close();
-        
-        content.replace("{X}", QString::number(pos.x));
-        content.replace("{Y}", QString::number(pos.y));
-        content.replace("{Z}", QString::number(pos.z));
-        
-        // 保存替换后的文件
-        QFile outputNc(outputFile);
-        if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QMessageBox::critical(this, "错误", "无法保存替换后的NC文件");
-            calibrationSuccess = false;
-            break;
-        }
-        
-        QTextStream out(&outputNc);
-        out << content;
-        outputNc.close();
-        
-        // 3. 发送NC文件到机床
-        if (!sendFileToMachine(outputFile)) {
-            calibrationSuccess = false;
-            break;
-        }
+		machine_points.push_back(Eigen::Vector3d(m_positions[i].x, m_positions[i].y, m_positions[i].z));
 
-		//设置主程序
-		if (!setMainProgram())
+		const Position& pos = m_positions[i];
+
+		QString appDir       = QCoreApplication::applicationDirPath();
+		QString templateDir  = appDir + "/Template";
+		QString templateFile = templateDir + "/Calibration.nc";
+		QString outputFile   = templateDir + "/Calibration_" + QString::number(i + 1) + ".nc";
+
+		QDir dir(templateDir);
+		if (!dir.exists())
 		{
+			m_progressLabel->setText("❌ 错误：Template文件夹不存在");
 			calibrationSuccess = false;
 			break;
 		}
-        
-        // 4. 发送启动机床命令
-        if (!startMachine()) {
-            calibrationSuccess = false;
-            break;
-        }
-        
-        // 5. 等待机床空闲
-        if (!waitForMachineIdle()) {
-            calibrationSuccess = false;
-            break;
-        }
-        
-        // 6. 获取点云数据
-		if (!acquirePointCloud(QString::number(i + 1)))
+
+		QFile templateNc(templateFile);
+		if (!templateNc.exists())
 		{
-            calibrationSuccess = false;
-            break;
-        }
-        
-        // 7. 拟合球体
-        if (m_pointCloudService) {
-            QJsonObject fitParams;
-            fitParams["type"] = "sphere";
-            fitParams["name"]             = QString::number(i + 1);
-			fitParams["outliersRatio"]    = 0.35;
-			fitParams["confidence"]       = 0.9999;;
-            fitParams["autoDetectRadius"] = false;
-			fitParams["radius"]           = 12.5;
-            fitParams["rms"] = 0.012;
-			fitParams["retries"] = 10;
+			m_progressLabel->setText("❌ 错误：Calibration.nc文件不存在");
+			calibrationSuccess = false;
+			break;
+		}
 
+		if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text))
+		{
+			m_progressLabel->setText("❌ 错误：无法打开Calibration.nc文件");
+			calibrationSuccess = false;
+			break;
+		}
 
-			double          x, y, z, radius;
+		QTextStream in(&templateNc);
+		QString     content = in.readAll();
+		templateNc.close();
 
-            // 假设最后获取的点云是当前要拟合的点云
-			m_pointCloudService->handleFitSphere(fitParams, nullptr, "", x, y, z, radius);
+		content.replace("{X}", QString::number(pos.x));
+		content.replace("{Y}", QString::number(pos.y));
+		content.replace("{Z}", QString::number(pos.z));
 
-			
-			scanner_points.push_back(Eigen::Vector3d(x, y, z));
-        }
-    }
+		QFile outputNc(outputFile);
+		if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text))
+		{
+			m_progressLabel->setText("❌ 错误：无法保存替换后的NC文件");
+			calibrationSuccess = false;
+			break;
+		}
+		QString     pcdName = QString::number(i + 1);
+		QTextStream out(&outputNc);
+		out << content;
+		outputNc.close();
 
+		currentStep++;
+		m_progressBar->setValue((currentStep * 100) / totalSteps);
+		m_progressLabel->setText(QString("第 %1/%2 个位置：发送NC文件到机床...").arg(i + 1).arg(m_positions.size()));
 
-    
-    if (calibrationSuccess) {
+		if (!sendFileToMachine(outputFile))
+		{
+			m_progressLabel->setText(QString("❌ 错误：第 %1 个位置发送NC文件失败").arg(i + 1));
+			calibrationSuccess = false;
+			break;
+		}
 
-		CalibrationDialog::RigidTransform  transform   = CalibrationDialog::computeRigidTransform(scanner_points, machine_points);
+		if (!setMainProgram())
+		{
+			m_progressLabel->setText(QString("❌ 错误：第 %1 个位置设置主程序失败").arg(i + 1));
+			calibrationSuccess = false;
+			break;
+		}
 
+		currentStep++;
+		m_progressBar->setValue((currentStep * 100) / totalSteps);
+		m_progressLabel->setText(QString("第 %1/%2 个位置：启动机床...").arg(i + 1).arg(m_positions.size()));
 
+		if (!startMachine())
+		{
+			m_progressLabel->setText(QString("❌ 错误：第 %1 个位置启动机床失败").arg(i + 1));
+			calibrationSuccess = false;
+			break;
+		}
 
-		Eigen::Matrix4d T_cam2robot = CalibrationDialog::toMatrix4d(transform);
+		currentStep++;
+		m_progressBar->setValue((currentStep * 100) / totalSteps);
+		m_progressLabel->setText(QString("第 %1/%2 个位置：等待机床空闲...").arg(i + 1).arg(m_positions.size()));
 
-		QString matStr = QString(
-		                     "%1 %2 %3 %4\n"
-		                     "%5 %6 %7 %8\n"
-		                     "%9 %10 %11 %12\n"
-		                     "%13 %14 %15 %16")
+		if (!waitForMachineIdle())
+		{
+			m_progressLabel->setText(QString("❌ 错误：第 %1 个位置等待机床超时").arg(i + 1));
+			calibrationSuccess = false;
+			break;
+		}
+
+		bool      fitSuccess = false;
+		double    x, y, z, rms;
+		int       retryCount = 0;
+		const int maxRetries = 3;
+
+		while (retryCount < maxRetries && !fitSuccess)
+		{
+			currentStep++;
+			m_progressBar->setValue((currentStep * 100) / totalSteps);
+			m_progressLabel->setText(QString("第 %1/%2 个位置：获取点云数据 (第%3次)...").arg(i + 1).arg(m_positions.size()).arg(retryCount + 1));
+
+			if (!acquirePointCloud(pcdName))
+			{
+				retryCount++;
+				continue;
+			}
+
+			currentStep++;
+			m_progressBar->setValue((currentStep * 100) / totalSteps);
+			m_progressLabel->setText(QString("第 %1/%2 个位置：拟合球体 (第%3次)...").arg(i + 1).arg(m_positions.size()).arg(retryCount + 1));
+
+			if (m_pointCloudService)
+			{
+				QJsonObject fitParams;
+				fitParams["type"]             = "sphere";
+				fitParams["name"]             = pcdName;
+				fitParams["outliersRatio"]    = 0.35;
+				fitParams["confidence"]       = 0.9999;
+				fitParams["autoDetectRadius"] = false;
+				fitParams["radius"]           = 12.5;
+				fitParams["rms"]              = 0.012;
+				fitParams["retries"]          = 3;
+
+				if (m_pointCloudService->handleFitSphere(fitParams, nullptr, "", x, y, z, rms))
+				{
+					if (rms < 0.012)
+					{
+						fitSuccess = true;
+					}
+					else
+					{
+						do
+						{
+							const QString objectName = pcdName;
+							if (objectName.isEmpty())
+							{
+								break;
+							}
+							ccHObject* root = m_app->dbRootObject();
+							if (!root)
+							{
+								break;
+							}
+
+							ccHObject* target = m_pointCloudService->findByName(root, objectName);
+							if (!target)
+							{
+
+								break;
+							}
+
+							m_app->removeFromDB(target);
+						} while (0);
+						
+					}
+				}
+			}
+			retryCount++;
+		}
+
+		if (!fitSuccess)
+		{
+			m_progressLabel->setText(QString("❌ 错误：第 %1 个位置拟合球体失败，已重试 %2 次").arg(i + 1).arg(maxRetries));
+			calibrationSuccess = false;
+			break;
+		}
+
+		scanner_points.push_back(Eigen::Vector3d(x, y, z));
+	}
+
+	if (calibrationSuccess)
+	{
+		m_progressLabel->setText("计算标定结果...");
+
+		RigidTransform  transform   = computeRigidTransform(scanner_points, machine_points);
+		Eigen::Matrix4d T_cam2robot = toMatrix4d(transform);
+
+		QString matStr = QString("%1 %2 %3 %4\n%5 %6 %7 %8\n%9 %10 %11 %12\n%13 %14 %15 %16")
 		                     .arg(T_cam2robot(0, 0))
 		                     .arg(T_cam2robot(0, 1))
 		                     .arg(T_cam2robot(0, 2))
@@ -411,19 +537,36 @@ void CalibrationDialog::onStartCalibration()
 
 		m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n%1").arg(matStr));
 
+		bool residualOk = true;
 		for (size_t i = 0; i < scanner_points.size(); ++i)
 		{
 			Eigen::Vector3d calc  = transform.R * scanner_points[i] + transform.T;
 			double          error = (calc - machine_points[i]).norm();
-
-            m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n点 %1 残差: %2 mm\n").arg(i + 1).arg(error));
+			m_app->dispToConsole(QString("[TcpPlugin][Calibration] 点 %1 残差: %2 mm").arg(i + 1).arg(error));
+			if (error > 0.12)
+			{
+				residualOk = false;
+				m_app->dispToConsole(QString("[TcpPlugin][Calibration] 点 %1 残差超过阈值: %2 mm > 0.12 mm").arg(i + 1).arg(error));
+			}
 		}
 
-        QMessageBox::information(this, "成功", "标定完成");
-        accept();
-    } else {
-        QMessageBox::warning(this, "失败", "标定过程中出现错误");
-    }
+		m_progressBar->setValue(100);
+
+		if (residualOk)
+		{
+			m_progressLabel->setText("✅ 标定完成，所有点残差均在 0.12mm 以内");
+			accept();
+		}
+		else
+		{
+			m_progressLabel->setText("⚠️ 标定完成，但部分点残差超过 0.12mm 阈值，请查看控制台");
+		}
+	}
+	else
+	{
+		m_progressBar->setValue(0);
+		// 错误信息已在各分支中设置，此处不覆盖
+	}
 }
 
 QVector<QVector3D> CalibrationDialog::getDefaultPositions()
@@ -498,6 +641,8 @@ bool CalibrationDialog::sendCommand(const QJsonObject &params, QJsonObject &resp
     // 生成唯一ID
     QString idCode = QUuid::createUuid().toString();
     QJsonObject cmdParams = params;
+	idCode.replace("{", "");
+	idCode.replace("}", "");
     cmdParams["IDCode"] = idCode;
     
     // 发送命令
@@ -697,43 +842,37 @@ bool CalibrationDialog::startMachine()
 
 bool CalibrationDialog::waitForMachineIdle(const int& timeOut)
 {
-    // 等待机床空闲，最多等待60秒
-	int maxWaitTime  = timeOut * 1000; // 60秒
-    int waitInterval = 1000; // 1秒
-    int elapsedTime = 0;    
-    while (elapsedTime < maxWaitTime) {
-        // 创建GetStatus命令
-        QJsonObject params;
+	int maxWaitTime  = timeOut * 1000;
+	int waitInterval = 1000;
+	int elapsedTime  = 0;
 
-        /*
-        
-	{"Command":"GetDeviceRun","DeviceName":"CNC_1","DeviceType":"Cnc","Timeout":5}
-        */
-        QString     strCmd = "GetDeviceRun";
-        params["Command"]   = strCmd;
-        params["DeviceName"] = "CNC_1";
-        params["DeviceType"] = "Cnc";
-        params["Timeout"] = 5;
-        
-        QJsonObject response;
-        if (!sendCommand(params, response, 5000)) {
-            QThread::msleep(waitInterval);
-            elapsedTime += waitInterval;
-            continue;
-        }
-        
-        if (response.contains("Value") && response["Value"].toString() == "0") {
-            return true;
-        }
-        
-        QThread::msleep(waitInterval);
-        elapsedTime += waitInterval;
-    }
-    
-    QMessageBox::critical(this, "错误", "等待机床空闲超时");
-    return false;
+	while (elapsedTime < maxWaitTime)
+	{
+		QJsonObject params;
+		params["Command"]    = "GetDeviceRun";
+		params["DeviceName"] = "CNC_1";
+		params["DeviceType"] = "Cnc";
+		params["Timeout"]    = 5;
+
+		QJsonObject response;
+		if (sendCommand(params, response, 5000))
+		{
+			if (response.contains("Value") && response["Value"].toString() == "0")
+			{
+				return true;
+			}
+		}
+
+		// 用 QEventLoop 替代 sleep，保持UI响应
+		QEventLoop loop;
+		QTimer::singleShot(waitInterval, &loop, &QEventLoop::quit);
+		loop.exec();
+
+		elapsedTime += waitInterval;
+	}
+
+	return false;
 }
-
 bool CalibrationDialog::acquirePointCloud(const QString& outputName)
 {
 	// ----------------------------------------------------------------

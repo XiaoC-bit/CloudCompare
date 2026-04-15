@@ -797,7 +797,7 @@ bool PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	centerX = center.x;
 	centerY = center.y;
 	centerZ = center.z;
-	outRms  = fitRadius;
+	outRms  = rms;
 
 	return true;
 }
