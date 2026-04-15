@@ -60,7 +60,14 @@ const int CALIBRATION_MAX_FIT_RETRIES = 3;
 }
 
 PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent) 
-    : QObject(parent), m_app(app) {
+    : QObject(parent), m_app(app), m_machineSocket(nullptr) {
+}
+
+PointCloudService::~PointCloudService() {
+    if (m_machineSocket) {
+        m_machineSocket->disconnectFromHost();
+        delete m_machineSocket;
+    }
 }
 
 void PointCloudService::sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode) {
@@ -174,13 +181,24 @@ bool PointCloudService::clearDbInternal(QTcpSocket* socket, const QString& idCod
 
 bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage, int timeout)
 {
-    QTcpSocket socket;
-    socket.connectToHost(MACHINE_HOST, MACHINE_PORT);
-    if (!socket.waitForConnected(5000)) {
-        if (errorMessage) {
-            *errorMessage = "Failed to connect machine middleware: " + socket.errorString();
+    // 检查长连接是否存在且连接正常
+    if (!m_machineSocket || m_machineSocket->state() != QTcpSocket::ConnectedState) {
+        // 清理旧的连接
+        if (m_machineSocket) {
+            delete m_machineSocket;
         }
-        return false;
+        
+        // 创建新的连接
+        m_machineSocket = new QTcpSocket(this);
+        m_machineSocket->connectToHost(MACHINE_HOST, MACHINE_PORT);
+        if (!m_machineSocket->waitForConnected(5000)) {
+            if (errorMessage) {
+                *errorMessage = "Failed to connect machine middleware: " + m_machineSocket->errorString();
+            }
+            delete m_machineSocket;
+            m_machineSocket = nullptr;
+            return false;
+        }
     }
 
     QJsonObject command = params;
@@ -190,10 +208,13 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
     }
 
     QByteArray data = QJsonDocument(command).toJson(QJsonDocument::Compact);
-    if (socket.write(data) == -1 || !socket.waitForBytesWritten(timeout)) {
+    if (m_machineSocket->write(data) == -1 || !m_machineSocket->waitForBytesWritten(timeout)) {
         if (errorMessage) {
-            *errorMessage = "Failed to send machine command: " + socket.errorString();
+            *errorMessage = "Failed to send machine command: " + m_machineSocket->errorString();
         }
+        // 连接可能已断开，清理并重新创建
+        delete m_machineSocket;
+        m_machineSocket = nullptr;
         return false;
     }
 
@@ -202,11 +223,11 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
     QByteArray buffer;
     while (timer.elapsed() < timeout) {
         const int remain = timeout - static_cast<int>(timer.elapsed());
-        if (!socket.waitForReadyRead(remain)) {
+        if (!m_machineSocket->waitForReadyRead(remain)) {
             continue;
         }
 
-        buffer.append(socket.readAll());
+        buffer.append(m_machineSocket->readAll());
         QJsonParseError parseError;
         QJsonDocument responseDoc = QJsonDocument::fromJson(buffer, &parseError);
         if (parseError.error == QJsonParseError::NoError && responseDoc.isObject()) {
@@ -218,6 +239,7 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
     if (errorMessage) {
         *errorMessage = "Machine command response timeout";
     }
+    // 超时后不清理连接，下次使用时会检查
     return false;
 }
 
@@ -1179,6 +1201,7 @@ bool PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 
 
 void PointCloudService::clearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
+	sendOk(socket, "DB cleared Start", idCode);
     QMetaObject::invokeMethod(qApp, [this, socket, idCode]() {
         if (!clearDbInternal(socket, idCode)) {
             return;
@@ -1725,6 +1748,7 @@ void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket
 
 void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
+	sendOk(socket, "Calibration started", idCode);	
     QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]() {
         QString errorMessage;
         const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);

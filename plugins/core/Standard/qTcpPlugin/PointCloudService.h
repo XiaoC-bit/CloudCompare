@@ -17,6 +17,7 @@ public:
 	friend class CalibrationDialog;
 
     explicit PointCloudService(ccMainAppInterface* app, QObject* parent = nullptr);
+    ~PointCloudService() override;
     
     // 点云处理函数
     void load(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -48,6 +49,7 @@ public:
     ccMainAppInterface* m_app;
     std::vector<unsigned short> m_heightBuf;
     std::vector<unsigned char> m_luminanceBuf;
+    QTcpSocket* m_machineSocket; // 机床长连接
 
     // 辅助函数
     void sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode);
