@@ -76,6 +76,13 @@ class PointCloudService : public QObject
 	class ccHObject*   getDbRoot(QTcpSocket* socket, const QString& idCode);
     void               saveCalibrationStatus(); // 保存标定状态
     void               savePartInspectResult(const QString& rfid, const QJsonObject& result); // 保存工件检查结果
+    // 内部函数
+    bool               loadInternal(const QJsonObject& params, QString* errorMessage); // 内部加载函数
+    bool               applyViewportInternal(const QJsonObject& params, QString* errorMessage); // 内部视口应用函数
+    bool               segmentPolygonInternal(const QJsonObject& params, QString* errorMessage); // 内部分割函数（基于多边形）
+    bool               deleteObjectInternal(const QJsonObject& params, QString* errorMessage); // 内部删除对象函数
+    bool               mergeInternal(const QJsonObject& params, QString* errorMessage); // 内部合并函数
+    bool               icpInternal(const QJsonObject& params, QString* errorMessage); // 内部ICP配准函数
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
 	void               sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());
