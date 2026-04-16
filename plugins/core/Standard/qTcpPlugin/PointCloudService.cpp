@@ -2405,7 +2405,7 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 
 	QString strCmd = "PartInspect";
 
-
+	// 先判断是否已经有标定结果，如果没有标定结果或者标定结果不是成功，则返回错误
 	bool calibrationResult = false;
 	do
 	{
@@ -2440,7 +2440,7 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 
 	
 
-
+	//机床状态检测
 	QString errorMessage;
 	if (!waitForMachineIdle(1, &errorMessage))
 	{
@@ -2475,12 +2475,11 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	sendRes(socket, obj, idCode);
 	m_Status = MachineStatus::Running;
 
-	QMetaObject::invokeMethod(qApp, [this, params]()
-	                          {
+	QMetaObject::invokeMethod(qApp, [this, params]() {
 		partInspectFunc(params);
 		m_Status = MachineStatus::Idle;
-		},
-	                          Qt::QueuedConnection);
+	},
+	Qt::QueuedConnection);
 }
 
 void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
