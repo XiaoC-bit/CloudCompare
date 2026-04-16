@@ -60,7 +60,34 @@ const int CALIBRATION_MAX_FIT_RETRIES = 3;
 }
 
 PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent) 
-    : QObject(parent), m_app(app), m_machineSocket(nullptr) {
+    : QObject(parent), m_app(app), m_machineSocket(nullptr), m_calibrationStatus(CalibrationStatus::Idle) {
+    // 设置状态文件路径
+    QString appDir = QCoreApplication::applicationDirPath();
+    m_statusFilePath = appDir + "/Template/calibration_status.json";
+	m_calibrationStatus = CalibrationStatus::Idle;
+    // 加载之前的标定结果
+    QFile statusFile(m_statusFilePath);
+    if (statusFile.exists() && statusFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QByteArray data = statusFile.readAll();
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+        if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
+            m_calibrationResult = doc.object();
+			if (m_calibrationResult.contains("calibrationResult") && m_calibrationResult["calibrationResult"].isObject())
+			{
+				auto obj = m_calibrationResult["calibrationResult"].toObject();
+				if (obj.contains("result") && obj["result"].isString() && obj["result"].toString() == "calibrating")
+				{
+					m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "previous calibration interrupted"}};
+				}
+			}
+        }
+        statusFile.close();
+    }
+	else
+	{
+		m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "not inited"}};
+	}
 }
 
 PointCloudService::~PointCloudService() {
@@ -68,6 +95,36 @@ PointCloudService::~PointCloudService() {
         m_machineSocket->disconnectFromHost();
         delete m_machineSocket;
     }
+}
+
+// 保存标定状态到文件
+void PointCloudService::saveCalibrationStatus() {
+    
+    QFile statusFile(m_statusFilePath);
+    if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		QByteArray data = QJsonDocument(m_calibrationResult).toJson(QJsonDocument::Indented);
+        statusFile.write(data);
+        statusFile.close();
+    }
+}
+
+
+void PointCloudService::sendRes(QTcpSocket* socket, QJsonObject& resp, const QString& idCode)
+{
+	if (socket == nullptr)
+	{
+		return;
+	}
+	if (!idCode.isEmpty())
+		resp["IDCode"] = idCode;
+
+	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Indented) + "\n";
+
+	// 记录发送内容
+	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+
+	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
+	socket->flush();
 }
 
 void PointCloudService::sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode) {
@@ -81,7 +138,7 @@ void PointCloudService::sendOk(QTcpSocket* socket, const QString& msg, const QSt
 	if (!idCode.isEmpty())
 		resp["IDCode"] = idCode;
 
-	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n";
+	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Indented) + "\n";
 
 	// 记录发送内容
 	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
@@ -179,68 +236,200 @@ bool PointCloudService::clearDbInternal(QTcpSocket* socket, const QString& idCod
     return true;
 }
 
+
+
+
+// 返回 buffer 中第一个完整 JSON 对象最后一个 '}' 的下标，找不到返回 -1
+int PointCloudService::findJsonObjectEnd(const QByteArray& buffer)
+{
+	int  depth    = 0;
+	int  start    = -1;
+	bool inString = false;
+	bool escaped  = false;
+
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		const char c = buffer[i];
+
+		if (escaped)
+		{
+			escaped = false;
+			continue;
+		}
+		if (c == '\\' && inString)
+		{
+			escaped = true;
+			continue;
+		}
+		if (c == '"')
+		{
+			inString = !inString;
+			continue;
+		}
+		if (inString)
+			continue;
+
+		if (c == '{')
+		{
+			if (depth == 0)
+				start = i;
+			++depth;
+		}
+		else if (c == '}')
+		{
+			--depth;
+			if (depth == 0 && start >= 0)
+				return i; // 找到完整对象的末尾
+		}
+	}
+	return -1; // 不完整，继续等待
+}
+
+bool PointCloudService::ensureConnected(QString* errorMessage, int connectTimeout)
+{
+	if (m_machineSocket && m_machineSocket->state() == QTcpSocket::ConnectedState)
+		return true;
+
+	resetConnection(); // 清理旧的
+
+	m_machineSocket = new QTcpSocket(this);
+	if (m_machineSocket->thread() == QThread::currentThread())
+	{
+		auto test = m_machineSocket->thread()->currentThreadId();
+	}
+
+	m_machineSocket->connectToHost(MACHINE_HOST, MACHINE_PORT);
+	if (!m_machineSocket->waitForConnected(connectTimeout))
+	{
+		setError(errorMessage,
+		         "Failed to connect machine middleware: " + m_machineSocket->errorString());
+		resetConnection();
+		return false;
+	}
+	return true;
+}
+
+void PointCloudService::resetConnection()
+{
+	if (m_machineSocket)
+	{
+		m_machineSocket->abort();
+		m_machineSocket->deleteLater();
+		m_machineSocket = nullptr;
+	}
+}
+
+void PointCloudService::setError(QString* out, const QString& msg)
+{
+	if (out)
+		*out = msg;
+}
+
 bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage, int timeout)
 {
-    // 检查长连接是否存在且连接正常
-    if (!m_machineSocket || m_machineSocket->state() != QTcpSocket::ConnectedState) {
-        // 清理旧的连接
-        if (m_machineSocket) {
-            delete m_machineSocket;
-        }
-        
-        // 创建新的连接
-        m_machineSocket = new QTcpSocket(this);
-        m_machineSocket->connectToHost(MACHINE_HOST, MACHINE_PORT);
-        if (!m_machineSocket->waitForConnected(5000)) {
-            if (errorMessage) {
-                *errorMessage = "Failed to connect machine middleware: " + m_machineSocket->errorString();
-            }
-            delete m_machineSocket;
-            m_machineSocket = nullptr;
-            return false;
-        }
-    }
 
-    QJsonObject command = params;
-    if (!command.contains("IDCode")) {
-        QString idCode = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        command["IDCode"] = idCode;
-    }
+	const auto threadId = reinterpret_cast<qulonglong>(QThread::currentThreadId());
+	CommLogger::instance().logSent(QString("Thread %1 in").arg(threadId));
 
-    QByteArray data = QJsonDocument(command).toJson(QJsonDocument::Compact);
-    if (m_machineSocket->write(data) == -1 || !m_machineSocket->waitForBytesWritten(timeout)) {
-        if (errorMessage) {
-            *errorMessage = "Failed to send machine command: " + m_machineSocket->errorString();
-        }
-        // 连接可能已断开，清理并重新创建
-        delete m_machineSocket;
-        m_machineSocket = nullptr;
-        return false;
-    }
+	if (!ensureConnected(errorMessage, timeout))
+		return false;
 
-    QElapsedTimer timer;
-    timer.start();
-    QByteArray buffer;
-    while (timer.elapsed() < timeout) {
-        const int remain = timeout - static_cast<int>(timer.elapsed());
-        if (!m_machineSocket->waitForReadyRead(remain)) {
-            continue;
-        }
+	if (m_machineSocket->thread() == QThread::currentThread())
+	{
+		auto test = m_machineSocket->thread()->currentThreadId();
+	}
 
-        buffer.append(m_machineSocket->readAll());
-        QJsonParseError parseError;
-        QJsonDocument responseDoc = QJsonDocument::fromJson(buffer, &parseError);
-        if (parseError.error == QJsonParseError::NoError && responseDoc.isObject()) {
-            response = responseDoc.object();
-            return true;
-        }
-    }
+	// --- 构造命令，生成 IDCode ---
+	QJsonObject   command = params;
+	const QString idCode  = command.contains("IDCode")
+	                            ? command["IDCode"].toString()
+	                            : QUuid::createUuid().toString(QUuid::WithoutBraces);
+	command["IDCode"]     = idCode;
 
-    if (errorMessage) {
-        *errorMessage = "Machine command response timeout";
-    }
-    // 超时后不清理连接，下次使用时会检查
-    return false;
+	// --- 发送前清空 socket 残留数据（处理上次超时遗留）---
+	if (m_machineSocket->bytesAvailable() > 0)
+	{
+		m_machineSocket->readAll();
+		CommLogger::instance().logSent(
+		    QString("Thread %1: cleared stale buffer").arg(threadId));
+	}
+
+	const QByteArray payload = QJsonDocument(command).toJson(QJsonDocument::Compact);
+	if (m_machineSocket->write(payload) == -1 || !m_machineSocket->waitForBytesWritten(timeout))
+	{
+		setError(errorMessage,
+		         "Failed to send machine command: " + m_machineSocket->errorString());
+		resetConnection();
+		return false;
+	}
+
+	// --- 接收，匹配 IDCode，丢弃不匹配的包 ---
+	QElapsedTimer timer;
+	timer.start();
+	QByteArray buffer;
+
+	while (timer.elapsed() < timeout)
+	{
+		const int remain = timeout - static_cast<int>(timer.elapsed());
+		if (remain <= 0)
+			break;
+
+		if (m_machineSocket->bytesAvailable() == 0 && !m_machineSocket->waitForReadyRead(remain))
+		{
+			continue;
+		}
+
+		buffer.append(m_machineSocket->readAll());
+
+		// 从 buffer 中提取所有完整 JSON 对象，逐个检查 IDCode
+		while (true)
+		{
+			const int jsonEnd = findJsonObjectEnd(buffer);
+			if (jsonEnd < 0)
+				break; // 还没有完整的包，等待更多数据
+
+			const QByteArray jsonBytes = buffer.left(jsonEnd + 1);
+			buffer.remove(0, jsonEnd + 1); // 消费掉这个包
+
+			QJsonParseError err;
+			QJsonDocument   doc = QJsonDocument::fromJson(jsonBytes, &err);
+
+			if (err.error != QJsonParseError::NoError || !doc.isObject())
+			{
+				// 无效 JSON，丢弃，继续
+				CommLogger::instance().logSent(
+				    QString("Thread %1: discarded invalid JSON").arg(threadId));
+				continue;
+			}
+
+			const QJsonObject obj        = doc.object();
+			const QString     receivedId = obj["IDCode"].toString();
+
+			if (receivedId != idCode)
+			{
+				// IDCode 不匹配，是上一个请求的残留，丢弃
+				CommLogger::instance().logSent(
+				    QString("Thread %1: discarded stale IDCode=%2, expected=%3")
+				        .arg(threadId)
+				        .arg(receivedId)
+				        .arg(idCode));
+				continue;
+			}
+
+			// 匹配成功
+			response = obj;
+			CommLogger::instance().logSent(
+			    QString("Thread %1 out %2")
+			        .arg(threadId)
+			        .arg(QString::fromUtf8(jsonBytes)));
+			return true;
+		}
+	}
+
+	setError(errorMessage, "Machine command response timeout");
+	CommLogger::instance().logSent(
+	    QString("Thread %1 out Error").arg(threadId));
+	return false;
 }
 
 bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
@@ -272,6 +461,7 @@ bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
 
 bool PointCloudService::sendFileToMachine(const QString& filePath, QString* errorMessage)
 {
+    const int timeout = 20;
     QJsonObject params;
     params["Command"] = "SendFile";
     params["DeviceName"] = MACHINE_DEVICE_NAME;
@@ -279,23 +469,24 @@ bool PointCloudService::sendFileToMachine(const QString& filePath, QString* erro
     params["CNCPath"] = CALIBRATION_CNC_PATH;
     params["CNCFile"] = CALIBRATION_CNC_FILE;
     params["LocalFile"] = filePath;
-    params["Timeout"] = 20;
+    params["Timeout"] = timeout*1000;
 
     QJsonObject response;
-    return sendMachineCommand(params, response, errorMessage, 10000)
+    return sendMachineCommand(params, response, errorMessage, timeout*1000)
         && checkMachineCommandRet(response, "SendFile", errorMessage);
 }
 
 bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 {
+    const int timeout = 20;
     QJsonObject params;
     params["Command"] = "GetDeviceMode";
     params["DeviceType"] = MACHINE_DEVICE_TYPE;
     params["DeviceName"] = MACHINE_DEVICE_NAME;
-    params["Timeout"] = 5;
+    params["Timeout"] = timeout*1000;
 
     QJsonObject response;
-    if (!sendMachineCommand(params, response, errorMessage, 10000)) {
+    if (!sendMachineCommand(params, response, errorMessage, timeout*1000)) {
         return false;
     }
     if (!checkMachineCommandRet(response, "GetDeviceMode", errorMessage)) {
@@ -308,75 +499,125 @@ bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 
 bool PointCloudService::setMainProgram(QString* errorMessage)
 {
+    const int timeout = 20; 
     QJsonObject params;
     params["Command"] = "SetMainProg";
     params["DeviceType"] = MACHINE_DEVICE_TYPE;
     params["DeviceName"] = MACHINE_DEVICE_NAME;
     params["MainProg"] = CALIBRATION_CNC_FILE;
     params["Path"] = CALIBRATION_CNC_PATH;
-    params["Timeout"] = 5;
+    params["Timeout"] = timeout*1000;
 
     QJsonObject response;
-    return sendMachineCommand(params, response, errorMessage, 10000)
+    return sendMachineCommand(params, response, errorMessage, timeout*1000)
         && checkMachineCommandRet(response, "SetMainProg", errorMessage);
 }
 
 bool PointCloudService::startMachine(QString* errorMessage)
 {
-    QJsonObject params;
-    params["Command"] = "WritePlc";
-    params["DeviceType"] = MACHINE_DEVICE_TYPE;
-    params["DeviceName"] = MACHINE_DEVICE_NAME;
-    params["Addr"] = "999";
-    params["AddrType"] = "R";
-    params["Bit"] = "0";
-    params["Timeout"] = 5;
+    //尝试多几次
+    int retryCount = 0;
+    while (retryCount++ < 20) {
+        const int timeout = 20;
+		QJsonObject params;
+		params["Command"] = "WritePlc";
+		params["DeviceType"] = MACHINE_DEVICE_TYPE;
+		params["DeviceName"] = MACHINE_DEVICE_NAME;
+		params["Addr"] = "999";
+		params["AddrType"] = "R";
+		params["Bit"] = "0";
+		params["Timeout"] = timeout*1000;
 
-    QJsonObject response;
-    params["Value"] = "1";
-    if (!sendMachineCommand(params, response, errorMessage, 10000)
-        || !checkMachineCommandRet(response, "WritePlc", errorMessage)) {
-        return false;
-    }
+		QJsonObject response;
+		params["Value"] = "1";
+		if (!sendMachineCommand(params, response, errorMessage, timeout*1000)
+			|| !checkMachineCommandRet(response, "WritePlc", errorMessage)) {
 
-    QThread::msleep(200);
+			QThread::msleep(200);
+			continue;
+		}
 
-    params["Value"] = "0";
-    if (!sendMachineCommand(params, response, errorMessage, 10000)
-        || !checkMachineCommandRet(response, "WritePlc", errorMessage)) {
-        return false;
-    }
+		QThread::msleep(200);
 
-    QThread::msleep(200);
-    return true;
+		params["Value"] = "0";
+		if (!sendMachineCommand(params, response, errorMessage, timeout*1000)
+			|| !checkMachineCommandRet(response, "WritePlc", errorMessage)) {
+			continue;
+		}
+
+		
+		QThread::msleep(1000);
+		QString value;
+		if (!getDeviceRun(value, errorMessage))
+		{
+			continue;
+		}
+
+		if (value == "2")
+		{
+			return true;
+		}
+
+	}
+
+    return false;
+}
+
+
+bool PointCloudService::getDeviceRun(QString& value, QString* errorMessage)
+{
+    const int timeout = 20;
+	QJsonObject params;
+	params["Command"]    = "GetDeviceRun";
+	params["DeviceName"] = MACHINE_DEVICE_NAME;
+	params["DeviceType"] = MACHINE_DEVICE_TYPE;
+	params["Timeout"]    = timeout*1000;
+
+	QJsonObject response;
+	QString     currentError;
+
+	if (!sendMachineCommand(params, response, &currentError, timeout*1000))
+	{
+		return false;
+	}
+
+	if(!checkMachineCommandRet(response, "GetDeviceRun", errorMessage))
+	{
+		return false;
+	}
+
+	if (!response.contains("Value"))
+	{
+		return false;
+	}
+
+	value = response["Value"].toString();
+
+	return true;
 }
 
 bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMessage)
 {
     const int maxWaitTime = timeoutSeconds * 1000;
-    const int waitInterval = 1000;
+    const int waitInterval = 50;
     int elapsedTime = 0;
 
     while (elapsedTime < maxWaitTime) {
-        QJsonObject params;
-        params["Command"] = "GetDeviceRun";
-        params["DeviceName"] = MACHINE_DEVICE_NAME;
-        params["DeviceType"] = MACHINE_DEVICE_TYPE;
-        params["Timeout"] = 5;
+		QString value;
+		if (!getDeviceRun(value, errorMessage))
+		{
+			continue;
+		}
+		if (value == "0")
+		{
+			return true;
+		}
 
-        QJsonObject response;
-        QString currentError;
-        if (sendMachineCommand(params, response, &currentError, 5000)
-            && response.contains("Value")
-            && response["Value"].toString() == "0") {
-            return true;
-        }
+		// 用 QEventLoop 替代 sleep，保持UI响应
+		QEventLoop loop;
+		QTimer::singleShot(waitInterval, &loop, &QEventLoop::quit);
+		loop.exec();
 
-        if (!currentError.isEmpty() && errorMessage) {
-            *errorMessage = currentError;
-        }
-
-        QThread::msleep(waitInterval);
         elapsedTime += waitInterval;
     }
 
@@ -1202,7 +1443,11 @@ bool PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 
 void PointCloudService::clearDB(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
 	sendOk(socket, "DB cleared Start", idCode);
+
+	auto id = QThread::currentThreadId();
     QMetaObject::invokeMethod(qApp, [this, socket, idCode]() {
+		
+	auto        id     = QThread::currentThreadId();
         if (!clearDbInternal(socket, idCode)) {
             return;
         }
@@ -1746,207 +1991,376 @@ void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket
     }, Qt::QueuedConnection);
 }
 
+void PointCloudService::calibrationFunc(const QJsonObject& params)
+{
+	QString                  errorMessage;
+	const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
+	if (positions.isEmpty())
+	{
+
+		m_calibrationStatus           = CalibrationStatus::Idle;
+		QJsonObject obj;
+		obj["result"]                 = "failed";
+		obj["error"]                  = errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage;	
+		m_calibrationResult["calibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		m_calibrationStatus           = CalibrationStatus::Idle;
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		m_calibrationResult["calibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		m_calibrationStatus           = CalibrationStatus::Idle;
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		m_calibrationResult["calibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	if (mode != "Auto")
+	{
+		m_calibrationStatus           = CalibrationStatus::Idle;
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		m_calibrationResult["calibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+
+	if (!clearDbInternal(nullptr, ""))
+	{
+		m_calibrationStatus           = CalibrationStatus::Idle;
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = QString("Failed to clear DB before calibration");
+		m_calibrationResult["calibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+
+	std::vector<Eigen::Vector3d> machinePoints;
+	std::vector<Eigen::Vector3d> scannerPoints;
+	QJsonArray                   fitResults;
+	machinePoints.reserve(static_cast<size_t>(positions.size()));
+	scannerPoints.reserve(static_cast<size_t>(positions.size()));
+
+	QString appDir       = QCoreApplication::applicationDirPath();
+	QString templateDir  = appDir + "/Template";
+	QString templateFile = templateDir + "/Calibration.nc";
+
+	QDir dir(templateDir);
+	if (!dir.exists())
+	{
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = "Calibration template directory does not exist";
+		m_calibrationResult["calibrationResult"] = obj;
+		return;
+	}
+
+	QFile templateNc(templateFile);
+	if (!templateNc.exists())
+	{
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = "Calibration.nc template file does not exist";
+		m_calibrationResult["calibrationResult"] = obj;
+		return;
+	}
+
+	if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"] = "Failed to open Calibration.nc template";
+		m_calibrationResult["calibrationResult"] = obj;
+		return;
+	}
+	const QString templateContent = QTextStream(&templateNc).readAll();
+	templateNc.close();
+
+	for (int i = 0; i < positions.size(); ++i)
+	{
+		const QVector3D& pos = positions[i];
+		machinePoints.emplace_back(pos.x(), pos.y(), pos.z());
+
+		QString content = templateContent;
+		content.replace("{X}", QString::number(pos.x()));
+		content.replace("{Y}", QString::number(pos.y()));
+		content.replace("{Z}", QString::number(pos.z()));
+
+		const QString outputFile = templateDir + QString("/Calibration_%1.nc").arg(i + 1);
+		QFile         outputNc(outputFile);
+		if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text))
+		{
+			QJsonObject obj;
+			obj["result"] = "failed";
+			obj["error"] = QString("Failed to write NC file for position %1").arg(i + 1);
+			m_calibrationResult["calibrationResult"] = obj;
+			return;
+		}
+		QTextStream out(&outputNc);
+		out << content;
+		outputNc.close();
+
+		if (!sendFileToMachine(outputFile, &errorMessage))
+		{
+			QJsonObject obj;
+			obj["result"] = "failed";
+			obj["error"]  = QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_calibrationResult["calibrationResult"] = obj;
+			return;
+		}
+
+		if (!setMainProgram(&errorMessage))
+		{
+			QJsonObject obj;
+			obj["result"] = "failed";
+			obj["error"]  = QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_calibrationResult["calibrationResult"] = obj;
+			return;
+		}
+
+		if (!startMachine(&errorMessage))
+		{
+			QJsonObject obj;
+			obj["result"] = "failed";
+			obj["error"]  = QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_calibrationResult["calibrationResult"] = obj;
+			return;
+		}
+
+		if (!waitForMachineIdle(120, &errorMessage))
+		{
+			QJsonObject obj;
+			obj["result"] = "failed";
+			obj["error"] = QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_calibrationResult["calibrationResult"] = obj;
+			return;
+		}
+
+		bool   fitSuccess = false;
+		double centerX    = 0.0;
+		double centerY    = 0.0;
+		double centerZ    = 0.0;
+		double rms        = 0.0;
+
+		for (int retry = 0; retry < CALIBRATION_MAX_FIT_RETRIES && !fitSuccess; ++retry)
+		{
+			const QString cloudName = QString::number(i + 1);
+			QJsonObject   acquireParams;
+			acquireParams["async"]      = true;
+			acquireParams["outputName"] = cloudName;
+			if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr))
+			{
+				continue;
+			}
+
+			QJsonObject fitParams;
+			fitParams["type"]             = "sphere";
+			fitParams["name"]             = cloudName;
+			fitParams["outliersRatio"]    = 0.35;
+			fitParams["confidence"]       = 0.9999;
+			fitParams["autoDetectRadius"] = false;
+			fitParams["radius"]           = CALIBRATION_RADIUS;
+			fitParams["rms"]              = CALIBRATION_RMS_THRESHOLD;
+			fitParams["retries"]          = 3;
+
+			if (handleFitSphere(fitParams, nullptr, QString(), centerX, centerY, centerZ, rms) && rms < CALIBRATION_RMS_THRESHOLD)
+			{
+				fitSuccess = true;
+				break;
+			}
+
+			ccHObject* root = m_app->dbRootObject();
+			if (root)
+			{
+				if (ccHObject* target = findByName(root, cloudName))
+				{
+					m_app->removeFromDB(target);
+				}
+			}
+		}
+
+		if (!fitSuccess)
+		{
+			m_calibrationResult["result"] = "failed";
+			m_calibrationResult["error"]  = QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES);
+			
+			return;
+		}
+
+		scannerPoints.emplace_back(centerX, centerY, centerZ);
+
+		QJsonObject fitItem;
+		fitItem["index"]   = i + 1;
+		fitItem["machine"] = QJsonArray{pos.x(), pos.y(), pos.z()};
+		fitItem["scanner"] = QJsonArray{centerX, centerY, centerZ};
+		fitItem["rms"]     = rms;
+		fitResults.append(fitItem);
+	}
+
+	CalibrationRigidTransform transform;
+	try
+	{
+		transform = computeRigidTransform(scannerPoints, machinePoints);
+	}
+	catch (const std::exception& e)
+	{
+		QJsonObject obj;
+		obj["result"] = "failed";
+		obj["error"]  = QString("Calibration matrix computation failed: %1").arg(e.what());
+		m_calibrationResult["calibrationResult"] = obj;
+		return;
+	}
+
+	const Eigen::Matrix4d matrix = toMatrix4d(transform);
+	QJsonArray            matrixRows;
+	QJsonArray            residuals;
+	bool                  residualOk = true;
+	for (int row = 0; row < 4; ++row)
+	{
+		QJsonArray rowArray;
+		for (int col = 0; col < 4; ++col)
+		{
+			rowArray.append(matrix(row, col));
+		}
+		matrixRows.append(rowArray);
+	}
+
+	for (size_t i = 0; i < scannerPoints.size(); ++i)
+	{
+		const Eigen::Vector3d calc  = transform.R * scannerPoints[i] + transform.T;
+		const double          error = (calc - machinePoints[i]).norm();
+		residuals.append(error);
+		if (error > CALIBRATION_RESIDUAL_THRESHOLD)
+		{
+			residualOk = false;
+		}
+		m_app->dispToConsole(QString("[TcpPlugin][Calibration] Point %1 residual: %2 mm").arg(static_cast<int>(i + 1)).arg(error));
+	}
+
+	QString matrixText;
+	for (int row = 0; row < 4; ++row)
+	{
+		matrixText += QString("%1 %2 %3 %4")
+		                  .arg(matrix(row, 0))
+		                  .arg(matrix(row, 1))
+		                  .arg(matrix(row, 2))
+		                  .arg(matrix(row, 3));
+		if (row != 3)
+		{
+			matrixText += "\n";
+		}
+	}
+	m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n%1").arg(matrixText));
+
+	// 保存标定结果
+    QJsonObject obj;
+	obj["result"] = residualOk ? "success" : "failed";
+	if (residualOk)
+	{
+		obj["matrix"]            = matrixRows;
+		obj["fitResults"]        = fitResults;
+		obj["residuals"]         = residuals;
+		obj["residualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
+		obj["residualOk"]        = residualOk;
+		obj["positionCount"]     = positions.size();
+	}
+	else
+	{
+		obj["error"] = QString("Calibration completed but residuals exceed threshold");
+	}
+	m_calibrationResult["calibrationResult"] = obj; 
+}
+
 void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
-	sendOk(socket, "Calibration started", idCode);	
-    QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]() {
-        QString errorMessage;
-        const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
-        if (positions.isEmpty()) {
-            sendError(socket, errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage, idCode);
-            return;
-        }
+    //如果已经在标定中，直接返回错误
+    if (m_calibrationStatus == CalibrationStatus::Running)
+    {
+		QJsonObject obj;
+		obj["startCalibration_Ret"] = "1";
+		obj["Error"]                      = "Calibration is already running";
+		sendRes(socket, obj, idCode);
+        return;
+    }
+    // 立即返回 OK
+	QJsonObject status;
+	status["startCalibration_Ret"] = "0";
+	sendRes(socket, status, idCode);
+    
+    // 清空之前的标定结果
+    
+    QJsonObject obj;
+	obj["result"] = "calibrating";
+	m_calibrationResult["calibrationResult"] = obj;
+	m_calibrationStatus = CalibrationStatus::Running;
+    // 保存状态
+    saveCalibrationStatus();
+	
+	QMetaObject::invokeMethod(qApp, [this, params]() {
+		QString value,errorMsg;
+		if (!getDeviceRun(value, &errorMsg)) {
 
-        if (!waitForMachineIdle(1, &errorMessage)) {
-            sendError(socket, errorMessage.isEmpty() ? "Machine is not idle" : errorMessage, idCode);
-            return;
-        }
+	}
+		auto id = QThread::currentThreadId();
+		return;
+		calibrationFunc(params);
+		m_calibrationStatus = CalibrationStatus::Idle;
+		saveCalibrationStatus();
+		}, Qt::QueuedConnection);
+}
 
-        QString mode;
-        if (!getMachineMode(mode, &errorMessage)) {
-            sendError(socket, errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage, idCode);
-            return;
-        }
-        if (mode != "Auto") {
-            sendError(socket, QString("Machine mode must be Auto, current mode is '%1'").arg(mode), idCode);
-            return;
-        }
-
-        if (!clearDbInternal(socket, idCode)) {
-            return;
-        }
-
-        std::vector<Eigen::Vector3d> machinePoints;
-        std::vector<Eigen::Vector3d> scannerPoints;
-        QJsonArray fitResults;
-        machinePoints.reserve(static_cast<size_t>(positions.size()));
-        scannerPoints.reserve(static_cast<size_t>(positions.size()));
-
-        QString appDir = QCoreApplication::applicationDirPath();
-        QString templateDir = appDir + "/Template";
-        QString templateFile = templateDir + "/Calibration.nc";
-
-        QDir dir(templateDir);
-        if (!dir.exists()) {
-            sendError(socket, "Calibration template directory does not exist", idCode);
-            return;
-        }
-
-        QFile templateNc(templateFile);
-        if (!templateNc.exists()) {
-            sendError(socket, "Calibration.nc template file does not exist", idCode);
-            return;
-        }
-
-        if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            sendError(socket, "Failed to open Calibration.nc template", idCode);
-            return;
-        }
-        const QString templateContent = QTextStream(&templateNc).readAll();
-        templateNc.close();
-
-        for (int i = 0; i < positions.size(); ++i) {
-            const QVector3D& pos = positions[i];
-            machinePoints.emplace_back(pos.x(), pos.y(), pos.z());
-
-            QString content = templateContent;
-            content.replace("{X}", QString::number(pos.x()));
-            content.replace("{Y}", QString::number(pos.y()));
-            content.replace("{Z}", QString::number(pos.z()));
-
-            const QString outputFile = templateDir + QString("/Calibration_%1.nc").arg(i + 1);
-            QFile outputNc(outputFile);
-            if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                sendError(socket, QString("Failed to write NC file for position %1").arg(i + 1), idCode);
-                return;
-            }
-            QTextStream out(&outputNc);
-            out << content;
-            outputNc.close();
-
-            if (!sendFileToMachine(outputFile, &errorMessage)) {
-                sendError(socket, QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
-                return;
-            }
-
-            if (!setMainProgram(&errorMessage)) {
-                sendError(socket, QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
-                return;
-            }
-
-            if (!startMachine(&errorMessage)) {
-                sendError(socket, QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
-                return;
-            }
-
-            if (!waitForMachineIdle(120, &errorMessage)) {
-                sendError(socket, QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage), idCode);
-                return;
-            }
-
-            bool fitSuccess = false;
-            double centerX = 0.0;
-            double centerY = 0.0;
-            double centerZ = 0.0;
-            double rms = 0.0;
-
-            for (int retry = 0; retry < CALIBRATION_MAX_FIT_RETRIES && !fitSuccess; ++retry) {
-                const QString cloudName = QString::number(i + 1);
-                QJsonObject acquireParams;
-                acquireParams["async"] = true;
-                acquireParams["outputName"] = cloudName;
-                if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr)) {
-                    continue;
-                }
-
-                QJsonObject fitParams;
-                fitParams["type"] = "sphere";
-                fitParams["name"] = cloudName;
-                fitParams["outliersRatio"] = 0.35;
-                fitParams["confidence"] = 0.9999;
-                fitParams["autoDetectRadius"] = false;
-                fitParams["radius"] = CALIBRATION_RADIUS;
-                fitParams["rms"] = CALIBRATION_RMS_THRESHOLD;
-                fitParams["retries"] = 3;
-
-                if (handleFitSphere(fitParams, nullptr, QString(), centerX, centerY, centerZ, rms) && rms < CALIBRATION_RMS_THRESHOLD) {
-                    fitSuccess = true;
-                    break;
-                }
-
-                ccHObject* root = m_app->dbRootObject();
-                if (root) {
-                    if (ccHObject* target = findByName(root, cloudName)) {
-                        m_app->removeFromDB(target);
-                    }
-                }
-            }
-
-            if (!fitSuccess) {
-                sendError(socket, QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES), idCode);
-                return;
-            }
-
-            scannerPoints.emplace_back(centerX, centerY, centerZ);
-
-            QJsonObject fitItem;
-            fitItem["index"] = i + 1;
-            fitItem["machine"] = QJsonArray{pos.x(), pos.y(), pos.z()};
-            fitItem["scanner"] = QJsonArray{centerX, centerY, centerZ};
-            fitItem["rms"] = rms;
-            fitResults.append(fitItem);
-        }
-
-        CalibrationRigidTransform transform;
-        try {
-            transform = computeRigidTransform(scannerPoints, machinePoints);
-        } catch (const std::exception& e) {
-            sendError(socket, QString("Calibration matrix computation failed: %1").arg(e.what()), idCode);
-            return;
-        }
-
-        const Eigen::Matrix4d matrix = toMatrix4d(transform);
-        QJsonArray matrixRows;
-        QJsonArray residuals;
-        bool residualOk = true;
-        for (int row = 0; row < 4; ++row) {
-            QJsonArray rowArray;
-            for (int col = 0; col < 4; ++col) {
-                rowArray.append(matrix(row, col));
-            }
-            matrixRows.append(rowArray);
-        }
-
-        for (size_t i = 0; i < scannerPoints.size(); ++i) {
-            const Eigen::Vector3d calc = transform.R * scannerPoints[i] + transform.T;
-            const double error = (calc - machinePoints[i]).norm();
-            residuals.append(error);
-            if (error > CALIBRATION_RESIDUAL_THRESHOLD) {
-                residualOk = false;
-            }
-            m_app->dispToConsole(QString("[TcpPlugin][Calibration] Point %1 residual: %2 mm").arg(static_cast<int>(i + 1)).arg(error));
-        }
-
-        QString matrixText;
-        for (int row = 0; row < 4; ++row) {
-            matrixText += QString("%1 %2 %3 %4")
-                              .arg(matrix(row, 0))
-                              .arg(matrix(row, 1))
-                              .arg(matrix(row, 2))
-                              .arg(matrix(row, 3));
-            if (row != 3) {
-                matrixText += "\n";
-            }
-        }
-        m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n%1").arg(matrixText));
-
-        QJsonObject response;
-        response["matrix"] = matrixRows;
-        response["fitResults"] = fitResults;
-        response["residuals"] = residuals;
-        response["residualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
-        response["residualOk"] = residualOk;
-        response["positionCount"] = positions.size();
-        sendResponse(socket, true, residualOk ? "Calibration completed" : "Calibration completed with residual warnings", idCode, response);
-    }, Qt::QueuedConnection);
+void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	auto        id = QThread::currentThreadId();
+	/*if (m_machineSocket->thread() == QThread::currentThread())
+	{
+		auto test = m_machineSocket->thread()->currentThreadId();
+	}*/
+	
+    QJsonObject status;
+    //先获取机床状态，再获取标定状态
+	QString value,errorMsg;
+	if (!getDeviceRun(value, &errorMsg))
+	{
+		status["GetStatus_Ret"] = "1";
+		status["Error"]         = "Failed to get device run status";
+		sendRes(socket, status, idCode);
+        return;
+    }
+	QByteArray responseBytes = QJsonDocument(m_calibrationResult).toJson(QJsonDocument::Indented) + "\n";
+	status["calibrationResult"] = m_calibrationResult["calibrationResult"];
+	status["GetStatus_Ret"] = "0";
+    switch (m_calibrationStatus)
+	{
+	case CalibrationStatus::Running:
+		status["status"] = "running";
+		break;
+	case CalibrationStatus::Idle:
+		if (value != "0")
+		{
+			status["status"] = "running";
+		}
+		else
+		{
+			status["status"] = "idle";
+		}
+		break;
+    }
+	sendRes(socket, status, idCode);
 }
