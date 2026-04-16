@@ -37,7 +37,9 @@ class PointCloudService : public QObject
 	void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);	
+	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); // 获取工件检查结果
+	
 	//
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
@@ -75,8 +77,7 @@ class PointCloudService : public QObject
     void               saveCalibrationStatus(); // 保存标定状态
     void               savePartInspectResult(const QString& rfid, const QJsonObject& result); // 保存工件检查结果
     // 接口函数
-    void               getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); // 获取工件检查结果
-	class ccHObject*   findByName(class ccHObject* node, const QString& name);
+   class ccHObject*   findByName(class ccHObject* node, const QString& name);
 	void               sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());
 	bool               clearDbInternal(QTcpSocket* socket, const QString& idCode);
 	bool               acquirePcdInternal(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, QJsonObject* result = nullptr);
@@ -89,7 +90,7 @@ class PointCloudService : public QObject
 	bool               waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);
 	bool               getDeviceRun(QString& value, QString* errorMessage = nullptr);
 	QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
-	void               saveCalibrationStatus();
+
 
 	bool ensureConnected(QString* errorMessage, int connectTimeout);
 	int  findJsonObjectEnd(const QByteArray& buffer);
