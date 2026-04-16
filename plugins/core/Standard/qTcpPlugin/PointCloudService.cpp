@@ -90,11 +90,15 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 				} else if (obj.contains("matrix") && obj["matrix"].isArray()) {
 					// 加载标定结果矩阵到 Eigen::Matrix4d
 					QJsonArray matrixArray = obj["matrix"].toArray();
-					if (matrixArray.size() == 16) {
+					if (matrixArray.size() == 4) {
 						for (int i = 0; i < 4; ++i) {
-							for (int j = 0; j < 4; ++j) {
-								int index = i * 4 + j;
-								m_calibrationMatrix(i, j) = matrixArray[index].toDouble();
+							if (matrixArray[i].isArray()) {
+								QJsonArray rowArray = matrixArray[i].toArray();
+								if (rowArray.size() == 4) {
+									for (int j = 0; j < 4; ++j) {
+										m_calibrationMatrix(i, j) = rowArray[j].toDouble();
+									}
+								}
 							}
 						}
 					}
@@ -1130,6 +1134,54 @@ Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z
 
     // 合成：先 B 轴旋转，再 C 轴旋转，最后平移
     return T_B * T_C * T_XYZ;
+}
+
+bool PointCloudService::applyTransformationInternal(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage)
+{
+    if (objectName.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = "Missing object name";
+        }
+        return false;
+    }
+
+    ccHObject* root = m_app->dbRootObject();
+    if (!root) {
+        if (errorMessage) {
+            *errorMessage = "No database root object";
+        }
+        return false;
+    }
+
+    ccHObject* entity = findByName(root, objectName);
+    if (!entity) {
+        if (errorMessage) {
+            *errorMessage = "Object not found: " + objectName;
+        }
+        return false;
+    }
+
+    bool lockedVertices = false;
+    ccGenericPointCloud* cloud = ccHObjectCaster::ToGenericPointCloud(entity, &lockedVertices);
+    if (cloud && lockedVertices) {
+        if (errorMessage) {
+            *errorMessage = "Vertices are locked: " + objectName;
+        }
+        return false;
+    }
+    if (cloud) {
+        cloud->deleteOctree();
+    }
+
+    entity->setGLTransformation(ccGLMatrix(matrix.data()));
+    entity->applyGLTransformation_recursive();
+    entity->prepareDisplayForRefresh_recursive();
+
+    m_app->updateUI();
+    m_app->refreshAll();
+
+    m_app->dispToConsole("[TcpPlugin] Transformation applied to: " + objectName);
+    return true;
 }
 
 void PointCloudService::icp(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
@@ -2530,8 +2582,13 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     // 5. 处理每个打孔位置
     for (int i = 0; i < holePositions.size(); ++i) {
         QJsonObject holePos = holePositions[i].toObject();
-        QJsonArray capturePositions = holePos.value("capturePositions").toArray();
-        
+		QJsonArray  capturePositions = holePos.value("capturePositions").toArray();
+		QJsonObject zeroPositions    = holePos.value("ZeroPos").toObject();
+		double      ZeroX = 0.0, ZeroY = 0.0, ZeroZ = 0.0;
+		ZeroX = zeroPositions.value("X").toDouble();
+		ZeroY = zeroPositions.value("Y").toDouble();
+		ZeroZ = zeroPositions.value("Z").toDouble();
+
         if (capturePositions.isEmpty()) {
             continue;
         }
@@ -2631,6 +2688,69 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 return;
             }
 
+            // 7. 应用变换
+            // 7.1 应用 T1 矩阵
+            Eigen::Matrix4d T1;
+            T1 << -1.000000, 0.000000, 0.000000, 0.000000,
+                  0.000000, 1.000000, 0.000000, 0.000000,
+                  0.000000, 0.000000, 1.000000, 0.000000,
+                  0.000000, 0.000000, 0.000000, 1.000000;
+
+			// 7.2 应用基于 x, y, z, B, C 的变换
+			Eigen::Matrix4d T_cam_motion = computeCameraMotion(
+			    m_calibrationMatrix,
+			    -(x - ZeroX),
+			    -(y - ZeroY),
+			    -(z - ZeroZ),
+			    b,
+			    c);
+
+			Eigen::Matrix4d finalTransform = (T_cam_motion * T1);
+			;
+
+     //       // 将 Eigen 矩阵转换为 ccGLMatrixd
+     //       double t1Matrix[16];
+     //       for (int row = 0; row < 4; ++row) {
+     //           for (int col = 0; col < 4; ++col) {
+					//t1Matrix[row * 4 + col] = finalTransform(row, col);
+     //           }
+     //       }
+     //       ccGLMatrixd t1GlMatrix(t1Matrix);
+
+			ccGLMatrixd t1GlMatrix(finalTransform.data()); // 直接传指针，无需循环
+            
+            QString errorMessage;
+            if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage)) {
+                QJsonObject result;
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
+                return;
+            }
+            
+            
+            
+            //// 将 Eigen 矩阵转换为 ccGLMatrixd
+            //double camMatrix[16];
+            //for (int row = 0; row < 4; ++row) {
+            //    for (int col = 0; col < 4; ++col) {
+            //        camMatrix[row * 4 + col] = T_cam_motion(row, col);
+            //    }
+            //}
+            //ccGLMatrixd camGlMatrix(camMatrix);
+            //
+            //if (!applyTransformationInternal(cloudName, camGlMatrix, false, &errorMessage)) {
+            //    QJsonObject result;
+            //    QJsonObject obj;
+            //    obj["result"] = "failed";
+            //    obj["error"] = QString("Failed to apply camera motion transformation: %1").arg(errorMessage);
+            //    result["inspectResult"] = obj;
+            //    savePartInspectResult(rfid, result);
+            //    return;
+            //}
+
             // 7. 处理裁剪区域
             if (capturePos.contains("cropRegion")) {
                 QJsonObject cropRegion = capturePos["cropRegion"].toObject();
@@ -2725,7 +2845,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         } else if (cloudNames.size() == 1) {
             mergedCloudName = cloudNames[0].toString();
         }
-        
+
         // 9. 与理论模型进行 ICP 配准
         if (!mergedCloudName.isEmpty() && config.contains("modelFile")) {
             QJsonObject icpParams;
