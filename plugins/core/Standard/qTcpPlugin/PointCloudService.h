@@ -61,6 +61,7 @@ class PointCloudService : public QObject
 	QTcpSocket*                 m_workerMachineSocket; // 机床长连接（工作线程）
 	MachineStatus               m_Status;   // 状态
 	QJsonObject                 m_calibrationResult;   // 标定结果
+	QJsonObject                 m_inspectResult;       // 检查结果
 	QString                     m_statusFilePath;      // 状态文件路径
 
 	//标定函数
@@ -72,6 +73,8 @@ class PointCloudService : public QObject
 	void               sendRes(QTcpSocket* socket, QJsonObject& msg, const QString& idCode);
 	void               sendError(QTcpSocket* socket, const QString& msg, const QString& idCode);
 	class ccHObject*   getDbRoot(QTcpSocket* socket, const QString& idCode);
+    void               saveCalibrationStatus(); // 保存标定状态
+    void               saveInspectStatus(); // 保存检查状态
 	class ccHObject*   findByName(class ccHObject* node, const QString& name);
 	void               sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());
 	bool               clearDbInternal(QTcpSocket* socket, const QString& idCode);

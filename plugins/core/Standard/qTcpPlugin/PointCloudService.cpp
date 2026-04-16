@@ -96,6 +96,9 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	{
 		m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "not inited"}};
 	}
+	
+	// 初始化检查结果
+	m_inspectResult["inspectResult"] = QJsonObject{{"result", "idle"}, {"message", "Ready for inspection"}};
 }
 
 PointCloudService::~PointCloudService()
@@ -113,16 +116,25 @@ PointCloudService::~PointCloudService()
 }
 
 // 保存标定状态到文件
-void PointCloudService::saveCalibrationStatus()
-{
-
-	QFile statusFile(m_statusFilePath);
-	if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text))
-	{
+void PointCloudService::saveCalibrationStatus() {
+    
+    QFile statusFile(m_statusFilePath);
+    if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
 		QByteArray data = QJsonDocument(m_calibrationResult).toJson(QJsonDocument::Indented);
-		statusFile.write(data);
-		statusFile.close();
-	}
+        statusFile.write(data);
+        statusFile.close();
+    }
+}
+
+// 保存检查状态到文件
+void PointCloudService::saveInspectStatus() {
+    
+    QFile statusFile(m_statusFilePath);
+    if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		QByteArray data = QJsonDocument(m_inspectResult).toJson(QJsonDocument::Indented);
+        statusFile.write(data);
+        statusFile.close();
+    }
 }
 
 void PointCloudService::sendRes(QTcpSocket* socket, QJsonObject& resp, const QString& idCode)
@@ -2101,7 +2113,195 @@ void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket
 
 void PointCloudService::partInspectFunc(const QJsonObject& params)
 {
+    // 1. 从 params 中获取工件类型
+    QString partType = params.value("partType").toString();
+    if (partType.isEmpty()) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = "Part type is required";
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
 
+    // 2. 找到对应的扫描配置 JSON 文件
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString templateDir = appDir + "/PartInfo";
+    QString configFile = templateDir + "/" + partType + "_inspect_config.json";
+
+    QFile file(configFile);
+    if (!file.exists()) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = QString("Configuration file not found for part type: %1").arg(partType);
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = QString("Failed to open configuration file: %1").arg(file.errorString());
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
+
+    // 3. 读取 JSON 文件
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = QString("Invalid configuration file: %1").arg(parseError.errorString());
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
+
+    QJsonObject config = doc.object();
+    QJsonArray holePositions = config.value("holePositions").toArray();
+    if (holePositions.isEmpty()) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = "No hole positions found in configuration";
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
+
+    // 4. 生成并发送 NC 文件
+    QString templateFile = templateDir + "/Inspect.nc";
+    QFile templateNc(templateFile);
+    if (!templateNc.exists()) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = "Inspect.nc template file does not exist";
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
+
+    if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonObject obj;
+        obj["result"] = "failed";
+        obj["error"] = "Failed to open Inspect.nc template";
+        m_inspectResult["inspectResult"] = obj;
+        saveInspectStatus();
+        return;
+    }
+
+    const QString templateContent = QTextStream(&templateNc).readAll();
+    templateNc.close();
+
+    QString errorMessage;
+
+    // 5. 处理每个打孔位置
+    for (int i = 0; i < holePositions.size(); ++i) {
+        QJsonObject holePos = holePositions[i].toObject();
+        QJsonArray capturePositions = holePos.value("capturePositions").toArray();
+        
+        if (capturePositions.isEmpty()) {
+            continue;
+        }
+
+        // 处理每个拍摄位置
+        for (int j = 0; j < capturePositions.size(); ++j) {
+            QJsonObject capturePos = capturePositions[j].toObject();
+            double x = capturePos.value("X").toDouble();
+            double y = capturePos.value("Y").toDouble();
+            double z = capturePos.value("Z").toDouble();
+            double b = capturePos.value("B").toDouble();
+            double c = capturePos.value("C").toDouble();
+
+            // 生成 NC 文件
+            QString content = templateContent;
+            content.replace("{X}", QString::number(x));
+            content.replace("{Y}", QString::number(y));
+            content.replace("{Z}", QString::number(z));
+            content.replace("{B}", QString::number(b));
+            content.replace("{C}", QString::number(c));
+
+            const QString outputFile = templateDir + QString("/Inspect_%1_%2.nc").arg(i + 1).arg(j + 1);
+            QFile outputNc(outputFile);
+            if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Failed to write NC file for position %1-%2").arg(i + 1).arg(j + 1);
+                m_inspectResult["inspectResult"] = obj;
+                saveInspectStatus();
+                return;
+            }
+            QTextStream out(&outputNc);
+            out << content;
+            outputNc.close();
+
+            // 发送文件到机床
+            if (!sendFileToMachine(outputFile, &errorMessage)) {
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Failed to send NC file for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                m_inspectResult["inspectResult"] = obj;
+                saveInspectStatus();
+                return;
+            }
+
+            // 设置主程序
+            if (!setMainProgram(&errorMessage)) {
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                m_inspectResult["inspectResult"] = obj;
+                saveInspectStatus();
+                return;
+            }
+
+            // 启动机床
+            if (!startMachine(&errorMessage)) {
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Failed to start machine for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                m_inspectResult["inspectResult"] = obj;
+                saveInspectStatus();
+                return;
+            }
+
+            // 等待机床完成
+            if (!waitForMachineIdle(120, &errorMessage)) {
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Machine did not become idle for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                m_inspectResult["inspectResult"] = obj;
+                saveInspectStatus();
+                return;
+            }
+
+            // 6. 获取点云
+            const QString cloudName = QString("Hole_%1_Capture_%2").arg(i + 1).arg(j + 1);
+            QJsonObject acquireParams;
+            acquireParams["async"] = true;
+            acquireParams["outputName"] = cloudName;
+            if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr)) {
+                QJsonObject obj;
+                obj["result"] = "failed";
+                obj["error"] = QString("Failed to acquire point cloud for position %1-%2").arg(i + 1).arg(j + 1);
+                m_inspectResult["inspectResult"] = obj;
+                saveInspectStatus();
+                return;
+            }
+        }
+    }
+
+    // 完成检查
+    QJsonObject obj;
+    obj["result"] = "success";
+    obj["message"] = "Part inspection completed";
+    m_inspectResult["inspectResult"] = obj;
+    saveInspectStatus();
 }
 
 void PointCloudService::calibrationFunc(const QJsonObject& params)
@@ -2214,6 +2414,8 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 		content.replace("{X}", QString::number(pos.x()));
 		content.replace("{Y}", QString::number(pos.y()));
 		content.replace("{Z}", QString::number(pos.z()));
+		content.replace("{B}", QString::number(0));
+		content.replace("{C}", QString::number(0));
 
 		const QString outputFile = templateDir + QString("/Calibration_%1.nc").arg(i + 1);
 		QFile         outputNc(outputFile);
