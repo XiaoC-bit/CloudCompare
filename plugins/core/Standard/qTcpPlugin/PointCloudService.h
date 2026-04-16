@@ -63,6 +63,7 @@ class PointCloudService : public QObject
 	QTcpSocket*                 m_workerMachineSocket; // 机床长连接（工作线程）
 	MachineStatus               m_Status;   // 状态
 	QJsonObject                 m_calibrationResult;   // 标定结果
+	Eigen::Matrix4d             m_calibrationMatrix;   // 标定结果矩阵
 	QString                     m_statusFilePath;      // 状态文件路径
 
 	//标定函数
@@ -83,6 +84,15 @@ class PointCloudService : public QObject
     bool               deleteObjectInternal(const QJsonObject& params, QString* errorMessage); // 内部删除对象函数
     bool               mergeInternal(const QJsonObject& params, QString* errorMessage); // 内部合并函数
     bool               icpInternal(const QJsonObject& params, QString* errorMessage); // 内部ICP配准函数
+    
+    // 数学工具函数
+    static constexpr double PI = 3.14159265358979323846;
+    static inline double deg2rad(double deg) { return deg * PI / 180.0; }
+    static inline double rad2deg(double rad) { return rad * 180.0 / PI; }
+    static Eigen::Matrix4d invertRigid(const Eigen::Matrix4d& T);
+    static Eigen::Matrix4d makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot);
+    static Eigen::Matrix4d computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg);
+    static Eigen::Matrix4d buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
 	void               sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());

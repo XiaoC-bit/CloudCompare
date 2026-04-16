@@ -87,6 +87,17 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 				if (obj.contains("result") && obj["result"].isString() && obj["result"].toString() == "calibrating")
 				{
 					m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "previous calibration interrupted"}};
+				} else if (obj.contains("matrix") && obj["matrix"].isArray()) {
+					// 加载标定结果矩阵到 Eigen::Matrix4d
+					QJsonArray matrixArray = obj["matrix"].toArray();
+					if (matrixArray.size() == 16) {
+						for (int i = 0; i < 4; ++i) {
+							for (int j = 0; j < 4; ++j) {
+								int index = i * 4 + j;
+								m_calibrationMatrix(i, j) = matrixArray[index].toDouble();
+							}
+						}
+					}
 				}
 			}
 		}
@@ -1053,6 +1064,72 @@ bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMes
     m_app->dispToConsole(QString("[TcpPlugin][ICP] Transformation matrix:\n") + matrixStr);
 
     return true;
+}
+
+// 数学工具函数实现
+Eigen::Matrix4d PointCloudService::invertRigid(const Eigen::Matrix4d& T)
+{
+    Eigen::Matrix3d R = T.block<3, 3>(0, 0);
+    Eigen::Vector3d t = T.block<3, 1>(0, 3);
+
+    Eigen::Matrix4d T_inv = Eigen::Matrix4d::Identity();
+    T_inv.block<3, 3>(0, 0) = R.transpose();
+    T_inv.block<3, 1>(0, 3) = -R.transpose() * t;
+    return T_inv;
+}
+
+Eigen::Matrix4d PointCloudService::makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot)
+{
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = Rot;
+    T.block<3, 1>(0, 3) = Rot * (-pivot) + pivot;
+    return T;
+}
+
+Eigen::Matrix4d PointCloudService::computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg)
+{
+    const Eigen::Vector3d pivot_B(0, 0, 0);
+    const Eigen::Vector3d pivot_C(0, 0, 0);
+
+    Eigen::Matrix4d T_robot_move = buildRobotMotion(x, y, z, B_deg, C_deg, pivot_B, pivot_C);
+    Eigen::Matrix4d T_robot2cam = invertRigid(T_cam2robot);
+
+    // 相似变换：将机床运动映射到相机坐标系
+    return T_robot2cam * T_robot_move * T_cam2robot;
+}
+
+Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C)
+{
+    const double B = deg2rad(B_deg);
+    const double C = deg2rad(C_deg);
+
+    // B 轴旋转矩阵（绕 Y 轴）
+    Eigen::Matrix3d Ry;
+    Ry << cos(B), 0, sin(B),
+        0, 1, 0,
+        -sin(B), 0, cos(B);
+
+    // C 轴旋转矩阵（绕 Z 轴）
+    Eigen::Matrix3d Rz;
+    Rz << cos(C), -sin(C), 0,
+        sin(C), cos(C), 0,
+        0, 0, 1;
+
+    // B 轴变换（机床坐标系下绕 pivot_B 旋转）
+    Eigen::Matrix4d T_B = makePivotTransform(Ry, pivot_B);
+
+    // 将 pivot_C 从机床坐标系变换到 B 轴局部坐标系
+    Eigen::Vector3d pivot_C_local = Ry.transpose() * (pivot_C - pivot_B);
+
+    // C 轴变换（B 轴局部坐标系下绕 pivot_C_local 旋转）
+    Eigen::Matrix4d T_C = makePivotTransform(Rz, pivot_C_local);
+
+    // XYZ 平移
+    Eigen::Matrix4d T_XYZ = Eigen::Matrix4d::Identity();
+    T_XYZ.block<3, 1>(0, 3) = Eigen::Vector3d(x, y, z);
+
+    // 合成：先 B 轴旋转，再 C 轴旋转，最后平移
+    return T_B * T_C * T_XYZ;
 }
 
 void PointCloudService::icp(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
@@ -2977,6 +3054,8 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 		obj["residualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
 		obj["residualOk"]        = residualOk;
 		obj["positionCount"]     = positions.size();
+		// 保存矩阵到成员变量
+		m_calibrationMatrix = matrix;
 	}
 	else
 	{
