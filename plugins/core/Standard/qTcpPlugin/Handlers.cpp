@@ -32,12 +32,16 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
         m_service->clone(cmd.params, cmd.socket, cmd.idCode);
     } else if (cmd.type == "acquirePcd") {
         m_service->acquirePcd(cmd.params, cmd.socket, cmd.idCode);
-    } else if (cmd.type == "startCalibration") {
+    } else if (cmd.type == "Calibration") {
         m_service->startCalibration(cmd.params, cmd.socket, cmd.idCode);
 	}
-	else if (cmd.type == "getStatus")
+	else if (cmd.type == "GetStatus")
 	{
 		m_service->getStatus(cmd.params, cmd.socket, cmd.idCode);
+	}
+	else if (cmd.type == "PartInspect")
+	{
+		m_service->partInspect(cmd.params, cmd.socket, cmd.idCode);
 	}
 }
 

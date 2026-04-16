@@ -98,8 +98,9 @@ void qTcpPlugin::startServer()
 	m_dispatcher->registerHandler("merge", handler);
 	m_dispatcher->registerHandler("clone", handler);
 	m_dispatcher->registerHandler("acquirePcd", handler);
-	m_dispatcher->registerHandler("startCalibration", handler);
-	m_dispatcher->registerHandler("getStatus", handler);
+	m_dispatcher->registerHandler("Calibration", handler);
+	m_dispatcher->registerHandler("GetStatus", handler);
+	m_dispatcher->registerHandler("PartInspect", handler);
 	
 
 	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);
