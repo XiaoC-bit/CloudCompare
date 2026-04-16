@@ -43,6 +43,10 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
 	{
 		m_service->partInspect(cmd.params, cmd.socket, cmd.idCode);
 	}
+	else if (cmd.type == "GetPartInspectResult")
+	{
+		m_service->getPartInspectResult(cmd.params, cmd.socket, cmd.idCode);
+	}
 }
 
 MachineCommandHandler::MachineCommandHandler(MachineProxy* proxy) : m_proxy(proxy) {

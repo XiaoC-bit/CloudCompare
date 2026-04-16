@@ -96,9 +96,6 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	{
 		m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "not inited"}};
 	}
-	
-	// 初始化检查结果
-	m_inspectResult["inspectResult"] = QJsonObject{{"result", "idle"}, {"message", "Ready for inspection"}};
 }
 
 PointCloudService::~PointCloudService()
@@ -126,15 +123,68 @@ void PointCloudService::saveCalibrationStatus() {
     }
 }
 
-// 保存检查状态到文件
-void PointCloudService::saveInspectStatus() {
+// 保存工件检查结果到文件
+void PointCloudService::savePartInspectResult(const QString& rfid, const QJsonObject& result) {
     
-    QFile statusFile(m_statusFilePath);
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString resultDir = appDir + "/PartResult";
+    
+    // 确保目录存在
+    QDir dir(resultDir);
+    if (!dir.exists()) {
+        dir.mkpath(resultDir);
+    }
+    
+    QString resultFile = resultDir + "/" + rfid + ".json";
+    QFile statusFile(resultFile);
     if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-		QByteArray data = QJsonDocument(m_inspectResult).toJson(QJsonDocument::Indented);
+		QByteArray data = QJsonDocument(result).toJson(QJsonDocument::Indented);
         statusFile.write(data);
         statusFile.close();
     }
+}
+
+// 获取工件检查结果
+void PointCloudService::getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
+    // 从 params 中获取 RFID
+    QString rfid = params.value("rfid").toString();
+    if (rfid.isEmpty()) {
+        sendError(socket, "RFID is required", idCode);
+        return;
+    }
+    
+    // 构建结果文件路径
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString resultDir = appDir + "/PartResult";
+    QString resultFile = resultDir + "/" + rfid + ".json";
+    
+    // 检查文件是否存在
+    QFile file(resultFile);
+    if (!file.exists()) {
+        sendError(socket, QString("Inspection result not found for RFID: %1").arg(rfid), idCode);
+        return;
+    }
+    
+    // 读取文件内容
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        sendError(socket, QString("Failed to open inspection result file: %1").arg(file.errorString()), idCode);
+        return;
+    }
+    
+    QByteArray data = file.readAll();
+    file.close();
+    
+    // 解析 JSON
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        sendError(socket, QString("Invalid inspection result file: %1").arg(parseError.errorString()), idCode);
+        return;
+    }
+    
+    // 返回结果
+    QJsonObject result = doc.object();
+    sendResponse(socket, true, "Inspection result retrieved successfully", idCode, result);
 }
 
 void PointCloudService::sendRes(QTcpSocket* socket, QJsonObject& resp, const QString& idCode)
@@ -2115,36 +2165,33 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
 {
     // 1. 从 params 中获取工件类型
     QString partType = params.value("partType").toString();
-    if (partType.isEmpty()) {
-        QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = "Part type is required";
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
-        return;
-    }
+    
+    // 2. 从 params 中获取 RFID
+    QString rfid = params.value("rfid").toString();
 
-    // 2. 找到对应的扫描配置 JSON 文件
+    // 3. 找到对应的扫描配置 JSON 文件
     QString appDir = QCoreApplication::applicationDirPath();
     QString templateDir = appDir + "/PartInfo";
     QString configFile = templateDir + "/" + partType + "_inspect_config.json";
 
     QFile file(configFile);
     if (!file.exists()) {
+        QJsonObject result;
         QJsonObject obj;
         obj["result"] = "failed";
         obj["error"] = QString("Configuration file not found for part type: %1").arg(partType);
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
         return;
     }
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonObject result;
         QJsonObject obj;
         obj["result"] = "failed";
         obj["error"] = QString("Failed to open configuration file: %1").arg(file.errorString());
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
         return;
     }
 
@@ -2155,22 +2202,24 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QJsonObject result;
         QJsonObject obj;
         obj["result"] = "failed";
         obj["error"] = QString("Invalid configuration file: %1").arg(parseError.errorString());
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
         return;
     }
 
     QJsonObject config = doc.object();
     QJsonArray holePositions = config.value("holePositions").toArray();
     if (holePositions.isEmpty()) {
+        QJsonObject result;
         QJsonObject obj;
         obj["result"] = "failed";
         obj["error"] = "No hole positions found in configuration";
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
         return;
     }
 
@@ -2178,20 +2227,22 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     QString templateFile = templateDir + "/Inspect.nc";
     QFile templateNc(templateFile);
     if (!templateNc.exists()) {
+        QJsonObject result;
         QJsonObject obj;
         obj["result"] = "failed";
         obj["error"] = "Inspect.nc template file does not exist";
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
         return;
     }
 
     if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonObject result;
         QJsonObject obj;
         obj["result"] = "failed";
         obj["error"] = "Failed to open Inspect.nc template";
-        m_inspectResult["inspectResult"] = obj;
-        saveInspectStatus();
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
         return;
     }
 
@@ -2229,11 +2280,12 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             const QString outputFile = templateDir + QString("/Inspect_%1_%2.nc").arg(i + 1).arg(j + 1);
             QFile outputNc(outputFile);
             if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
                 obj["error"] = QString("Failed to write NC file for position %1-%2").arg(i + 1).arg(j + 1);
-                m_inspectResult["inspectResult"] = obj;
-                saveInspectStatus();
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
                 return;
             }
             QTextStream out(&outputNc);
@@ -2242,41 +2294,45 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
 
             // 发送文件到机床
             if (!sendFileToMachine(outputFile, &errorMessage)) {
+                QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
                 obj["error"] = QString("Failed to send NC file for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                m_inspectResult["inspectResult"] = obj;
-                saveInspectStatus();
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
                 return;
             }
 
             // 设置主程序
             if (!setMainProgram(&errorMessage)) {
+                QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
                 obj["error"] = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                m_inspectResult["inspectResult"] = obj;
-                saveInspectStatus();
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
                 return;
             }
 
             // 启动机床
             if (!startMachine(&errorMessage)) {
+                QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
                 obj["error"] = QString("Failed to start machine for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                m_inspectResult["inspectResult"] = obj;
-                saveInspectStatus();
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
                 return;
             }
 
             // 等待机床完成
             if (!waitForMachineIdle(120, &errorMessage)) {
+                QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
                 obj["error"] = QString("Machine did not become idle for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                m_inspectResult["inspectResult"] = obj;
-                saveInspectStatus();
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
                 return;
             }
 
@@ -2286,22 +2342,24 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             acquireParams["async"] = true;
             acquireParams["outputName"] = cloudName;
             if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr)) {
+                QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
                 obj["error"] = QString("Failed to acquire point cloud for position %1-%2").arg(i + 1).arg(j + 1);
-                m_inspectResult["inspectResult"] = obj;
-                saveInspectStatus();
+                result["inspectResult"] = obj;
+                savePartInspectResult(rfid, result);
                 return;
             }
         }
     }
 
     // 完成检查
+    QJsonObject result;
     QJsonObject obj;
     obj["result"] = "success";
     obj["message"] = "Part inspection completed";
-    m_inspectResult["inspectResult"] = obj;
-    saveInspectStatus();
+    result["inspectResult"] = obj;
+    savePartInspectResult(rfid, result);
 }
 
 void PointCloudService::calibrationFunc(const QJsonObject& params)
@@ -2607,7 +2665,27 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 
 	QString strCmd = "PartInspect";
 
-	// 先判断是否已经有标定结果，如果没有标定结果或者标定结果不是成功，则返回错误
+	// 1. 检查参数
+	QString partType = params.value("partType").toString();
+	if (partType.isEmpty()) {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Error"] = "Part type is required";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 2. 检查 RFID
+	QString rfid = params.value("rfid").toString();
+	if (rfid.isEmpty()) {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Error"] = "RFID is required";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 3. 先判断是否已经有标定结果，如果没有标定结果或者标定结果不是成功，则返回错误
 	bool calibrationResult = false;
 	do
 	{
@@ -2632,7 +2710,6 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 
 	if (!calibrationResult)
 	{
-
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
 		obj["Error"]         = "Calibration has not been successfully completed";
@@ -2640,9 +2717,7 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 		return;
 	}
 
-	
-
-	//机床状态检测
+	// 4. 机床状态检测
 	QString errorMessage;
 	if (!waitForMachineIdle(1, &errorMessage))
 	{

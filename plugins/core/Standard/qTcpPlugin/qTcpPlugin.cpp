@@ -101,6 +101,7 @@ void qTcpPlugin::startServer()
 	m_dispatcher->registerHandler("Calibration", handler);
 	m_dispatcher->registerHandler("GetStatus", handler);
 	m_dispatcher->registerHandler("PartInspect", handler);
+	m_dispatcher->registerHandler("GetPartInspectResult", handler);
 	
 
 	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);
