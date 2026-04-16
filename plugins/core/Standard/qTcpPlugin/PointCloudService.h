@@ -58,7 +58,8 @@ public:
     ccMainAppInterface* m_app;
     std::vector<unsigned short> m_heightBuf;
     std::vector<unsigned char> m_luminanceBuf;
-    QTcpSocket* m_machineSocket; // 机床长连接
+    QTcpSocket* m_machineSocket; // 机床长连接（主线程）
+    QTcpSocket* m_workerMachineSocket; // 机床长连接（工作线程）
     CalibrationStatus m_calibrationStatus; // 标定状态
     QJsonObject m_calibrationResult; // 标定结果
     QString m_statusFilePath; // 状态文件路径

@@ -60,7 +60,7 @@ const int CALIBRATION_MAX_FIT_RETRIES = 3;
 }
 
 PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent) 
-    : QObject(parent), m_app(app), m_machineSocket(nullptr), m_calibrationStatus(CalibrationStatus::Idle) {
+    : QObject(parent), m_app(app), m_machineSocket(nullptr), m_workerMachineSocket(nullptr), m_calibrationStatus(CalibrationStatus::Idle) {
     // 设置状态文件路径
     QString appDir = QCoreApplication::applicationDirPath();
     m_statusFilePath = appDir + "/Template/calibration_status.json";
@@ -94,6 +94,10 @@ PointCloudService::~PointCloudService() {
     if (m_machineSocket) {
         m_machineSocket->disconnectFromHost();
         delete m_machineSocket;
+    }
+    if (m_workerMachineSocket) {
+        m_workerMachineSocket->disconnectFromHost();
+        delete m_workerMachineSocket;
     }
 }
 
@@ -287,26 +291,39 @@ int PointCloudService::findJsonObjectEnd(const QByteArray& buffer)
 
 bool PointCloudService::ensureConnected(QString* errorMessage, int connectTimeout)
 {
-	if (m_machineSocket && m_machineSocket->state() == QTcpSocket::ConnectedState)
-		return true;
+    QTcpSocket** socket = nullptr;
+    
+    // 根据当前线程选择使用哪个 socket
+    if (QThread::currentThread() == this->thread()) {
+        // 主线程使用 m_machineSocket
+        socket = &m_machineSocket;
+    } else {
+        // 工作线程使用 m_workerMachineSocket
+        socket = &m_workerMachineSocket;
+    }
+    
+    if (*socket && (*socket)->state() == QTcpSocket::ConnectedState)
+        return true;
 
-	resetConnection(); // 清理旧的
+    // 清理旧的 socket
+    if (*socket) {
+        (*socket)->abort();
+        (*socket)->deleteLater();
+        *socket = nullptr;
+    }
 
-	m_machineSocket = new QTcpSocket(this);
-	if (m_machineSocket->thread() == QThread::currentThread())
-	{
-		auto test = m_machineSocket->thread()->currentThreadId();
-	}
-
-	m_machineSocket->connectToHost(MACHINE_HOST, MACHINE_PORT);
-	if (!m_machineSocket->waitForConnected(connectTimeout))
-	{
-		setError(errorMessage,
-		         "Failed to connect machine middleware: " + m_machineSocket->errorString());
-		resetConnection();
-		return false;
-	}
-	return true;
+    *socket = new QTcpSocket(this);
+    (*socket)->connectToHost(MACHINE_HOST, MACHINE_PORT);
+    if (!(*socket)->waitForConnected(connectTimeout))
+    {
+        setError(errorMessage,
+                 "Failed to connect machine middleware: " + (*socket)->errorString());
+        (*socket)->abort();
+        (*socket)->deleteLater();
+        *socket = nullptr;
+        return false;
+    }
+    return true;
 }
 
 void PointCloudService::resetConnection()
@@ -316,6 +333,12 @@ void PointCloudService::resetConnection()
 		m_machineSocket->abort();
 		m_machineSocket->deleteLater();
 		m_machineSocket = nullptr;
+	}
+	if (m_workerMachineSocket)
+	{
+		m_workerMachineSocket->abort();
+		m_workerMachineSocket->deleteLater();
+		m_workerMachineSocket = nullptr;
 	}
 }
 
@@ -327,17 +350,16 @@ void PointCloudService::setError(QString* out, const QString& msg)
 
 bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage, int timeout)
 {
-
-	const auto threadId = reinterpret_cast<qulonglong>(QThread::currentThreadId());
-	CommLogger::instance().logSent(QString("Thread %1 in").arg(threadId));
-
 	if (!ensureConnected(errorMessage, timeout))
 		return false;
 
-	if (m_machineSocket->thread() == QThread::currentThread())
-	{
-		auto test = m_machineSocket->thread()->currentThreadId();
-	}
+    // 根据当前线程选择使用哪个 socket
+    QTcpSocket* socket = nullptr;
+    if (QThread::currentThread() == this->thread()) {
+        socket = m_machineSocket;
+    } else {
+        socket = m_workerMachineSocket;
+    }
 
 	// --- 构造命令，生成 IDCode ---
 	QJsonObject   command = params;
@@ -347,18 +369,16 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
 	command["IDCode"]     = idCode;
 
 	// --- 发送前清空 socket 残留数据（处理上次超时遗留）---
-	if (m_machineSocket->bytesAvailable() > 0)
+	if (socket->bytesAvailable() > 0)
 	{
-		m_machineSocket->readAll();
-		CommLogger::instance().logSent(
-		    QString("Thread %1: cleared stale buffer").arg(threadId));
+		socket->readAll();
 	}
 
 	const QByteArray payload = QJsonDocument(command).toJson(QJsonDocument::Compact);
-	if (m_machineSocket->write(payload) == -1 || !m_machineSocket->waitForBytesWritten(timeout))
+	if (socket->write(payload) == -1 || !socket->waitForBytesWritten(timeout))
 	{
 		setError(errorMessage,
-		         "Failed to send machine command: " + m_machineSocket->errorString());
+		         "Failed to send machine command: " + socket->errorString());
 		resetConnection();
 		return false;
 	}
@@ -374,12 +394,12 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
 		if (remain <= 0)
 			break;
 
-		if (m_machineSocket->bytesAvailable() == 0 && !m_machineSocket->waitForReadyRead(remain))
+		if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(remain))
 		{
 			continue;
 		}
 
-		buffer.append(m_machineSocket->readAll());
+		buffer.append(socket->readAll());
 
 		// 从 buffer 中提取所有完整 JSON 对象，逐个检查 IDCode
 		while (true)
@@ -396,9 +416,6 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
 
 			if (err.error != QJsonParseError::NoError || !doc.isObject())
 			{
-				// 无效 JSON，丢弃，继续
-				CommLogger::instance().logSent(
-				    QString("Thread %1: discarded invalid JSON").arg(threadId));
 				continue;
 			}
 
@@ -408,27 +425,16 @@ bool PointCloudService::sendMachineCommand(const QJsonObject& params, QJsonObjec
 			if (receivedId != idCode)
 			{
 				// IDCode 不匹配，是上一个请求的残留，丢弃
-				CommLogger::instance().logSent(
-				    QString("Thread %1: discarded stale IDCode=%2, expected=%3")
-				        .arg(threadId)
-				        .arg(receivedId)
-				        .arg(idCode));
 				continue;
 			}
 
 			// 匹配成功
 			response = obj;
-			CommLogger::instance().logSent(
-			    QString("Thread %1 out %2")
-			        .arg(threadId)
-			        .arg(QString::fromUtf8(jsonBytes)));
 			return true;
 		}
 	}
 
 	setError(errorMessage, "Machine command response timeout");
-	CommLogger::instance().logSent(
-	    QString("Thread %1 out Error").arg(threadId));
 	return false;
 }
 
@@ -2313,12 +2319,6 @@ void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* 
     saveCalibrationStatus();
 	
 	QMetaObject::invokeMethod(qApp, [this, params]() {
-		QString value,errorMsg;
-		if (!getDeviceRun(value, &errorMsg)) {
-
-	}
-		auto id = QThread::currentThreadId();
-		return;
 		calibrationFunc(params);
 		m_calibrationStatus = CalibrationStatus::Idle;
 		saveCalibrationStatus();
@@ -2326,13 +2326,7 @@ void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* 
 }
 
 void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
-{
-	auto        id = QThread::currentThreadId();
-	/*if (m_machineSocket->thread() == QThread::currentThread())
-	{
-		auto test = m_machineSocket->thread()->currentThreadId();
-	}*/
-	
+{	
     QJsonObject status;
     //先获取机床状态，再获取标定状态
 	QString value,errorMsg;
