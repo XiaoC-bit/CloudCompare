@@ -931,7 +931,7 @@ void PointCloudService::filter(const QJsonObject& params, QTcpSocket* socket, co
 	                          Qt::QueuedConnection);
 }
 
-bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMessage)
+bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMessage, ccGLMatrix* transMat)
 {
     // 支持两种参数名称：source/target 和 data/model
     const QString dataName = params.contains("source") ? params["source"].toString() : params["data"].toString();
@@ -999,13 +999,13 @@ bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMes
     }
 
     // Run ICP
-    ccGLMatrix transMat;
+    ccGLMatrix localTransMat;
     double finalError = 0.0;
     double finalScale = 1.0;
     unsigned finalPointCount = 0;
 
     bool success = ccRegistrationTools::ICP(
-        dataObj, modelObj, transMat, finalScale, finalError, finalPointCount,
+        dataObj, modelObj, localTransMat, finalScale, finalError, finalPointCount,
         icpParams, false, false, (QWidget*)(m_app->getMainWindow()));
 
     if (!success) {
@@ -1038,9 +1038,9 @@ bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMes
     }
 
     if (dataObj->isAncestorOf(modelObj)) {
-        pc->applyRigidTransformation(transMat);
+        pc->applyRigidTransformation(localTransMat);
     } else {
-        pc->applyGLTransformation_recursive(&transMat);
+        pc->applyGLTransformation_recursive(&localTransMat);
     }
 
     if (dataObj->isKindOf(CC_TYPES::MESH)) {
@@ -1063,9 +1063,14 @@ bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMes
     m_app->refreshAll();
     m_app->updateUI();
 
-    const QString matrixStr = transMat.toString(6, ' ');
+    const QString matrixStr = localTransMat.toString(6, ' ');
     m_app->dispToConsole(QString("[TcpPlugin][ICP] Final RMS: %1 (on %2 points)").arg(finalError).arg(finalPointCount));
     m_app->dispToConsole(QString("[TcpPlugin][ICP] Transformation matrix:\n") + matrixStr);
+
+    // 返回变换矩阵
+    if (transMat) {
+        *transMat = localTransMat;
+    }
 
     return true;
 }
@@ -2853,8 +2858,12 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             icpParams["target"] = "Theoretical_Model";
             icpParams["maxIterations"] = 100;
             icpParams["tolerance"] = 0.001;
+			icpParams["minRMSDecrease"] = 1e-7;
+			icpParams["maxThreadCount"] = 14;
+
             QString errorMessage;
-            if (!icpInternal(icpParams, &errorMessage)) {
+            ccGLMatrix transMat;
+            if (!icpInternal(icpParams, &errorMessage, &transMat)) {
                 QJsonObject result;
                 QJsonObject obj;
                 obj["result"] = "failed";
@@ -2863,6 +2872,17 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 savePartInspectResult(rfid, result);
                 return;
             }
+            
+            // 存储 ICP 变换矩阵结果
+            QJsonArray matrixArray;
+            for (int i = 0; i < 4; ++i) {
+                QJsonArray rowArray;
+                for (int j = 0; j < 4; ++j) {
+                    rowArray.append(transMat.data()[i * 4 + j]);
+                }
+                matrixArray.append(rowArray);
+            }
+            inspectionInfo["icpMatrix"] = matrixArray;
         }
     }
 

@@ -84,7 +84,7 @@ class PointCloudService : public QObject
     bool               segmentPolygonInternal(const QJsonObject& params, QString* errorMessage); // 内部分割函数（基于多边形）
     bool               deleteObjectInternal(const QJsonObject& params, QString* errorMessage); // 内部删除对象函数
     bool               mergeInternal(const QJsonObject& params, QString* errorMessage); // 内部合并函数
-    bool               icpInternal(const QJsonObject& params, QString* errorMessage); // 内部ICP配准函数
+    bool               icpInternal(const QJsonObject& params, QString* errorMessage, ccGLMatrix* transMat = nullptr); // 内部ICP配准函数
     
     // 数学工具函数
     static constexpr double PI = 3.14159265358979323846;
