@@ -639,7 +639,7 @@ bool CalibrationDialog::sendCommand(const QJsonObject &params, QJsonObject &resp
     }
     
     // 生成唯一ID
-    QString idCode = QUuid::createUuid().toString();
+	QString     idCode    = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QJsonObject cmdParams = params;
 	idCode.replace("{", "");
 	idCode.replace("}", "");

@@ -117,7 +117,7 @@ bool MachineProxy::sendSync(const QJsonObject& params, QJsonObject& response, in
 		return false;
 	}
 
-	QString idCode = QUuid::createUuid().toString();
+	QString idCode = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
 	SyncPendingCommand* syncCmd = new SyncPendingCommand();
 

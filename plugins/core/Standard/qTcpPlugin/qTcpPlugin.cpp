@@ -10,6 +10,7 @@
 #include "CalibrationDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
+#include <qthread.h>
 #include <memory>
 
 qTcpPlugin::qTcpPlugin(QObject* parent)
@@ -98,16 +99,34 @@ void qTcpPlugin::startServer()
 	m_dispatcher->registerHandler("clone", handler);
 	m_dispatcher->registerHandler("acquirePcd", handler);
 	m_dispatcher->registerHandler("startCalibration", handler);
+	m_dispatcher->registerHandler("getStatus", handler);
+	
 
 	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);
 	m_dispatcher->registerHandler("machine", machineHandler);
-	
-	// 4. 创建并启动 TCP 服务器
-	m_server = new CcTcpServer(this);
-	m_server->setCommandDispatcher(m_dispatcher);
 
-	quint16 port = 52700;
-	if (m_server->startListening(port))
+
+	QThread* tcpThread = new QThread(this);
+	// 4. 创建并启动 TCP 服务器
+	m_server = new CcTcpServer(nullptr);
+	m_server->setCommandDispatcher(m_dispatcher);
+	m_server->moveToThread(tcpThread);
+
+	connect(tcpThread, &QThread::started, [this]()
+	        {
+				quint16 port = 52700;
+				m_server->startListening(port);
+			});
+
+	
+// 可选：线程结束时释放
+	connect(tcpThread, &QThread::finished, m_server, &QObject::deleteLater);
+
+
+	
+	tcpThread->start();
+
+	/*if (m_server->startListening(port))
 	{
 		m_app->dispToConsole(QString("[TcpPlugin] Listening on port %1").arg(port));
 	}
@@ -123,7 +142,7 @@ void qTcpPlugin::startServer()
 		m_pointCloudService = nullptr;
 		delete m_machineProxy;
 		m_machineProxy = nullptr;
-	}
+	}*/
 
 	updateActions();
 }

@@ -34,7 +34,11 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
         m_service->acquirePcd(cmd.params, cmd.socket, cmd.idCode);
     } else if (cmd.type == "startCalibration") {
         m_service->startCalibration(cmd.params, cmd.socket, cmd.idCode);
-    }
+	}
+	else if (cmd.type == "getStatus")
+	{
+		m_service->getStatus(cmd.params, cmd.socket, cmd.idCode);
+	}
 }
 
 MachineCommandHandler::MachineCommandHandler(MachineProxy* proxy) : m_proxy(proxy) {
