@@ -2583,12 +2583,13 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     templateNc.close();
 
     QString errorMessage;
-
+	QJsonArray icpResults;
     // 5. 处理每个打孔位置
     for (int i = 0; i < holePositions.size(); ++i) {
         QJsonObject holePos = holePositions[i].toObject();
 		QJsonArray  capturePositions = holePos.value("capturePositions").toArray();
 		QJsonObject zeroPositions    = holePos.value("ZeroPos").toObject();
+		QString     holdId           = holePos.value("id").toString();
 		double      ZeroX = 0.0, ZeroY = 0.0, ZeroZ = 0.0;
 		ZeroX = zeroPositions.value("X").toDouble();
 		ZeroY = zeroPositions.value("Y").toDouble();
@@ -2882,7 +2883,11 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 }
                 matrixArray.append(rowArray);
             }
-            inspectionInfo["icpMatrix"] = matrixArray;
+
+			QJsonObject holeIcpReuslt;
+			holeIcpReuslt["holdId"] = holeIcpReuslt;
+			holeIcpReuslt["icpMatrix"] = matrixArray;
+			icpResults.push_back(holeIcpReuslt);
         }
     }
 
@@ -2893,7 +2898,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     obj["message"] = "Part inspection completed";
     
     // 添加检查信息
-    QJsonObject inspectionInfo;
+	QJsonObject inspectionInfo;
+	inspectionInfo["icpResults"] = icpResults;
     inspectionInfo["partType"] = partType;
     inspectionInfo["rfid"] = rfid;
     inspectionInfo["holeCount"] = holePositions.size();
