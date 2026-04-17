@@ -36,11 +36,17 @@ class PointCloudService : public QObject
 	void merge(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void clone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void probeCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); // 获取工件检查结果
-	
+
+
+	void electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	//
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
@@ -63,8 +69,11 @@ class PointCloudService : public QObject
 	QTcpSocket*                 m_machineSocket;       // 机床长连接（主线程）
 	QTcpSocket*                 m_workerMachineSocket; // 机床长连接（工作线程）
 	MachineStatus               m_Status;   // 状态
-	QJsonObject                 m_calibrationResult;   // 标定结果
-	Eigen::Matrix4d             m_calibrationMatrix;   // 标定结果矩阵
+	QJsonObject                 m_cameraCalibrationResult;   // 相机标定结果
+	Eigen::Matrix4d             m_cameraCalibrationMatrix;   // 相机标定结果矩阵
+
+	QJsonObject m_probeCalibrationResult; // 探针标定结果	
+
 	QString                     m_statusFilePath;      // 状态文件路径
 
 	//标定函数

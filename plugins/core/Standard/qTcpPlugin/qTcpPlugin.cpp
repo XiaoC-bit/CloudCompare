@@ -98,10 +98,19 @@ void qTcpPlugin::startServer()
 	m_dispatcher->registerHandler("merge", handler);
 	m_dispatcher->registerHandler("clone", handler);
 	m_dispatcher->registerHandler("acquirePcd", handler);
-	m_dispatcher->registerHandler("Calibration", handler);
+
+	m_dispatcher->registerHandler("CameraCalibration", handler);
+	m_dispatcher->registerHandler("CameraCalibrationResult", handler);
+
+	m_dispatcher->registerHandler("ProbeCalibration", handler);
+	m_dispatcher->registerHandler("ProbeCalibrationResult", handler);
+	
 	m_dispatcher->registerHandler("GetStatus", handler);
+
 	m_dispatcher->registerHandler("PartInspect", handler);
 	m_dispatcher->registerHandler("GetPartInspectResult", handler);
+	m_dispatcher->registerHandler("ElectrodeInspect", handler);
+	m_dispatcher->registerHandler("GetElectrodeInspectResult", handler);
 	
 
 	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);

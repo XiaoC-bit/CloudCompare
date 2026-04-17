@@ -80,23 +80,23 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 		QJsonDocument   doc = QJsonDocument::fromJson(data, &parseError);
 		if (parseError.error == QJsonParseError::NoError && doc.isObject())
 		{
-			m_calibrationResult = doc.object();
-			if (m_calibrationResult.contains("calibrationResult") && m_calibrationResult["calibrationResult"].isObject())
+			m_cameraCalibrationResult = doc.object();
+			if (m_cameraCalibrationResult.contains("CalibrationResult") && m_cameraCalibrationResult["CalibrationResult"].isObject())
 			{
-				auto obj = m_calibrationResult["calibrationResult"].toObject();
-				if (obj.contains("result") && obj["result"].isString() && obj["result"].toString() == "calibrating")
+				auto obj = m_cameraCalibrationResult["CalibrationResult"].toObject();
+				if (obj.contains("Result") && obj["Result"].isString() && obj["Result"].toString() == "Calibrating")
 				{
-					m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "previous calibration interrupted"}};
-				} else if (obj.contains("matrix") && obj["matrix"].isArray()) {
+					m_cameraCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "Failed"}, {"Message", "previous calibration interrupted"}};
+				} else if (obj.contains("Matrix") && obj["Matrix"].isArray()) {
 					// 加载标定结果矩阵到 Eigen::Matrix4d
-					QJsonArray matrixArray = obj["matrix"].toArray();
+					QJsonArray matrixArray = obj["Matrix"].toArray();
 					if (matrixArray.size() == 4) {
 						for (int i = 0; i < 4; ++i) {
 							if (matrixArray[i].isArray()) {
 								QJsonArray rowArray = matrixArray[i].toArray();
 								if (rowArray.size() == 4) {
 									for (int j = 0; j < 4; ++j) {
-										m_calibrationMatrix(i, j) = rowArray[j].toDouble();
+										m_cameraCalibrationMatrix(i, j) = rowArray[j].toDouble();
 									}
 								}
 							}
@@ -109,7 +109,7 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	}
 	else
 	{
-		m_calibrationResult["calibrationResult"] = QJsonObject{{"result", "failed"}, {"error", "not inited"}};
+		m_cameraCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "Failed"}, {"Message", "not inited"}};
 	}
 }
 
@@ -132,7 +132,7 @@ void PointCloudService::saveCalibrationStatus() {
     
     QFile statusFile(m_statusFilePath);
     if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-		QByteArray data = QJsonDocument(m_calibrationResult).toJson(QJsonDocument::Indented);
+		QByteArray data = QJsonDocument(m_cameraCalibrationResult).toJson(QJsonDocument::Indented);
         statusFile.write(data);
         statusFile.close();
     }
@@ -161,10 +161,16 @@ void PointCloudService::savePartInspectResult(const QString& rfid, const QJsonOb
 
 // 获取工件检查结果
 void PointCloudService::getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
-    // 从 params 中获取 RFID
+	QString     strCmd = "GetPartInspectResult";
+	QJsonObject resObj;
+
+
+	// 从 params 中获取 RFID
     QString rfid = params.value("rfid").toString();
     if (rfid.isEmpty()) {
-        sendError(socket, "RFID is required", idCode);
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = "RFID is required";
+		sendRes(socket, resObj, idCode);
         return;
     }
     
@@ -176,13 +182,17 @@ void PointCloudService::getPartInspectResult(const QJsonObject& params, QTcpSock
     // 检查文件是否存在
     QFile file(resultFile);
     if (!file.exists()) {
-        sendError(socket, QString("Inspection result not found for RFID: %1").arg(rfid), idCode);
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = QString("Inspection result not found for RFID: %1").arg(rfid);
+		sendRes(socket, resObj, idCode);
         return;
     }
     
     // 读取文件内容
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        sendError(socket, QString("Failed to open inspection result file: %1").arg(file.errorString()), idCode);
+        resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = QString("Failed to open inspection result file: %1").arg(file.errorString());
+		sendRes(socket, resObj, idCode);
         return;
     }
     
@@ -193,13 +203,17 @@ void PointCloudService::getPartInspectResult(const QJsonObject& params, QTcpSock
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        sendError(socket, QString("Invalid inspection result file: %1").arg(parseError.errorString()), idCode);
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = QString("Invalid inspection result file: %1").arg(parseError.errorString());
+		sendRes(socket, resObj, idCode);
         return;
     }
     
     // 返回结果
     QJsonObject result = doc.object();
-    sendResponse(socket, true, "Inspection result retrieved successfully", idCode, result);
+    resObj[strCmd + "_Ret"] = "0";
+    resObj["Result"]        = result;
+    sendRes(socket, resObj, idCode);
 }
 
 void PointCloudService::sendRes(QTcpSocket* socket, QJsonObject& resp, const QString& idCode)
@@ -2466,20 +2480,20 @@ void PointCloudService::acquirePcd(const QJsonObject& params, QTcpSocket* socket
 void PointCloudService::partInspectFunc(const QJsonObject& params)
 {
     // 1. 从 params 中获取工件类型
-    QString partType = params.value("partType").toString();
+    QString partType = params.value("PartType").toString();
     
     // 2. 从 params 中获取 RFID
-    QString rfid = params.value("rfid").toString();
+    QString rfid = params.value("Rfid").toString();
 
     // 3. 清空所有点云
 	if (!clearDbInternal(nullptr, ""))
 	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = QString("Failed to clear DB before calibration");
-		m_calibrationResult["calibrationResult"] = obj;
-		saveCalibrationStatus();
+		QJsonObject result;
+        QJsonObject obj;
+        obj["Result"] = "NG";
+        obj["Message"] = QString("Configuration file not found for part type: %1").arg(partType);
+        result["inspectResult"] = obj;
+        savePartInspectResult(rfid, result);
 		return;
 	}
 
@@ -2492,8 +2506,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     if (!file.exists()) {
         QJsonObject result;
         QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = QString("Configuration file not found for part type: %1").arg(partType);
+        obj["Result"] = "NG";
+        obj["Message"] = QString("Configuration file not found for part type: %1").arg(partType);
         result["inspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -2502,8 +2516,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QJsonObject result;
         QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = QString("Failed to open configuration file: %1").arg(file.errorString());
+        obj["Result"] = "NG";
+        obj["Message"] = QString("Failed to open configuration file: %1").arg(file.errorString());
         result["inspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -2518,8 +2532,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
         QJsonObject result;
         QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = QString("Invalid configuration file: %1").arg(parseError.errorString());
+        obj["Result"] = "NG";
+        obj["Message"] = QString("Invalid configuration file: %1").arg(parseError.errorString());
         result["inspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -2537,8 +2551,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         if (!loadInternal(loadParams, &errorMessage)) {
             QJsonObject result;
             QJsonObject obj;
-            obj["result"] = "failed";
-            obj["error"] = QString("Failed to load theoretical model: %1").arg(errorMessage);
+            obj["Result"] = "NG";
+            obj["Message"] = QString("Failed to load theoretical model: %1").arg(errorMessage);
             result["inspectResult"] = obj;
             savePartInspectResult(rfid, result);
             return;
@@ -2549,8 +2563,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     if (holePositions.isEmpty()) {
         QJsonObject result;
         QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = "No hole positions found in configuration";
+        obj["Result"] = "NG";
+        obj["Message"] = "No hole positions found in configuration";
         result["inspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -2562,8 +2576,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     if (!templateNc.exists()) {
         QJsonObject result;
         QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = "Inspect.nc template file does not exist";
+        obj["Result"] = "NG";
+        obj["Message"] = "Inspect.nc template file does not exist";
         result["inspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -2572,8 +2586,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QJsonObject result;
         QJsonObject obj;
-        obj["result"] = "failed";
-        obj["error"] = "Failed to open Inspect.nc template";
+        obj["Result"] = "NG";
+        obj["Message"] = "Failed to open Inspect.nc template";
         result["inspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -2624,8 +2638,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to write NC file for position %1-%2").arg(i + 1).arg(j + 1);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to write NC file for position %1-%2").arg(i + 1).arg(j + 1);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2638,8 +2652,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!sendFileToMachine(outputFile, &errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to send NC file for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to send NC file for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2649,8 +2663,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!setMainProgram(&errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2660,8 +2674,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!startMachine(&errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to start machine for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to start machine for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2671,8 +2685,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!waitForMachineIdle(120, &errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Machine did not become idle for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Machine did not become idle for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2687,8 +2701,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to acquire point cloud for position %1-%2").arg(i + 1).arg(j + 1);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to acquire point cloud for position %1-%2").arg(i + 1).arg(j + 1);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2704,7 +2718,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
 
 			// 7.2 应用基于 x, y, z, B, C 的变换
 			Eigen::Matrix4d T_cam_motion = computeCameraMotion(
-			    m_calibrationMatrix,
+			    m_cameraCalibrationMatrix,
 			    -(x - ZeroX),
 			    -(y - ZeroY),
 			    -(z - ZeroZ),
@@ -2729,8 +2743,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2771,8 +2785,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     if (!loadInternal(loadParams, &errorMessage)) {
                         QJsonObject result;
                         QJsonObject obj;
-                        obj["result"] = "failed";
-                        obj["error"] = QString("Failed to load region file: %1").arg(errorMessage);
+                        obj["Result"] = "NG";
+                        obj["Message"] = QString("Failed to load region file: %1").arg(errorMessage);
                         result["inspectResult"] = obj;
                         savePartInspectResult(rfid, result);
                         return;
@@ -2787,8 +2801,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     if (!applyViewportInternal(viewportParams, &errorMessage)) {
                         QJsonObject result;
                         QJsonObject obj;
-                        obj["result"] = "failed";
-                        obj["error"] = QString("Failed to apply viewport: %1").arg(errorMessage);
+                        obj["Result"] = "NG";
+                        obj["Message"] = QString("Failed to apply viewport: %1").arg(errorMessage);
                         result["inspectResult"] = obj;
                         savePartInspectResult(rfid, result);
                         return;
@@ -2807,8 +2821,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     if (!segmentPolygonInternal(segmentParams, &errorMessage)) {
                         QJsonObject result;
                         QJsonObject obj;
-                        obj["result"] = "failed";
-                        obj["error"] = QString("Failed to segment point cloud: %1").arg(errorMessage);
+                        obj["Result"] = "NG";
+                        obj["Message"] = QString("Failed to segment point cloud: %1").arg(errorMessage);
                         result["inspectResult"] = obj;
                         savePartInspectResult(rfid, result);
                         return;
@@ -2822,8 +2836,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 if (!deleteObjectInternal(deleteParams, &errorMessage)) {
                     QJsonObject result;
                     QJsonObject obj;
-                    obj["result"] = "failed";
-                    obj["error"] = QString("Failed to delete object: %1").arg(errorMessage);
+                    obj["Result"] = "NG";
+                    obj["Message"] = QString("Failed to delete object: %1").arg(errorMessage);
                     result["inspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
@@ -2842,8 +2856,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!mergeInternal(mergeParams, &errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to merge point clouds: %1").arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to merge point clouds: %1").arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2867,8 +2881,8 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             if (!icpInternal(icpParams, &errorMessage, &transMat)) {
                 QJsonObject result;
                 QJsonObject obj;
-                obj["result"] = "failed";
-                obj["error"] = QString("Failed to perform ICP registration: %1").arg(errorMessage);
+                obj["Result"] = "NG";
+                obj["Message"] = QString("Failed to perform ICP registration: %1").arg(errorMessage);
                 result["inspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
@@ -2894,18 +2908,18 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     // 完成检查
     QJsonObject result;
     QJsonObject obj;
-    obj["result"] = "success";
-    obj["message"] = "Part inspection completed";
+    obj["Result"] = "OK";
+    obj["Message"] = "Part inspection completed";
     
     // 添加检查信息
 	QJsonObject inspectionInfo;
-	inspectionInfo["icpResults"] = icpResults;
-    inspectionInfo["partType"] = partType;
-    inspectionInfo["rfid"] = rfid;
-    inspectionInfo["holeCount"] = holePositions.size();
+	inspectionInfo["IcpResults"] = icpResults;
+    inspectionInfo["PartType"] = partType;
+    inspectionInfo["Rfid"] = rfid;
+    inspectionInfo["HoleCount"] = holePositions.size();
     
-    obj["inspectionInfo"] = inspectionInfo;
-    result["inspectResult"] = obj;
+    obj["InspectInfo"] = inspectionInfo;
+    result["InspectResult"] = obj;
     
     savePartInspectResult(rfid, result);
 }
@@ -2919,9 +2933,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage;
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return;
 	}
@@ -2930,9 +2944,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return;
 	}
@@ -2942,9 +2956,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "Failed";
+		obj["Message"]                             = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return;
 	}
@@ -2952,9 +2966,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return;
 	}
@@ -2963,9 +2977,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = QString("Failed to clear DB before calibration");
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "Failed";
+		obj["Message"]                             = QString("Failed to clear DB before calibration");
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return;
 	}
@@ -2984,9 +2998,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	if (!dir.exists())
 	{
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = "Calibration template directory does not exist";
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = "Calibration template directory does not exist";
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		return;
 	}
 
@@ -2994,18 +3008,18 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	if (!templateNc.exists())
 	{
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = "Calibration.nc template file does not exist";
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = "Calibration.nc template file does not exist";
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		return;
 	}
 
 	if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = "Failed to open Calibration.nc template";
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = "Failed to open Calibration.nc template";
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		return;
 	}
 	const QString templateContent = QTextStream(&templateNc).readAll();
@@ -3028,9 +3042,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 		if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
 			QJsonObject obj;
-			obj["result"]                            = "failed";
-			obj["error"]                             = QString("Failed to write NC file for position %1").arg(i + 1);
-			m_calibrationResult["calibrationResult"] = obj;
+			obj["Result"]                            = "NG";
+			obj["Message"]                             = QString("Failed to write NC file for position %1").arg(i + 1);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
 			return;
 		}
 		QTextStream out(&outputNc);
@@ -3040,36 +3054,36 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 		if (!sendFileToMachine(outputFile, &errorMessage))
 		{
 			QJsonObject obj;
-			obj["result"]                            = "failed";
-			obj["error"]                             = QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage);
-			m_calibrationResult["calibrationResult"] = obj;
+			obj["Result"]                            = "NG";
+			obj["Message"]                             = QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
 			return;
 		}
 
 		if (!setMainProgram(&errorMessage))
 		{
 			QJsonObject obj;
-			obj["result"]                            = "failed";
-			obj["error"]                             = QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage);
-			m_calibrationResult["calibrationResult"] = obj;
+			obj["Result"]                            = "NG";
+			obj["Message"]                             = QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
 			return;
 		}
 
 		if (!startMachine(&errorMessage))
 		{
 			QJsonObject obj;
-			obj["result"]                            = "failed";
-			obj["error"]                             = QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage);
-			m_calibrationResult["calibrationResult"] = obj;
+			obj["Result"]                            = "NG";
+			obj["Message"]                             = QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
 			return;
 		}
 
 		if (!waitForMachineIdle(120, &errorMessage))
 		{
 			QJsonObject obj;
-			obj["result"]                            = "failed";
-			obj["error"]                             = QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage);
-			m_calibrationResult["calibrationResult"] = obj;
+			obj["Result"]                            = "NG";
+			obj["Message"]                             = QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
 			return;
 		}
 
@@ -3118,8 +3132,8 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 
 		if (!fitSuccess)
 		{
-			m_calibrationResult["result"] = "failed";
-			m_calibrationResult["error"]  = QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES);
+			m_cameraCalibrationResult["Result"] = "NG";
+			m_cameraCalibrationResult["Message"]  = QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES);
 
 			return;
 		}
@@ -3142,9 +3156,9 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 	catch (const std::exception& e)
 	{
 		QJsonObject obj;
-		obj["result"]                            = "failed";
-		obj["error"]                             = QString("Calibration matrix computation failed: %1").arg(e.what());
-		m_calibrationResult["calibrationResult"] = obj;
+		obj["Result"]                            = "NG";
+		obj["Message"]                             = QString("Calibration matrix computation failed: %1").arg(e.what());
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		return;
 	}
 
@@ -3191,23 +3205,23 @@ void PointCloudService::calibrationFunc(const QJsonObject& params)
 
 	// 保存标定结果
 	QJsonObject obj;
-	obj["result"] = residualOk ? "success" : "failed";
+	obj["Result"] = residualOk ? "OK" : "NG";
 	if (residualOk)
 	{
-		obj["matrix"]            = matrixRows;
-		obj["fitResults"]        = fitResults;
-		obj["residuals"]         = residuals;
-		obj["residualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
-		obj["residualOk"]        = residualOk;
-		obj["positionCount"]     = positions.size();
+		obj["Matrix"]            = matrixRows;
+		obj["FitResults"]        = fitResults;
+		obj["Residuals"]         = residuals;
+		obj["ResidualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
+		obj["ResidualOk"]        = residualOk;
+		obj["PositionCount"]     = positions.size();
 		// 保存矩阵到成员变量
-		m_calibrationMatrix = matrix;
+		m_cameraCalibrationMatrix = matrix;
 	}
 	else
 	{
-		obj["error"] = QString("Calibration completed but residuals exceed threshold");
+		obj["Message"] = QString("Calibration completed but residuals exceed threshold");
 	}
-	m_calibrationResult["calibrationResult"] = obj;
+	m_cameraCalibrationResult["CalibrationResult"] = obj;
 }
 
 void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
@@ -3216,53 +3230,84 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	QString strCmd = "PartInspect";
 
 	// 1. 检查参数
-	QString partType = params.value("partType").toString();
+	QString partType = params.value("PartType").toString();
 	if (partType.isEmpty()) {
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"] = "Part type is required";
+		obj["Message"] = "Part type is required";
 		sendRes(socket, obj, idCode);
 		return;
 	}
 
 	// 2. 检查 RFID
-	QString rfid = params.value("rfid").toString();
+	QString rfid = params.value("Rfid").toString();
 	if (rfid.isEmpty()) {
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"] = "RFID is required";
+		obj["Message"] = "Rfid is required";
 		sendRes(socket, obj, idCode);
 		return;
 	}
 
 	// 3. 先判断是否已经有标定结果，如果没有标定结果或者标定结果不是成功，则返回错误
-	bool calibrationResult = false;
+	bool CameraCalibrationResult = false;
 	do
 	{
-		if (!m_calibrationResult.contains("calibrationResult"))
+		if (!m_cameraCalibrationResult.contains("CalibrationResult"))
 		{
 			break;
 		}
-		if (!m_calibrationResult["calibrationResult"].isObject())
+		if (!m_cameraCalibrationResult["CalibrationResult"].isObject())
 		{
 			break;
 		}
-		auto obj = m_calibrationResult["calibrationResult"].toObject();
-		if (!obj.contains("result"))
+		auto obj = m_cameraCalibrationResult["CalibrationResult"].toObject();
+		if (!obj.contains("Result"))
 		{
 			break;
 		}
-		if (obj.contains("result") && obj["result"].isString() && obj["result"].toString() == "success")
+		if (obj.contains("Result") && obj["Result"].isString() && obj["Result"].toString() == "OK")
 		{
-			calibrationResult = true;
+			CameraCalibrationResult = true;
 		}
 	} while (0);
 
-	if (!calibrationResult)
+	if (!CameraCalibrationResult)
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = "Calibration has not been successfully completed";
+		obj["Message"]         = "CameraCalibration has not been successfully completed";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+
+	bool ProbeCalibrationResult = false;
+	do
+	{
+		if (!m_probeCalibrationResult.contains("CalibrationResult"))
+		{
+			break;
+		}
+		if (!m_probeCalibrationResult["CalibrationResult"].isObject())
+		{
+			break;
+		}
+		auto obj = m_probeCalibrationResult["CalibrationResult"].toObject();
+		if (!obj.contains("Result"))
+		{
+			break;
+		}
+		if (obj.contains("Result") && obj["Result"].isString() && obj["Result"].toString() == "OK")
+		{
+			ProbeCalibrationResult = true;
+		}
+	} while (0);
+	if (!ProbeCalibrationResult)
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "ProbeCalibration has not been successfully completed";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3273,7 +3318,7 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = "Machine is not idle";
+		obj["Message"]         = "Machine is not idle";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3283,7 +3328,7 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = "Failed to get machine mode";
+		obj["Message"]         = "Failed to get machine mode";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3291,7 +3336,7 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);	
+		obj["Message"]         = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);	
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3309,16 +3354,152 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	Qt::QueuedConnection);
 }
 
-void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+
+
+void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
-	QString strCmd = "Calibration";
+
+	QString strCmd = "ElectrodeInspect";
+
+	// 1. 检查参数
+	QString partType = params.value("ElectrodeType").toString();
+	if (partType.isEmpty())
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Electrode type is required";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 2. 检查 RFID
+	QString rfid = params.value("Rfid").toString();
+	if (rfid.isEmpty())
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Rfid is required";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 3. 先判断是否已经有标定结果，如果没有标定结果或者标定结果不是成功，则返回错误
+	bool CameraCalibrationResult = false;
+	do
+	{
+		if (!m_cameraCalibrationResult.contains("CalibrationResult"))
+		{
+			break;
+		}
+		if (!m_cameraCalibrationResult["CalibrationResult"].isObject())
+		{
+			break;
+		}
+		auto obj = m_cameraCalibrationResult["CalibrationResult"].toObject();
+		if (!obj.contains("Result"))
+		{
+			break;
+		}
+		if (obj.contains("Result") && obj["Result"].isString() && obj["Result"].toString() == "OK")
+		{
+			CameraCalibrationResult = true;
+		}
+	} while (0);
+
+	if (!CameraCalibrationResult)
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "CameraCalibration has not been successfully completed";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	bool ProbeCalibrationResult = false;
+	do
+	{
+		if (!m_probeCalibrationResult.contains("CalibrationResult"))
+		{
+			break;
+		}
+		if (!m_probeCalibrationResult["CalibrationResult"].isObject())
+		{
+			break;
+		}
+		auto obj = m_probeCalibrationResult["CalibrationResult"].toObject();
+		if (!obj.contains("Result"))
+		{
+			break;
+		}
+		if (obj.contains("Result") && obj["Result"].isString() && obj["Result"].toString() == "OK")
+		{
+			ProbeCalibrationResult = true;
+		}
+	} while (0);
+	if (!ProbeCalibrationResult)
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "ProbeCalibration has not been successfully completed";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 4. 机床状态检测
+	QString errorMessage;
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Machine is not idle";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Failed to get machine mode";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+	if (mode != "Auto")
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 立即返回 OK
+	QJsonObject obj;
+	obj[strCmd + "_Ret"] = "0";
+	sendRes(socket, obj, idCode);
+	m_Status = MachineStatus::Running;
+
+	QMetaObject::invokeMethod(qApp, [this, params]()
+	                          {
+		partInspectFunc(params);
+		m_Status = MachineStatus::Idle; },
+	                          Qt::QueuedConnection);
+}
+void PointCloudService::getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
+
+}
+
+void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	QString strCmd = "CameraCalibration";
 
 	// 如果已经在标定中，直接返回错误
 	if (m_Status == MachineStatus::Running)
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = "Calibration is already running";
+		obj["Message"]         = "Calibration is already running";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3329,7 +3510,7 @@ void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* 
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = "Machine is not idle";
+		obj["Message"]         = "Machine is not idle";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3339,7 +3520,7 @@ void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* 
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = "Failed to get machine mode";
+		obj["Message"]         = "Failed to get machine mode";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -3347,13 +3528,13 @@ void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* 
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Error"]         = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		obj["Message"]         = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
 		sendRes(socket, obj, idCode);
 		return;
 	}
 
 	// 清空之前的标定结果
-	m_calibrationResult["calibrationResult"] = 	QJsonObject{{"result", "calibrating"}, {"error", "machine is calibrating"}};
+	m_cameraCalibrationResult["CalibrationResult"] = 	QJsonObject{{"result", "calibrating"}, {"error", "machine is calibrating"}};
 	m_Status                      = MachineStatus::Running;
 	// 保存状态
 	saveCalibrationStatus();
@@ -3371,6 +3552,112 @@ void PointCloudService::startCalibration(const QJsonObject& params, QTcpSocket* 
 	                          Qt::QueuedConnection);
 }
 
+
+void PointCloudService::probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	QString strCmd = "ProbeCalibration";
+
+	// 如果已经在标定中，直接返回错误
+	if (m_Status == MachineStatus::Running)
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Calibration is already running";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	QString errorMessage;
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Machine is not idle";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Failed to get machine mode";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+	if (mode != "Auto")
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 清空之前的标定结果
+	m_cameraCalibrationResult["CalibrationResult"] = QJsonObject{{"result", "calibrating"}, {"error", "machine is calibrating"}};
+	m_Status                                 = MachineStatus::Running;
+	// 保存状态
+	saveCalibrationStatus();
+
+	// 立即返回 OK
+	QJsonObject obj;
+	obj[strCmd + "_Ret"] = "0";
+	sendRes(socket, obj, idCode);
+
+	QMetaObject::invokeMethod(qApp, [this, params]()
+	                          {
+		calibrationFunc(params);
+		m_Status = MachineStatus::Idle;
+		saveCalibrationStatus(); },
+	                          Qt::QueuedConnection);
+}
+
+void PointCloudService::probeCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode) {
+	QString     strCmd = "ProbeCalibrationResult";
+	QJsonObject resObj;
+	if (!m_probeCalibrationResult.contains("CalibrationResult") || !m_probeCalibrationResult["CalibrationResult"].isObject())
+	{
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]       = "No calibration result available";
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	QJsonObject result = m_probeCalibrationResult["CalibrationResult"].toObject();
+
+	resObj[strCmd + "_Ret"] = "0";
+	resObj["Data"]          = m_probeCalibrationResult["CalibrationResult"];
+	resObj["Result"]        = result["Result"];
+	resObj["Message"]       = result["Message"];
+
+	sendRes(socket, resObj, idCode);
+}
+
+void PointCloudService::cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	QString     strCmd = "CameraCalibrationResult";
+	QJsonObject resObj;
+	if (!m_cameraCalibrationResult.contains("CalibrationResult") || !m_cameraCalibrationResult["CalibrationResult"].isObject())
+	{
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]       = "No calibration result available";
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	QJsonObject result = m_cameraCalibrationResult["CalibrationResult"].toObject();
+
+	resObj[strCmd + "_Ret"] = "0";
+	resObj["Data"]          = m_cameraCalibrationResult["CalibrationResult"];
+	resObj["Result"]        = result["Result"];
+	resObj["Message"]        = result["Message"];
+
+	sendRes(socket, resObj, idCode);
+}
+    
+
 void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	QJsonObject status;
@@ -3379,26 +3666,25 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 	if (!getDeviceRun(value, &errorMsg))
 	{
 		status["GetStatus_Ret"] = "1";
-		status["Error"]         = "Failed to get device run status";
+		status["Message"]         = "Failed to get device run status";
 		sendRes(socket, status, idCode);
 		return;
 	}
-	QByteArray responseBytes    = QJsonDocument(m_calibrationResult).toJson(QJsonDocument::Indented) + "\n";
-	status["calibrationResult"] = m_calibrationResult["calibrationResult"];
+	status["CalibrationResult"] = m_cameraCalibrationResult["CalibrationResult"];
 	status["GetStatus_Ret"]     = "0";
 	switch (m_Status)
 	{
 	case MachineStatus::Running:
-		status["status"] = "running";
+		status["Status"] = "Running";
 		break;
 	case MachineStatus::Idle:
 		if (value != "0")
 		{
-			status["status"] = "running";
+			status["Status"] = "Running";
 		}
 		else
 		{
-			status["status"] = "idle";
+			status["Status"] = "Idle";
 		}
 		break;
 	}
