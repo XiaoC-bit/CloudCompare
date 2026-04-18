@@ -13,6 +13,7 @@
 #include <QTextStream>
 #include <QThread>
 #include <QUuid>
+#include <QDateTime>
 #include <cc2DViewportObject.h>
 #include <ccGLMatrix.h>
 #include <ccGLWindowInterface.h>
@@ -3583,10 +3584,175 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 
 void PointCloudService::electrodeInspectFunc(const QJsonObject& params)
 {
+	QString errorMessage;
+
+	// 获取参数
+	QString electrodeType = params.value("ElectrodeType").toString();
+	QString rfid = params.value("Rfid").toString();
+
+	// 检查参数
+	if (electrodeType.isEmpty() || rfid.isEmpty())
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 检查Template目录是否存在
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString templateDir = appDir + "/Template";
+	QDir dir(templateDir);
+	if (!dir.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 查找对应电极类型的检测程序文件
+	QString electrodeFile;
+	QStringList filters; filters << QString("%1*.nc").arg(electrodeType) << QString("%1*.txt").arg(electrodeType);
+	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
+	if (fileList.isEmpty())
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 使用第一个找到的电极检测文件
+	electrodeFile = fileList.first().absoluteFilePath();
+
+	// 发送文件到机床
+	if (!sendFileToMachine(electrodeFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 等待机床空闲
+	if (!waitForMachineIdle(120, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 读取机床的宏变量，获取电极检测结果（XYZ偏移）
+	// 假设使用#570-#572存储XYZ偏移值
+	double offsetX, offsetY, offsetZ;
+
+	// 读取X偏移
+	if (!readMacro(570, offsetX, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 读取Y偏移
+	if (!readMacro(571, offsetY, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 读取Z偏移
+	if (!readMacro(572, offsetZ, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return;
+	}
+
+	// 保存检测结果到文件
+	QString resultDir = appDir + "/ElectrodeResult";
+	QDir resultDirObj(resultDir);
+	if (!resultDirObj.exists())
+	{
+		resultDirObj.mkpath(resultDir);
+	}
+
+	QString resultFile = resultDir + "/" + rfid + ".json";
+	QFile statusFile(resultFile);
+	if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text))
+	{
+		QJsonObject resultObj;
+		resultObj["ElectrodeType"] = electrodeType;
+		resultObj["Rfid"] = rfid;
+		resultObj["Offset"] = QJsonObject{{"X", offsetX}, {"Y", offsetY}, {"Z", offsetZ}};
+		resultObj["Timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+		QByteArray data = QJsonDocument(resultObj).toJson(QJsonDocument::Indented);
+		statusFile.write(data);
+		statusFile.close();
+	}
+
+	m_Status = MachineStatus::Idle;
 }
 
 void PointCloudService::getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
+	QString strCmd = "GetElectrodeInspectResult";
+	QJsonObject resObj;
+
+	// 从 params 中获取 RFID
+	QString rfid = params.value("Rfid").toString();
+	if (rfid.isEmpty()) {
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = "Rfid is required";
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	// 构建结果文件路径
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString resultDir = appDir + "/ElectrodeResult";
+	QString resultFile = resultDir + "/" + rfid + ".json";
+
+	// 检查文件是否存在
+	QFile file(resultFile);
+	if (!file.exists()) {
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = QString("Inspection result not found for Rfid: %1").arg(rfid);
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	// 读取文件内容
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = QString("Failed to open inspection result file: %1").arg(file.errorString());
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	QByteArray data = file.readAll();
+	file.close();
+
+	// 解析 JSON
+	QJsonParseError parseError;
+	QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+	if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]         = QString("Invalid inspection result file: %1").arg(parseError.errorString());
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	// 返回结果
+	QJsonObject result = doc.object();
+	resObj[strCmd + "_Ret"] = "0";
+	resObj["Result"]        = result;
+	sendRes(socket, resObj, idCode);
 }
 
 
