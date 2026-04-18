@@ -85,7 +85,9 @@ class PointCloudService : public QObject
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
 	//标定函数
+	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);
+	void probeCalibrationFunc(const QJsonObject& params);
 	//工件检测函数
 	void partInspectFunc(const QJsonObject& params);
 	//电极检测函数
@@ -128,6 +130,7 @@ class PointCloudService : public QObject
 	bool               startMachine(QString* errorMessage = nullptr);
 	bool               waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);
 	bool               getDeviceRun(QString& value, QString* errorMessage = nullptr);
+	bool               readMacro(int addr, double& value, QString* errorMessage = nullptr);
 	QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
 
 
