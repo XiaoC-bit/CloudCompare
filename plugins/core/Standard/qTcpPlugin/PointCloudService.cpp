@@ -2996,6 +2996,13 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
 			QJsonObject holeIcpReuslt;
 			holeIcpReuslt["holdId"]    = holdId;
 			holeIcpReuslt["icpMatrix"] = matrixArray;
+			
+			// 存储电极放电位置信息
+			if (holePos.contains("electrodePos")) {
+				QJsonObject electrodePos = holePos["electrodePos"].toObject();
+				holeIcpReuslt["electrodePos"] = electrodePos;
+			}
+			
 			icpResults.push_back(holeIcpReuslt);
         }
     }
