@@ -4241,7 +4241,7 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 		break;
 	}
 	sendRes(socket, status, idCode);
-}
+
 }
 
 bool PointCloudService::readMacro(int addr, double& value, QString* errorMessage)
