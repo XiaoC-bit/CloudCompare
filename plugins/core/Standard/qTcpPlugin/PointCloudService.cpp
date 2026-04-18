@@ -1255,8 +1255,30 @@ Eigen::Matrix3d PointCloudService::rotZ(double rad)
 
 Eigen::Matrix4d PointCloudService::computeSVDTransform(const Eigen::MatrixXd& measuredPoints, const Eigen::MatrixXd& theoreticalPoints)
 {
-    // 暂时返回单位矩阵，后续实现SVD算法
-    return Eigen::Matrix4d::Identity();
+    // SVD算法实现
+    Eigen::Vector3d p_bar = measuredPoints.colwise().mean();
+    Eigen::Vector3d q_bar = theoreticalPoints.colwise().mean();
+
+    Eigen::MatrixXd P = measuredPoints.rowwise() - p_bar.transpose();
+    Eigen::MatrixXd Q = theoreticalPoints.rowwise() - q_bar.transpose();
+
+    Eigen::Matrix3d H = P.transpose() * Q;
+
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(
+        H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix3d U = svd.matrixU();
+    Eigen::Matrix3d V = svd.matrixV();
+
+    Eigen::Matrix3d D = Eigen::Matrix3d::Identity();
+    D(2, 2) = (V * U.transpose()).determinant();
+    Eigen::Matrix3d R = V * D * U.transpose();
+
+    Eigen::Vector3d t = q_bar - R * p_bar;
+
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = R;
+    T.block<3, 1>(0, 3) = t;
+    return T;
 }
 
 Eigen::Matrix4d PointCloudService::makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot)
