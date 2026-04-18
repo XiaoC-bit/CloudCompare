@@ -85,7 +85,7 @@ class PointCloudService : public QObject
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
 	//标定函数
-	void calibrationFunc(const QJsonObject& params);
+	void cameraCalibrationFunc(const QJsonObject& params);
 	//工件检测函数
 	void partInspectFunc(const QJsonObject& params);
 	//电极检测函数

@@ -3018,7 +3018,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     savePartInspectResult(rfid, result);
 }
 
-void PointCloudService::calibrationFunc(const QJsonObject& params)
+void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 {
 	QString                  errorMessage;
 	const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
@@ -3787,7 +3787,7 @@ void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket*
 
 	QMetaObject::invokeMethod(qApp, [this, params]()
 	                          {
-		calibrationFunc(params);
+		cameraCalibrationFunc(params);
 		m_Status = MachineStatus::Idle;
 		saveCalibrationStatus(); },
 	                          Qt::QueuedConnection);
@@ -3849,7 +3849,7 @@ void PointCloudService::probeCalibration(const QJsonObject& params, QTcpSocket* 
 
 	QMetaObject::invokeMethod(qApp, [this, params]()
 	                          {
-		calibrationFunc(params);
+		cameraCalibrationFunc(params);
 		m_Status = MachineStatus::Idle;
 		saveCalibrationStatus(); },
 	                          Qt::QueuedConnection);
