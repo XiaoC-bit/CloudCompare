@@ -1217,6 +1217,42 @@ Eigen::Matrix4d PointCloudService::rigidTransform(
     return T; 
 }
 
+Eigen::Matrix4d PointCloudService::makeTransform(const Eigen::Matrix3d& R, const Eigen::Vector3d& t)
+{
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = R;
+    T.block<3, 1>(0, 3) = t;
+    return T;
+}
+
+Eigen::Matrix4d PointCloudService::rotateAroundPoint(const Eigen::Matrix3d& R, const Eigen::Vector3d& center)
+{
+    // T = T_center * R * T_-center
+    Eigen::Matrix4d T1 = makeTransform(Eigen::Matrix3d::Identity(), -center);
+    Eigen::Matrix4d T2 = makeTransform(R, Eigen::Vector3d::Zero());
+    Eigen::Matrix4d T3 = makeTransform(Eigen::Matrix3d::Identity(), center);
+
+    return T3 * T2 * T1;
+}
+
+Eigen::Matrix3d PointCloudService::rotY(double rad)
+{
+    Eigen::Matrix3d R;
+    R << cos(rad), 0, sin(rad),
+        0, 1, 0,
+        -sin(rad), 0, cos(rad);
+    return R;
+}
+
+Eigen::Matrix3d PointCloudService::rotZ(double rad)
+{
+    Eigen::Matrix3d R;
+    R << cos(rad), -sin(rad), 0,
+        sin(rad), cos(rad), 0,
+        0, 0, 1;
+    return R;
+}
+
 Eigen::Matrix4d PointCloudService::makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot)
 {
     Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
@@ -3938,29 +3974,28 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 	// 5. 处理每个放电位置
 	QString programContent = templateContent;
 
-	// 6. 计算补偿值（这里只是创建函数框架，具体算法后面补充）
-	// 模拟计算补偿值
+	// 6. 计算补偿值
 	for (int i = 0; i < electrodePos.size(); ++i) {
 		QJsonObject pos = electrodePos[i].toObject();
 		QJsonArray begin = pos.value("Begin").toArray();
 		QJsonArray end = pos.value("End").toArray();
 
 		// 计算补偿值
-		// TODO: 实现RTCP算法计算补偿值
-		double compensationX = 0.0;
-		double compensationY = 0.0;
-		double compensationZ = 0.0;
-		double compensationA = 0.0;
-		double compensationB = 0.0;
-		double compensationC = 0.0;
+		RTCPCompensation compensation = computeRTCPCompensation(
+			partInspectResult,
+			electrodeInspectResult,
+			edmParameters,
+			begin,
+			end
+		);
 
 		// 替换模板中的变量
-		programContent.replace(QString("{补偿X_%1}").arg(i + 1), QString::number(compensationX));
-		programContent.replace(QString("{补偿Y_%1}").arg(i + 1), QString::number(compensationY));
-		programContent.replace(QString("{补偿Z_%1}").arg(i + 1), QString::number(compensationZ));
-		programContent.replace(QString("{补偿A_%1}").arg(i + 1), QString::number(compensationA));
-		programContent.replace(QString("{补偿B_%1}").arg(i + 1), QString::number(compensationB));
-		programContent.replace(QString("{补偿C_%1}").arg(i + 1), QString::number(compensationC));
+		programContent.replace(QString("{补偿X_%1}").arg(i + 1), QString::number(compensation.x));
+		programContent.replace(QString("{补偿Y_%1}").arg(i + 1), QString::number(compensation.y));
+		programContent.replace(QString("{补偿Z_%1}").arg(i + 1), QString::number(compensation.z));
+		programContent.replace(QString("{补偿A_%1}").arg(i + 1), QString::number(compensation.a));
+		programContent.replace(QString("{补偿B_%1}").arg(i + 1), QString::number(compensation.b));
+		programContent.replace(QString("{补偿C_%1}").arg(i + 1), QString::number(compensation.c));
 	}
 
 	// 7. 写入程序文件
@@ -4378,4 +4413,129 @@ bool PointCloudService::readMacro(int addr, double& value, QString* errorMessage
 	value = response["Value"].toDouble();
 
 	return true;
+}
+
+PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
+	const QJsonObject& partInspectResult,
+	const QJsonObject& electrodeInspectResult,
+	const QJsonObject& edmParameters,
+	const QJsonArray& beginPos,
+	const QJsonArray& endPos)
+{
+	RTCPCompensation compensation;
+	// 初始化补偿值为0
+	compensation.x = 0.0;
+	compensation.y = 0.0;
+	compensation.z = 0.0;
+	compensation.a = 0.0;
+	compensation.b = 0.0;
+	compensation.c = 0.0;
+
+	// ====================== 
+	// RTCP 补偿量计算 (摇篮式五轴: 工作台摆动型) 
+	// ====================== 
+
+	// 从参数中提取B/C角度（假设beginPos和endPos的最后两个元素是B/C角度）
+	double B_deg = 0.0, C_deg = 0.0;
+	if (beginPos.size() >= 6) {
+		B_deg = beginPos[4].toDouble();
+		C_deg = beginPos[5].toDouble();
+	}
+
+	// 从edmParameters中获取BC旋转中心
+	Eigen::Vector3d P_machine(0, 0, 0); // B轴旋转中心
+	Eigen::Vector3d Q_machine(0, 0, 0); // C轴旋转中心
+
+	if (edmParameters.contains("BAxisCenter") && edmParameters["BAxisCenter"].isArray()) {
+		QJsonArray bAxisCenter = edmParameters["BAxisCenter"].toArray();
+		if (bAxisCenter.size() >= 3) {
+			P_machine.x() = bAxisCenter[0].toDouble();
+			P_machine.y() = bAxisCenter[1].toDouble();
+			P_machine.z() = bAxisCenter[2].toDouble();
+		}
+	}
+
+	if (edmParameters.contains("CAxisCenter") && edmParameters["CAxisCenter"].isArray()) {
+		QJsonArray cAxisCenter = edmParameters["CAxisCenter"].toArray();
+		if (cAxisCenter.size() >= 3) {
+			Q_machine.x() = cAxisCenter[0].toDouble();
+			Q_machine.y() = cAxisCenter[1].toDouble();
+			Q_machine.z() = cAxisCenter[2].toDouble();
+		}
+	}
+
+	// G54（工件原点）在机床坐标系
+	// 假设工件检测结果中包含G54信息
+	Eigen::Vector3d g54_in_machine(0, 0, 0);
+	if (partInspectResult.contains("g54")) {
+		QJsonObject g54 = partInspectResult["g54"].toObject();
+		if (g54.contains("x")) g54_in_machine.x() = g54["x"].toDouble();
+		if (g54.contains("y")) g54_in_machine.y() = g54["y"].toDouble();
+		if (g54.contains("z")) g54_in_machine.z() = g54["z"].toDouble();
+	}
+
+	// 转换到弧度
+	double B = deg2rad(B_deg);
+	double C = deg2rad(C_deg);
+
+	// ====================== 
+	// Step 1：转换到工件坐标系 
+	// ====================== 
+
+	// 工件系 = 机床系 - G54 
+	Eigen::Vector3d P = P_machine - g54_in_machine;
+	Eigen::Vector3d Q = Q_machine - g54_in_machine;
+
+	// ====================== 
+	// Step 2：旋转矩阵 
+	// ====================== 
+
+	// 机床配置的转台第一旋转轴矢量
+	// 摇篮式机床使用-1
+	double first_spin_vector = -1;
+	double second_spin_vector = -1;
+
+	Eigen::Matrix3d Rb = rotY(first_spin_vector * B);
+	Eigen::Matrix3d Rc = rotZ(second_spin_vector * C);
+
+	// ====================== 
+	// Step 3：实际机床运动（绕 P / Q） 
+	// ====================== 
+
+	Eigen::Matrix4d T_C = rotateAroundPoint(Rc, Q);
+	Eigen::Matrix4d T_B = rotateAroundPoint(Rb, P);
+
+	Eigen::Matrix4d M_real = T_B * T_C;
+
+	// ====================== 
+	// Step 4：理想运动（绕工件原点） 
+	// ====================== 
+
+	Eigen::Matrix4d M_ideal = makeTransform(Rb * Rc, Eigen::Vector3d::Zero());
+
+	// ====================== 
+	// Step 5：计算补偿（核心） 
+	// ====================== 
+
+	// 工件原点 (0,0,0) 
+	Eigen::Vector4d O(0, 0, 0, 1);
+
+	// 实际旋转后的原点位置 
+	Eigen::Vector4d O_real = M_real * O;
+
+	// 需要把它拉回原点 
+	Eigen::Vector3d delta = -O_real.head<3>();
+
+	// ====================== 
+	// 输出补偿值 
+	// ====================== 
+
+	compensation.x = delta.x();
+	compensation.y = delta.y();
+	compensation.z = delta.z();
+	compensation.a = 0.0; // A轴补偿
+	compensation.b = B_deg; // B轴角度
+	compensation.c = C_deg; // C轴角度
+
+	return compensation;
 }

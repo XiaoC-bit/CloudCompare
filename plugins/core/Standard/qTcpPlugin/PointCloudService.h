@@ -116,6 +116,10 @@ class PointCloudService : public QObject
     static Eigen::Matrix4d computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg);
     static Eigen::Matrix4d buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
     static Eigen::Matrix4d rigidTransform(const Eigen::MatrixXd& p, const Eigen::MatrixXd& q);
+    static Eigen::Matrix4d makeTransform(const Eigen::Matrix3d& R, const Eigen::Vector3d& t);
+    static Eigen::Matrix4d rotateAroundPoint(const Eigen::Matrix3d& R, const Eigen::Vector3d& center);
+    static Eigen::Matrix3d rotY(double rad);
+    static Eigen::Matrix3d rotZ(double rad);
     bool               applyTransformationInternal(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage); // 内部应用变换函数
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
@@ -132,6 +136,15 @@ class PointCloudService : public QObject
 	bool               getDeviceRun(QString& value, QString* errorMessage = nullptr);
 	bool               readMacro(int addr, double& value, QString* errorMessage = nullptr);
 	QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
+	struct RTCPCompensation {
+		double x, y, z, a, b, c;
+	};
+	RTCPCompensation computeRTCPCompensation(
+		const QJsonObject& partInspectResult,
+		const QJsonObject& electrodeInspectResult,
+		const QJsonObject& edmParameters,
+		const QJsonArray& beginPos,
+		const QJsonArray& endPos);
 
 
 	bool ensureConnected(QString* errorMessage, int connectTimeout);
