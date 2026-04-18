@@ -844,7 +844,8 @@ QVector<QVector3D> PointCloudService::resolveCalibrationPositions(const QJsonObj
 	const QJsonValue positionsValue = params.value("positions");
 	if (positionsValue.isUndefined() || positionsValue.isNull())
 	{
-		return CalibrationDialog::getDefaultPositions();
+		// 从Template文件夹下的CalibrationPos.json获取位置信息
+		return getCalibrationPositionsFromFile(errorMessage);
 	}
 
 	if (!positionsValue.isArray())
@@ -859,7 +860,8 @@ QVector<QVector3D> PointCloudService::resolveCalibrationPositions(const QJsonObj
 	const QJsonArray positionsArray = positionsValue.toArray();
 	if (positionsArray.isEmpty())
 	{
-		return CalibrationDialog::getDefaultPositions();
+		// 从Template文件夹下的CalibrationPos.json获取位置信息
+		return getCalibrationPositionsFromFile(errorMessage);
 	}
 
 	QVector<QVector3D> positions;
@@ -4597,6 +4599,96 @@ bool PointCloudService::readMacro(int addr, double& value, QString* errorMessage
 	value = response["Value"].toDouble();
 
 	return true;
+}
+
+QVector<QVector3D> PointCloudService::getCalibrationPositionsFromFile(QString* errorMessage) const
+{
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString calibrationPosFile = appDir + "/Template/CalibrationPos.json";
+
+	QFile file(calibrationPosFile);
+	if (!file.exists()) {
+		if (errorMessage) {
+			*errorMessage = QString("CalibrationPos.json file not found: %1").arg(calibrationPosFile);
+		}
+		return {};
+	}
+
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		if (errorMessage) {
+			*errorMessage = QString("Failed to open CalibrationPos.json: %1").arg(file.errorString());
+		}
+		return {};
+	}
+
+	QByteArray data = file.readAll();
+	file.close();
+
+	QJsonParseError parseError;
+	QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+	if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+		if (errorMessage) {
+			*errorMessage = QString("Invalid CalibrationPos.json: %1").arg(parseError.errorString());
+		}
+		return {};
+	}
+
+	QJsonObject obj = doc.object();
+	if (!obj.contains("positions") || !obj["positions"].isArray()) {
+		if (errorMessage) {
+			*errorMessage = "CalibrationPos.json missing 'positions' array";
+		}
+		return {};
+	}
+
+	QJsonArray positionsArray = obj["positions"].toArray();
+	if (positionsArray.isEmpty()) {
+		if (errorMessage) {
+			*errorMessage = "CalibrationPos.json 'positions' array is empty";
+		}
+		return {};
+	}
+
+	QVector<QVector3D> positions;
+	positions.reserve(positionsArray.size());
+
+	for (int i = 0; i < positionsArray.size(); ++i) {
+		const QJsonValue entry = positionsArray.at(i);
+		if (entry.isObject()) {
+			const QJsonObject posObj = entry.toObject();
+			if (!posObj.contains("x") || !posObj.contains("y") || !posObj.contains("z")) {
+				if (errorMessage) {
+					*errorMessage = QString("positions[%1] is missing x/y/z").arg(i);
+				}
+				return {};
+			}
+			positions.push_back(QVector3D(
+				static_cast<float>(posObj["x"].toDouble()),
+				static_cast<float>(posObj["y"].toDouble()),
+				static_cast<float>(posObj["z"].toDouble())
+			));
+		} else if (entry.isArray()) {
+			const QJsonArray posArray = entry.toArray();
+			if (posArray.size() != 3) {
+				if (errorMessage) {
+					*errorMessage = QString("positions[%1] array must have exactly 3 elements").arg(i);
+				}
+				return {};
+			}
+			positions.push_back(QVector3D(
+				static_cast<float>(posArray[0].toDouble()),
+				static_cast<float>(posArray[1].toDouble()),
+				static_cast<float>(posArray[2].toDouble())
+			));
+		} else {
+			if (errorMessage) {
+				*errorMessage = QString("positions[%1] must be an object or array").arg(i);
+			}
+			return {};
+		}
+	}
+
+	return positions;
 }
 
 PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(

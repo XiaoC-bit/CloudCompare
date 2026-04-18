@@ -137,7 +137,8 @@ class PointCloudService : public QObject
 	bool               waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);
 	bool               getDeviceRun(QString& value, QString* errorMessage = nullptr);
 	bool               readMacro(int addr, double& value, QString* errorMessage = nullptr);
-	QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
+    QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
+    QVector<QVector3D> getCalibrationPositionsFromFile(QString* errorMessage = nullptr) const;
 	struct RTCPCompensation {
 		double x, y, z, a, b, c;
 	};
