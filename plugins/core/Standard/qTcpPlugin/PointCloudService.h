@@ -120,6 +120,8 @@ class PointCloudService : public QObject
     static Eigen::Matrix4d rotateAroundPoint(const Eigen::Matrix3d& R, const Eigen::Vector3d& center);
     static Eigen::Matrix3d rotY(double rad);
     static Eigen::Matrix3d rotZ(double rad);
+    // SVD算法函数（暂时声明，后续实现）
+    static Eigen::Matrix4d computeSVDTransform(const Eigen::MatrixXd& measuredPoints, const Eigen::MatrixXd& theoreticalPoints);
     bool               applyTransformationInternal(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage); // 内部应用变换函数
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
