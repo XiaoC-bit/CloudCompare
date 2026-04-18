@@ -1508,6 +1508,91 @@ void PointCloudService::applyViewport(const QJsonObject& params, QTcpSocket* soc
 	                          Qt::QueuedConnection);
 }
 
+bool PointCloudService::applyViewportInternalByIndex(const QJsonObject& params, int childIndex, QString* errorMessage)
+{
+	const QString name = params["name"].toString();
+	if (name.isEmpty())
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Empty name parameter";
+		}
+		return false;
+	}
+
+	ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
+	if (!glWindow)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "No active GL window";
+		}
+		return false;
+	}
+
+	// Search only top-level children
+	ccHObject* rootObject = nullptr;
+	ccHObject* dbRoot     = m_app->dbRootObject();
+	if (dbRoot)
+	{
+		for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i)
+		{
+			ccHObject* child = dbRoot->getChild(i);
+			if (child && child->getName() == name)
+			{
+				rootObject = child->getChild(childIndex);
+				break;
+			}
+		}
+	}
+
+	if (!rootObject)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Object not found: " + name;
+		}
+		m_app->dispToConsole("[TcpPlugin] Object not found: " + name, ccMainAppInterface::ERR_CONSOLE_MESSAGE);
+		return false;
+	}
+
+	cc2DViewportObject* viewportObject = nullptr;
+	for (unsigned i = 0; i < rootObject->getChildrenNumber(); ++i)
+	{
+		ccHObject* obj = rootObject->getChild(i);
+		if (obj && obj->isKindOf(CC_TYPES::VIEWPORT_2D_OBJECT))
+		{
+			viewportObject = static_cast<cc2DViewportObject*>(obj);
+			break;
+		}
+	}
+
+	if (!viewportObject)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Viewport object not found in hierarchy";
+		}
+		m_app->dispToConsole("[TcpPlugin] Viewport object not found in hierarchy", ccMainAppInterface::ERR_CONSOLE_MESSAGE);
+		return false;
+	}
+
+	cc2DViewportObject* viewport = ccHObjectCaster::To2DViewportObject(viewportObject);
+	assert(viewport);
+	if (!viewport)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Failed to cast to viewport object";
+		}
+		return false;
+	}
+
+	glWindow->setViewportParameters(viewport->getParameters());
+	glWindow->redraw();
+	return true;
+}
+
 void PointCloudService::applyTransformation(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]()
@@ -1581,59 +1666,71 @@ void PointCloudService::applyTransformation(const QJsonObject& params, QTcpSocke
 
 bool PointCloudService::segmentPolygonInternal(const QJsonObject& params, QString* errorMessage)
 {
-    const QString meshName = params["meshName"].toString();
-    const QString binName = params["binName"].toString();
-    const bool keepInside = params["keepInside"].toBool(true);
-    const bool modifySource = params["modifySource"].toBool(false);
-    const QString outputName = params["outputName"].toString();
+	const QString meshName     = params["meshName"].toString();
+	const QString binName      = params["binName"].toString();
+	const bool    keepInside   = params["keepInside"].toBool(true);
+	const bool    modifySource = params["modifySource"].toBool(false);
+	const QString outputName   = params["outputName"].toString();
 
-    if (meshName.isEmpty() || binName.isEmpty()) {
-        if (errorMessage) {
-            *errorMessage = "Missing meshName or binName";
-        }
-        return false;
-    }
+	if (meshName.isEmpty() || binName.isEmpty())
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Missing meshName or binName";
+		}
+		return false;
+	}
 
-    ccHObject* root = m_app->dbRootObject();
-    if (!root) {
-        if (errorMessage) {
-            *errorMessage = "No database root object";
-        }
-        return false;
-    }
+	ccHObject* root = m_app->dbRootObject();
+	if (!root)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "No database root object";
+		}
+		return false;
+	}
 
-    // Find target object (mesh or point cloud)
+	// Find target object (mesh or point cloud)
 	ccHObject* targetObj = findByName(root, meshName);
 	if (!targetObj)
 	{
-        if (errorMessage) {
-            *errorMessage = "Object not found: " + meshName;
-        }
-        return false;
-    }
-   
+		if (errorMessage)
+		{
+			*errorMessage = "Object not found: " + meshName;
+		}
+		return false;
+	}
 
-    ccMesh* targetMesh = nullptr;
-    ccGenericPointCloud* targetCloud = nullptr;
-    if (targetObj->isKindOf(CC_TYPES::MESH)) {
-        targetMesh = ccHObjectCaster::ToMesh(targetObj);
-    } else if (targetObj->isKindOf(CC_TYPES::POINT_CLOUD)) {
-        targetCloud = ccHObjectCaster::ToGenericPointCloud(targetObj);
-    } else {
-        if (errorMessage) {
-            *errorMessage = "Object is not a mesh or point cloud: " + meshName;
-        }
-        return false;
-    }
+	ccMesh*              targetMesh  = nullptr;
+	ccGenericPointCloud* targetCloud = nullptr;
+	if (targetObj->isKindOf(CC_TYPES::MESH))
+	{
+		targetMesh = ccHObjectCaster::ToMesh(targetObj);
+	}
+	else if (targetObj->isKindOf(CC_TYPES::POINT_CLOUD))
+	{
+		targetCloud = ccHObjectCaster::ToGenericPointCloud(targetObj);
+	}
+	else
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Object is not a mesh or point cloud: " + meshName;
+		}
+		return false;
+	}
 
-    // Find bin and extract polyline + viewport from its hierarchy
-    ccHObject* binRoot = findByName(root, binName);
-    if (!binRoot) {
-        if (errorMessage) {
-            *errorMessage = "Bin root not found: " + binName;
-        }
-        return false;
-    }
+	// Find bin and extract polyline + viewport from its hierarchy
+	ccHObject* binRoot = findByName(root, binName);
+	if (!binRoot)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Bin root not found: " + binName;
+		}
+		return false;
+	}
 
 	binRoot = binRoot->getChild(0);
 	if (!binRoot)
@@ -1645,188 +1742,533 @@ bool PointCloudService::segmentPolygonInternal(const QJsonObject& params, QStrin
 		return false;
 	}
 
-    ccPolyline* segPoly = nullptr;
-    cc2DViewportObject* vpObject = nullptr;
-    std::function<void(ccHObject*)> findInHierarchy = [&](ccHObject* obj) {
-        if (!segPoly && obj->isKindOf(CC_TYPES::POLY_LINE)) {
-            segPoly = static_cast<ccPolyline*>(obj);
-        }
-        if (!vpObject && obj->isKindOf(CC_TYPES::VIEWPORT_2D_OBJECT)) {
-            vpObject = static_cast<cc2DViewportObject*>(obj);
-        }
-        for (unsigned i = 0; i < obj->getChildrenNumber(); ++i) {
-            findInHierarchy(obj->getChild(i));
-        }
-    };
-    findInHierarchy(binRoot);
+	ccPolyline*                     segPoly         = nullptr;
+	cc2DViewportObject*             vpObject        = nullptr;
+	std::function<void(ccHObject*)> findInHierarchy = [&](ccHObject* obj)
+	{
+		if (!segPoly && obj->isKindOf(CC_TYPES::POLY_LINE))
+		{
+			segPoly = static_cast<ccPolyline*>(obj);
+		}
+		if (!vpObject && obj->isKindOf(CC_TYPES::VIEWPORT_2D_OBJECT))
+		{
+			vpObject = static_cast<cc2DViewportObject*>(obj);
+		}
+		for (unsigned i = 0; i < obj->getChildrenNumber(); ++i)
+		{
+			findInHierarchy(obj->getChild(i));
+		}
+	};
+	findInHierarchy(binRoot);
 
-    if (!segPoly) {
-        if (errorMessage) {
-            *errorMessage = "Polyline not found in bin";
-        }
-        return false;
-    }
-    if (!segPoly->isClosed()) {
-        if (errorMessage) {
-            *errorMessage = "Polyline is not closed";
-        }
-        return false;
-    }
-    if (!vpObject) {
-        if (errorMessage) {
-            *errorMessage = "Viewport object not found in bin";
-        }
-        return false;
-    }
+	if (!segPoly)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Polyline not found in bin";
+		}
+		return false;
+	}
+	if (!segPoly->isClosed())
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Polyline is not closed";
+		}
+		return false;
+	}
+	if (!vpObject)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Viewport object not found in bin";
+		}
+		return false;
+	}
 
-    // Apply viewport and capture camera
-    ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
-    if (!glWindow) {
-        if (errorMessage) {
-            *errorMessage = "No active GL window";
-        }
-        return false;
-    }
-    glWindow->setViewportParameters(vpObject->getParameters());
-    glWindow->redraw();
+	// Apply viewport and capture camera
+	ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
+	if (!glWindow)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "No active GL window";
+		}
+		return false;
+	}
+	glWindow->setViewportParameters(vpObject->getParameters());
+	glWindow->redraw();
 
-    ccGLCameraParameters camera;
-    glWindow->getGLCameraParameters(camera);
+	ccGLCameraParameters camera;
+	glWindow->getGLCameraParameters(camera);
 
-    const double half_w = camera.viewport[2] / 2.0;
-    const double half_h = camera.viewport[3] / 2.0;
+	const double half_w = camera.viewport[2] / 2.0;
+	const double half_h = camera.viewport[3] / 2.0;
 
-    // Project polyline vertices to 2D screen coordinates
-    ccPointCloud* polyVertices2D = new ccPointCloud();
-    ccPolyline* segPoly2D = new ccPolyline(polyVertices2D);
-    segPoly2D->addChild(polyVertices2D);
+	// Project polyline vertices to 2D screen coordinates
+	ccPointCloud* polyVertices2D = new ccPointCloud();
+	ccPolyline*   segPoly2D      = new ccPolyline(polyVertices2D);
+	segPoly2D->addChild(polyVertices2D);
 
-    CCCoreLib::GenericIndexedCloudPersist* vertices = segPoly->getAssociatedCloud();
-    const bool mode3D = !segPoly->is2DMode();
+	CCCoreLib::GenericIndexedCloudPersist* vertices = segPoly->getAssociatedCloud();
+	const bool                             mode3D   = !segPoly->is2DMode();
 
-    if (!polyVertices2D->reserve(vertices->size()) || !segPoly2D->reserve(segPoly->size())) {
-        delete segPoly2D;
-        if (errorMessage) {
-            *errorMessage = "Not enough memory for polyline conversion";
-        }
-        return false;
-    }
+	if (!polyVertices2D->reserve(vertices->size()) || !segPoly2D->reserve(segPoly->size()))
+	{
+		delete segPoly2D;
+		if (errorMessage)
+		{
+			*errorMessage = "Not enough memory for polyline conversion";
+		}
+		return false;
+	}
 
-    for (unsigned i = 0; i < vertices->size(); ++i) {
-        CCVector3 P = *vertices->getPoint(i);
-        if (mode3D) {
-            CCVector3d Q2D;
-            camera.project(P, Q2D);
-            P.x = static_cast<PointCoordinateType>(Q2D.x - half_w);
-            P.y = static_cast<PointCoordinateType>(Q2D.y - half_h);
-            P.z = 0;
-        }
-        polyVertices2D->addPoint(P);
-    }
-    for (unsigned j = 0; j < segPoly->size(); ++j) {
-        segPoly2D->addPointIndex(segPoly->getPointGlobalIndex(j));
-    }
-    segPoly2D->setClosed(segPoly->isClosed());
+	for (unsigned i = 0; i < vertices->size(); ++i)
+	{
+		CCVector3 P = *vertices->getPoint(i);
+		if (mode3D)
+		{
+			CCVector3d Q2D;
+			camera.project(P, Q2D);
+			P.x = static_cast<PointCoordinateType>(Q2D.x - half_w);
+			P.y = static_cast<PointCoordinateType>(Q2D.y - half_h);
+			P.z = 0;
+		}
+		polyVertices2D->addPoint(P);
+	}
+	for (unsigned j = 0; j < segPoly->size(); ++j)
+	{
+		segPoly2D->addPointIndex(segPoly->getPointGlobalIndex(j));
+	}
+	segPoly2D->setClosed(segPoly->isClosed());
 
-    // Check if polygon is fully inside viewport
-    bool polyInsideViewport = true;
-    for (unsigned i = 0; i < segPoly2D->size(); ++i) {
-        const CCVector3* P2D = segPoly2D->getPoint(i);
-        if (P2D->x < -half_w || P2D->x > half_w || P2D->y < -half_h || P2D->y > half_h) {
-            polyInsideViewport = false;
-            break;
-        }
-    }
+	// Check if polygon is fully inside viewport
+	bool polyInsideViewport = true;
+	for (unsigned i = 0; i < segPoly2D->size(); ++i)
+	{
+		const CCVector3* P2D = segPoly2D->getPoint(i);
+		if (P2D->x < -half_w || P2D->x > half_w || P2D->y < -half_h || P2D->y > half_h)
+		{
+			polyInsideViewport = false;
+			break;
+		}
+	}
 
-    // Resolve the point cloud to classify
-    ccGenericPointCloud* cloud = targetMesh ? ccHObjectCaster::ToGenericPointCloud(targetMesh) : targetCloud;
-    if (targetMesh && !cloud) {
-        delete segPoly2D;
-        if (errorMessage) {
-            *errorMessage = "Mesh has no associated point cloud";
-        }
-        return false;
-    }
+	// Resolve the point cloud to classify
+	ccGenericPointCloud* cloud = targetMesh ? ccHObjectCaster::ToGenericPointCloud(targetMesh) : targetCloud;
+	if (targetMesh && !cloud)
+	{
+		delete segPoly2D;
+		if (errorMessage)
+		{
+			*errorMessage = "Mesh has no associated point cloud";
+		}
+		return false;
+	}
 
-    if (!cloud->isVisibilityTableInstantiated() && !cloud->resetVisibilityArray()) {
-        delete segPoly2D;
-        if (errorMessage) {
-            *errorMessage = "Failed to initialize visibility array";
-        }
-        return false;
-    }
+	if (!cloud->isVisibilityTableInstantiated() && !cloud->resetVisibilityArray())
+	{
+		delete segPoly2D;
+		if (errorMessage)
+		{
+			*errorMessage = "Failed to initialize visibility array";
+		}
+		return false;
+	}
 
-    // Project and classify each point against the polygon
-    ccGenericPointCloud::VisibilityTableType& visibilityArray = cloud->getTheVisibilityArray();
-    for (int i = 0; i < static_cast<int>(cloud->size()); ++i) {
-        if (visibilityArray[i] != CCCoreLib::POINT_VISIBLE) {
-            continue;
-        }
+	// Project and classify each point against the polygon
+	ccGenericPointCloud::VisibilityTableType& visibilityArray = cloud->getTheVisibilityArray();
+	for (int i = 0; i < static_cast<int>(cloud->size()); ++i)
+	{
+		if (visibilityArray[i] != CCCoreLib::POINT_VISIBLE)
+		{
+			continue;
+		}
 
-        CCVector3d Q2D;
-        bool pointInFrustum = false;
-        camera.project(*cloud->getPoint(i), Q2D, &pointInFrustum);
+		CCVector3d Q2D;
+		bool       pointInFrustum = false;
+		camera.project(*cloud->getPoint(i), Q2D, &pointInFrustum);
 
-        bool pointInside = false;
-        if (pointInFrustum || !polyInsideViewport) {
-            CCVector2 P2D(static_cast<PointCoordinateType>(Q2D.x - half_w),
-                          static_cast<PointCoordinateType>(Q2D.y - half_h));
-            pointInside = CCCoreLib::ManualSegmentationTools::isPointInsidePoly(P2D, segPoly2D);
-        }
+		bool pointInside = false;
+		if (pointInFrustum || !polyInsideViewport)
+		{
+			CCVector2 P2D(static_cast<PointCoordinateType>(Q2D.x - half_w),
+			              static_cast<PointCoordinateType>(Q2D.y - half_h));
+			pointInside = CCCoreLib::ManualSegmentationTools::isPointInsidePoly(P2D, segPoly2D);
+		}
 
-        visibilityArray[i] = (keepInside != pointInside) ? CCCoreLib::POINT_HIDDEN : CCCoreLib::POINT_VISIBLE;
-    }
+		visibilityArray[i] = (keepInside != pointInside) ? CCCoreLib::POINT_HIDDEN : CCCoreLib::POINT_VISIBLE;
+	}
 
-    // Generate result object
-    auto finishWithEmpty = [&]() {
-        delete segPoly2D;
-        cloud->resetVisibilityArray();
-        if (errorMessage) {
-            *errorMessage = "Segmentation result is empty";
-        }
-        return false;
-    };
+	// Generate result object
+	auto finishWithEmpty = [&]()
+	{
+		delete segPoly2D;
+		cloud->resetVisibilityArray();
+		if (errorMessage)
+		{
+			*errorMessage = "Segmentation result is empty";
+		}
+		return false;
+	};
 
-    if (targetMesh) {
-        ccMesh* result = targetMesh->createNewMeshFromSelection(modifySource);
-        if (!result || result->size() == 0) { delete result; return finishWithEmpty(); }
+	if (targetMesh)
+	{
+		ccMesh* result = targetMesh->createNewMeshFromSelection(modifySource);
+		if (!result || result->size() == 0)
+		{
+			delete result;
+			return finishWithEmpty();
+		}
 
-        const QString resultName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
-        result->setName(resultName);
-        m_app->addToDB(result);
-        if (modifySource) {
-            targetMesh->prepareDisplayForRefresh_recursive();
-        }
+		const QString resultName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
+		result->setName(resultName);
+		m_app->addToDB(result);
+		if (modifySource)
+		{
+			targetMesh->prepareDisplayForRefresh_recursive();
+		}
 
-        cloud->resetVisibilityArray();
-        delete segPoly2D;
-        m_app->refreshAll();
+		cloud->resetVisibilityArray();
+		delete segPoly2D;
+		m_app->refreshAll();
 
-        const QString msg = modifySource ? QString("Source mesh punched, new part: ") + resultName
-                                       : QString("Segmentation completed: ") + resultName;
-        m_app->dispToConsole("[TcpPlugin] " + msg);
-    } else {
-        ccGenericPointCloud* result = targetCloud->createNewCloudFromVisibilitySelection(modifySource);
-        if (!result || result->size() == 0) { delete result; return finishWithEmpty(); }
+		const QString msg = modifySource ? QString("Source mesh punched, new part: ") + resultName
+		                                 : QString("Segmentation completed: ") + resultName;
+		m_app->dispToConsole("[TcpPlugin] " + msg);
+	}
+	else
+	{
+		ccGenericPointCloud* result = targetCloud->createNewCloudFromVisibilitySelection(modifySource);
+		if (!result || result->size() == 0)
+		{
+			delete result;
+			return finishWithEmpty();
+		}
 
-        const QString resultName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
-        result->setName(resultName);
-        m_app->addToDB(result);
-        if (modifySource) {
-            targetCloud->prepareDisplayForRefresh_recursive();
-        }
+		const QString resultName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
+		result->setName(resultName);
+		m_app->addToDB(result);
+		if (modifySource)
+		{
+			targetCloud->prepareDisplayForRefresh_recursive();
+		}
 
-        cloud->resetVisibilityArray();
-        delete segPoly2D;
-        m_app->refreshAll();
+		cloud->resetVisibilityArray();
+		delete segPoly2D;
+		m_app->refreshAll();
 
-        const QString msg = modifySource ? QString("Source cloud punched, removed part: ") + resultName
-                                       : QString("Segmentation completed: ") + resultName;
-        m_app->dispToConsole("[TcpPlugin] " + msg);
-    }
+		const QString msg = modifySource ? QString("Source cloud punched, removed part: ") + resultName
+		                                 : QString("Segmentation completed: ") + resultName;
+		m_app->dispToConsole("[TcpPlugin] " + msg);
+	}
 
-    return true;
+	return true;
 }
+
+
+bool PointCloudService::segmentPolygonInternalByIndex(const QJsonObject& params, int childIndex, QString* errorMessage)
+{
+	const QString meshName     = params["meshName"].toString();
+	const QString binName      = params["binName"].toString();
+	const bool    keepInside   = params["keepInside"].toBool(true);
+	const bool    modifySource = params["modifySource"].toBool(false);
+	const QString outputName   = params["outputName"].toString();
+
+	if (meshName.isEmpty() || binName.isEmpty())
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Missing meshName or binName";
+		}
+		return false;
+	}
+
+	ccHObject* root = m_app->dbRootObject();
+	if (!root)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "No database root object";
+		}
+		return false;
+	}
+
+	// Find target object (mesh or point cloud)
+	ccHObject* targetObj = findByName(root, meshName);
+	if (!targetObj)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Object not found: " + meshName;
+		}
+		return false;
+	}
+
+	ccMesh*              targetMesh  = nullptr;
+	ccGenericPointCloud* targetCloud = nullptr;
+	if (targetObj->isKindOf(CC_TYPES::MESH))
+	{
+		targetMesh = ccHObjectCaster::ToMesh(targetObj);
+	}
+	else if (targetObj->isKindOf(CC_TYPES::POINT_CLOUD))
+	{
+		targetCloud = ccHObjectCaster::ToGenericPointCloud(targetObj);
+	}
+	else
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Object is not a mesh or point cloud: " + meshName;
+		}
+		return false;
+	}
+
+	// Find bin and extract polyline + viewport from its hierarchy
+	ccHObject* binRoot = findByName(root, binName);
+	if (!binRoot)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Bin root not found: " + binName;
+		}
+		return false;
+	}
+
+	binRoot = binRoot->getChild(childIndex);
+	if (!binRoot)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Bin Object has no children: " + binName;
+		}
+		return false;
+	}
+
+	ccPolyline*                     segPoly         = nullptr;
+	cc2DViewportObject*             vpObject        = nullptr;
+	std::function<void(ccHObject*)> findInHierarchy = [&](ccHObject* obj)
+	{
+		if (!segPoly && obj->isKindOf(CC_TYPES::POLY_LINE))
+		{
+			segPoly = static_cast<ccPolyline*>(obj);
+		}
+		if (!vpObject && obj->isKindOf(CC_TYPES::VIEWPORT_2D_OBJECT))
+		{
+			vpObject = static_cast<cc2DViewportObject*>(obj);
+		}
+		for (unsigned i = 0; i < obj->getChildrenNumber(); ++i)
+		{
+			findInHierarchy(obj->getChild(i));
+		}
+	};
+	findInHierarchy(binRoot);
+
+	if (!segPoly)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Polyline not found in bin";
+		}
+		return false;
+	}
+	if (!segPoly->isClosed())
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Polyline is not closed";
+		}
+		return false;
+	}
+	if (!vpObject)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "Viewport object not found in bin";
+		}
+		return false;
+	}
+
+	// Apply viewport and capture camera
+	ccGLWindowInterface* glWindow = m_app->getActiveGLWindow();
+	if (!glWindow)
+	{
+		if (errorMessage)
+		{
+			*errorMessage = "No active GL window";
+		}
+		return false;
+	}
+	glWindow->setViewportParameters(vpObject->getParameters());
+	glWindow->redraw();
+
+	ccGLCameraParameters camera;
+	glWindow->getGLCameraParameters(camera);
+
+	const double half_w = camera.viewport[2] / 2.0;
+	const double half_h = camera.viewport[3] / 2.0;
+
+	// Project polyline vertices to 2D screen coordinates
+	ccPointCloud* polyVertices2D = new ccPointCloud();
+	ccPolyline*   segPoly2D      = new ccPolyline(polyVertices2D);
+	segPoly2D->addChild(polyVertices2D);
+
+	CCCoreLib::GenericIndexedCloudPersist* vertices = segPoly->getAssociatedCloud();
+	const bool                             mode3D   = !segPoly->is2DMode();
+
+	if (!polyVertices2D->reserve(vertices->size()) || !segPoly2D->reserve(segPoly->size()))
+	{
+		delete segPoly2D;
+		if (errorMessage)
+		{
+			*errorMessage = "Not enough memory for polyline conversion";
+		}
+		return false;
+	}
+
+	for (unsigned i = 0; i < vertices->size(); ++i)
+	{
+		CCVector3 P = *vertices->getPoint(i);
+		if (mode3D)
+		{
+			CCVector3d Q2D;
+			camera.project(P, Q2D);
+			P.x = static_cast<PointCoordinateType>(Q2D.x - half_w);
+			P.y = static_cast<PointCoordinateType>(Q2D.y - half_h);
+			P.z = 0;
+		}
+		polyVertices2D->addPoint(P);
+	}
+	for (unsigned j = 0; j < segPoly->size(); ++j)
+	{
+		segPoly2D->addPointIndex(segPoly->getPointGlobalIndex(j));
+	}
+	segPoly2D->setClosed(segPoly->isClosed());
+
+	// Check if polygon is fully inside viewport
+	bool polyInsideViewport = true;
+	for (unsigned i = 0; i < segPoly2D->size(); ++i)
+	{
+		const CCVector3* P2D = segPoly2D->getPoint(i);
+		if (P2D->x < -half_w || P2D->x > half_w || P2D->y < -half_h || P2D->y > half_h)
+		{
+			polyInsideViewport = false;
+			break;
+		}
+	}
+
+	// Resolve the point cloud to classify
+	ccGenericPointCloud* cloud = targetMesh ? ccHObjectCaster::ToGenericPointCloud(targetMesh) : targetCloud;
+	if (targetMesh && !cloud)
+	{
+		delete segPoly2D;
+		if (errorMessage)
+		{
+			*errorMessage = "Mesh has no associated point cloud";
+		}
+		return false;
+	}
+
+	if (!cloud->isVisibilityTableInstantiated() && !cloud->resetVisibilityArray())
+	{
+		delete segPoly2D;
+		if (errorMessage)
+		{
+			*errorMessage = "Failed to initialize visibility array";
+		}
+		return false;
+	}
+
+	// Project and classify each point against the polygon
+	ccGenericPointCloud::VisibilityTableType& visibilityArray = cloud->getTheVisibilityArray();
+	for (int i = 0; i < static_cast<int>(cloud->size()); ++i)
+	{
+		if (visibilityArray[i] != CCCoreLib::POINT_VISIBLE)
+		{
+			continue;
+		}
+
+		CCVector3d Q2D;
+		bool       pointInFrustum = false;
+		camera.project(*cloud->getPoint(i), Q2D, &pointInFrustum);
+
+		bool pointInside = false;
+		if (pointInFrustum || !polyInsideViewport)
+		{
+			CCVector2 P2D(static_cast<PointCoordinateType>(Q2D.x - half_w),
+			              static_cast<PointCoordinateType>(Q2D.y - half_h));
+			pointInside = CCCoreLib::ManualSegmentationTools::isPointInsidePoly(P2D, segPoly2D);
+		}
+
+		visibilityArray[i] = (keepInside != pointInside) ? CCCoreLib::POINT_HIDDEN : CCCoreLib::POINT_VISIBLE;
+	}
+
+	// Generate result object
+	auto finishWithEmpty = [&]()
+	{
+		delete segPoly2D;
+		cloud->resetVisibilityArray();
+		if (errorMessage)
+		{
+			*errorMessage = "Segmentation result is empty";
+		}
+		return false;
+	};
+
+	if (targetMesh)
+	{
+		ccMesh* result = targetMesh->createNewMeshFromSelection(modifySource);
+		if (!result || result->size() == 0)
+		{
+			delete result;
+			return finishWithEmpty();
+		}
+
+		const QString resultName = outputName.isEmpty() ? targetMesh->getName() + "_segmented" : outputName;
+		result->setName(resultName);
+		m_app->addToDB(result);
+		if (modifySource)
+		{
+			targetMesh->prepareDisplayForRefresh_recursive();
+		}
+
+		cloud->resetVisibilityArray();
+		delete segPoly2D;
+		m_app->refreshAll();
+
+		const QString msg = modifySource ? QString("Source mesh punched, new part: ") + resultName
+		                                 : QString("Segmentation completed: ") + resultName;
+		m_app->dispToConsole("[TcpPlugin] " + msg);
+	}
+	else
+	{
+		ccGenericPointCloud* result = targetCloud->createNewCloudFromVisibilitySelection(modifySource);
+		if (!result || result->size() == 0)
+		{
+			delete result;
+			return finishWithEmpty();
+		}
+
+		const QString resultName = outputName.isEmpty() ? targetCloud->getName() + "_segmented" : outputName;
+		result->setName(resultName);
+		m_app->addToDB(result);
+		if (modifySource)
+		{
+			targetCloud->prepareDisplayForRefresh_recursive();
+		}
+
+		cloud->resetVisibilityArray();
+		delete segPoly2D;
+		m_app->refreshAll();
+
+		const QString msg = modifySource ? QString("Source cloud punched, removed part: ") + resultName
+		                                 : QString("Segmentation completed: ") + resultName;
+		m_app->dispToConsole("[TcpPlugin] " + msg);
+	}
+
+	return true;
+}
+
 
 void PointCloudService::segment(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
@@ -2674,7 +3116,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = QString("Configuration file not found for part type: %1").arg(partType);
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
 		return;
 	}
@@ -2690,7 +3132,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = QString("Configuration file not found for part type: %1").arg(partType);
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
     }
@@ -2700,7 +3142,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = QString("Failed to open configuration file: %1").arg(file.errorString());
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
     }
@@ -2716,7 +3158,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = QString("Invalid configuration file: %1").arg(parseError.errorString());
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
     }
@@ -2735,7 +3177,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             QJsonObject obj;
             obj["Result"] = "NG";
             obj["Message"] = QString("Failed to load theoretical model: %1").arg(errorMessage);
-            result["inspectResult"] = obj;
+            result["InspectResult"] = obj;
             savePartInspectResult(rfid, result);
             return;
         }
@@ -2747,7 +3189,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = "No hole positions found in configuration";
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
     }
@@ -2760,7 +3202,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = "Inspect.nc template file does not exist";
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
     }
@@ -2770,7 +3212,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject obj;
         obj["Result"] = "NG";
         obj["Message"] = "Failed to open Inspect.nc template";
-        result["inspectResult"] = obj;
+        result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
     }
@@ -2831,7 +3273,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to write NC file for position %1-%2").arg(i + 1).arg(j + 1);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2845,7 +3287,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to send NC file for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2856,7 +3298,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2867,7 +3309,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to start machine for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2878,7 +3320,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Machine did not become idle for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2894,7 +3336,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to acquire point cloud for position %1-%2").arg(i + 1).arg(j + 1);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2926,7 +3368,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -2947,60 +3389,80 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                             QJsonObject obj;
                             obj["Result"] = "NG";
                             obj["Message"] = QString("Failed to load region file: %1").arg(errorMessage);
-                            result["inspectResult"] = obj;
+                            result["InspectResult"] = obj;
                             savePartInspectResult(rfid, result);
                             return;
                         }
                     }
                     
-                    // 7.2 切换视图
-                    if (cropRegion.contains("viewport")) {
-                        QJsonObject viewportParams;
-                        viewportParams["name"] = QString("%1%2").arg(cloudName).arg("_Region");
-                        QString errorMessage;
-                        if (!applyViewportInternal(viewportParams, &errorMessage)) {
-                            QJsonObject result;
-                            QJsonObject obj;
-                            obj["Result"] = "NG";
-                            obj["Message"] = QString("Failed to apply viewport: %1").arg(errorMessage);
-                            result["inspectResult"] = obj;
-                            savePartInspectResult(rfid, result);
-                            return;
+                    // 7.2 切换视图、裁剪、删除选取（遍历所有child）
+                    // 首先获取选区对象
+                    ccHObject* regionObject = nullptr;
+                    ccHObject* dbRoot = m_app->dbRootObject();
+                    if (dbRoot) {
+                        for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i) {
+                            ccHObject* child = dbRoot->getChild(i);
+                            if (child && child->getName() == QString("%1%2").arg(cloudName).arg("_Region")) {
+                                regionObject = child;
+                                break;
+                            }
                         }
                     }
                     
-                    // 7.3 进行裁剪
-                    if (cropRegion.contains("cropParams")) {
-                        QJsonObject segmentParams;
-                        segmentParams["binName"]  = QString("%1%2").arg(cloudName).arg("_Region");
-                        segmentParams["meshName"] = cloudName;
-                        segmentParams["modifySource"] = true;
+                    if (regionObject) {
+                        // 遍历所有child
+                        for (unsigned i = 0; i < regionObject->getChildrenNumber(); ++i) {
+                            // 7.2 切换视图
+                            if (cropRegion.contains("viewport")) {
+                                QJsonObject viewportParams;
+                                viewportParams["name"] = QString("%1%2").arg(cloudName).arg("_Region");
+                                QString errorMessage;
+                                if (!applyViewportInternalByIndex(viewportParams, i, &errorMessage)) {
+                                    QJsonObject result;
+                                    QJsonObject obj;
+                                    obj["Result"] = "NG";
+                                    obj["Message"] = QString("Failed to apply viewport for child %1: %2").arg(i).arg(errorMessage);
+                                    result["InspectResult"] = obj;
+                                    savePartInspectResult(rfid, result);
+                                    return;
+                                }
+                            }
+                            
+                            // 7.3 进行裁剪
+                            if (cropRegion.contains("cropParams")) {
+                                QJsonObject segmentParams;
+                                segmentParams["binName"]  = QString("%1%2").arg(cloudName).arg("_Region");
+                                segmentParams["meshName"] = cloudName;
+                                segmentParams["modifySource"] = true;
 
-                        const bool modifySource = params["modifySource"].toBool(false);
-                        QString errorMessage;
-                        if (!segmentPolygonInternal(segmentParams, &errorMessage)) {
-                            QJsonObject result;
-                            QJsonObject obj;
-                            obj["Result"] = "NG";
-                            obj["Message"] = QString("Failed to segment point cloud: %1").arg(errorMessage);
-                            result["inspectResult"] = obj;
-                            savePartInspectResult(rfid, result);
-                            return;
+                                const bool modifySource = params["modifySource"].toBool(false);
+                                QString errorMessage;
+								if (!segmentPolygonInternalByIndex(segmentParams,i, &errorMessage))
+								{
+                                    QJsonObject result;
+                                    QJsonObject obj;
+                                    obj["Result"] = "NG";
+                                    obj["Message"] = QString("Failed to segment point cloud: %1").arg(errorMessage);
+                                    result["InspectResult"] = obj;
+                                    savePartInspectResult(rfid, result);
+                                    return;
+                                }
+                            }
+                            
+                            // 7.4 删除不感兴趣的部分
+                            QJsonObject deleteParams;
+                            deleteParams["name"] = QString("%1%2").arg(cloudName).arg("_segmented");
+                            QString errorMessage;
+                            if (!deleteObjectInternal(deleteParams, &errorMessage)) {
+                                QJsonObject result;
+                                QJsonObject obj;
+                                obj["Result"] = "NG";
+                                obj["Message"] = QString("Failed to delete object: %1").arg(errorMessage);
+                                result["InspectResult"] = obj;
+                                savePartInspectResult(rfid, result);
+                                return;
+                            }
                         }
-                    }
-                    
-                    // 7.4 删除不感兴趣的部分
-                    QJsonObject deleteParams;
-                    deleteParams["name"] = QString("%1%2").arg(cloudName).arg("_segmented");
-                    QString errorMessage;
-                    if (!deleteObjectInternal(deleteParams, &errorMessage)) {
-                        QJsonObject result;
-                        QJsonObject obj;
-                        obj["Result"] = "NG";
-                        obj["Message"] = QString("Failed to delete object: %1").arg(errorMessage);
-                        result["inspectResult"] = obj;
-                        savePartInspectResult(rfid, result);
-                        return;
                     }
                 }
             }
@@ -3018,7 +3480,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to merge point clouds: %1").arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -3043,7 +3505,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to perform ICP registration: %1").arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -3080,7 +3542,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("ProgPath is required for probe inspection");
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3090,7 +3552,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("TheoryPos is required for probe inspection");
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3103,7 +3565,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("Probe program file not found: %1").arg(probeProgPath);
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3114,7 +3576,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("Failed to send probe program: %1").arg(errorMessage);
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3125,7 +3587,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("Failed to set main program: %1").arg(errorMessage);
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3136,7 +3598,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("Failed to start machine: %1").arg(errorMessage);
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3147,7 +3609,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 QJsonObject obj;
                 obj["Result"] = "NG";
                 obj["Message"] = QString("Machine did not become idle: %1").arg(errorMessage);
-                result["inspectResult"] = obj;
+                result["InspectResult"] = obj;
                 savePartInspectResult(rfid, result);
                 return;
             }
@@ -3172,7 +3634,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to read X coordinate for point %1: %2").arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -3182,7 +3644,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to read Y coordinate for point %1: %2").arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
@@ -3192,7 +3654,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                     QJsonObject obj;
                     obj["Result"] = "NG";
                     obj["Message"] = QString("Failed to read Z coordinate for point %1: %2").arg(j + 1).arg(errorMessage);
-                    result["inspectResult"] = obj;
+                    result["InspectResult"] = obj;
                     savePartInspectResult(rfid, result);
                     return;
                 }
