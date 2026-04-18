@@ -1,6 +1,7 @@
 #pragma once
 #include "Eigen/Core"
 #include "Eigen/Dense"
+#include "Eigen/SVD"
 
 #include <QJsonObject>
 #include <QMutex>
@@ -36,6 +37,7 @@ class PointCloudService : public QObject
 	void merge(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void clone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+
 	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -43,10 +45,16 @@ class PointCloudService : public QObject
 	void getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); // 获取工件检查结果
-
-
 	void electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void generateElectrodeProgram(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+
+
+
+
+
+
+
 	//
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
@@ -74,12 +82,14 @@ class PointCloudService : public QObject
 
 	QJsonObject m_probeCalibrationResult; // 探针标定结果	
 
-	QString                     m_statusFilePath;      // 状态文件路径
-
+	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
+	QString m_probeCalibrationFilePath;  // 状态文件路径
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	//工件检测函数
 	void partInspectFunc(const QJsonObject& params);
+	//电极检测函数
+	void electrodeInspectFunc(const QJsonObject& params);
 	// 辅助函数
 	void               sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode);
 	void               sendRes(QTcpSocket* socket, QJsonObject& msg, const QString& idCode);

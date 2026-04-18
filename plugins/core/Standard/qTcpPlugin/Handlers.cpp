@@ -32,12 +32,22 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
         m_service->clone(cmd.params, cmd.socket, cmd.idCode);
     } else if (cmd.type == "acquirePcd") {
         m_service->acquirePcd(cmd.params, cmd.socket, cmd.idCode);
-    } else if (cmd.type == "CameraCalibration") {
-        m_service->cameraCalibration(cmd.params, cmd.socket, cmd.idCode);
+	}
+	else if (cmd.type == "CameraCalibration")
+	{
+		m_service->cameraCalibration(cmd.params, cmd.socket, cmd.idCode);
+	}
+	else if (cmd.type == "CameraCalibrationResult")
+	{
+		m_service->cameraCalibrationResult(cmd.params, cmd.socket, cmd.idCode);
 	}
 	else if (cmd.type == "ProbeCalibration")
 	{
 		m_service->probeCalibration(cmd.params, cmd.socket, cmd.idCode);
+	}
+	else if (cmd.type == "ProbeCalibrationResult")
+	{
+		m_service->probeCalibrationResult(cmd.params, cmd.socket, cmd.idCode);
 	}
 	else if (cmd.type == "GetStatus")
 	{
@@ -58,6 +68,10 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
 	else if (cmd.type == "GetElectrodeInspectResult")
 	{
 		m_service->getElectrodeInspectResult(cmd.params, cmd.socket, cmd.idCode);
+	}
+	else if (cmd.type == "GenerateElectrodeProgram")
+	{
+		m_service->generateElectrodeProgram(cmd.params, cmd.socket, cmd.idCode);
 	}
 }
 

@@ -14,12 +14,12 @@ Command CommandParser::parse(const QString& json) {
         if (obj.contains("Command")) {
             cmd.type = obj["Command"].toString().toStdString();
         }
-        if (obj.contains("params")) {
-            cmd.params = obj["params"].toObject();
-        }
+
         if (obj.contains("IDCode")) {
             cmd.idCode = obj["IDCode"].toString();
         }
+
+		cmd.params = obj;
     }
     return cmd;
 }

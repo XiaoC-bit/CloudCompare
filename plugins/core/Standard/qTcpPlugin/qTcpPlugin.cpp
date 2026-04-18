@@ -111,6 +111,8 @@ void qTcpPlugin::startServer()
 	m_dispatcher->registerHandler("GetPartInspectResult", handler);
 	m_dispatcher->registerHandler("ElectrodeInspect", handler);
 	m_dispatcher->registerHandler("GetElectrodeInspectResult", handler);
+
+	m_dispatcher->registerHandler("GenerateElectrodeProgram", handler);
 	
 
 	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);
