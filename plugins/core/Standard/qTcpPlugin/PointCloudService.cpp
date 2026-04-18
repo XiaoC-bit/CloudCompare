@@ -3823,22 +3823,6 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 		sendRes(socket, obj, idCode);
 		return;
 	}
-	if(!params.contains("PartInspectData"))
-	{
-		QJsonObject obj;
-		obj[strCmd + "_Ret"] = "1";
-		obj["Message"]       = "Part inspection data is required";
-		sendRes(socket, obj, idCode);
-		return;
-	}
-	if(!params.contains("ElectrodeInspectData"))
-	{
-		QJsonObject obj;
-		obj[strCmd + "_Ret"] = "1";
-		obj["Message"]       = "Electrode inspection data is required";
-		sendRes(socket, obj, idCode);
-		return;
-	}
 	if(!params.contains("Path"))
 	{
 		QJsonObject obj;
@@ -3864,42 +3848,146 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 	QJsonArray electrodePos = params.value("ElectrodePos").toArray();
 	QString partRfid = params.value("PartRfid").toString();
 	QString electrodeRfid = params.value("ElectrodeRfid").toString();
-	QJsonObject partInspectData = params.value("PartInspectData").toObject();
-	QJsonObject electrodeInspectData = params.value("ElectrodeInspectData").toObject();
 	QString path = params.value("Path").toString();
 	QJsonObject edmParameters = params.value("EdmParameters").toObject();
 	QJsonObject resObj;
-    
-    
-    // 检查文件是否存在
-	QFile file(path);
-    
-    // 读取文件内容
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        resObj[strCmd + "_Ret"] = "1";
-		resObj["Message"]         = QString("Failed to open inspection result file: %1").arg(file.errorString());
-		sendRes(socket, resObj, idCode);
-        return;
-    }
-    
-    QByteArray data = file.readAll();
-    file.close();
-    
-    // 解析 JSON
-    QJsonParseError parseError;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-		resObj[strCmd + "_Ret"] = "1";
-		resObj["Message"]         = QString("Invalid inspection result file: %1").arg(parseError.errorString());
-		sendRes(socket, resObj, idCode);
-        return;
-    }
-    
-    // 返回结果
-    QJsonObject result = doc.object();
-    resObj[strCmd + "_Ret"] = "0";
-    resObj["Result"]        = result;
-    sendRes(socket, resObj, idCode);
+
+	// 1. 检查MachineType
+	if (machineType != "ONA" && machineType != "DIMENG") {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Machine type must be ONA or DIMENG";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 2. 找到放电程序模板
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString programDir = appDir + "/Program";
+	QDir dir(programDir);
+	if (!dir.exists()) {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Program directory does not exist";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 查找模板文件
+	QString templateFile;
+	QStringList filters; 
+	filters << QString("%1_%2_%3*.nc").arg(partType).arg(electrodeType).arg(machineType)
+	        << QString("%1_%2_%3*.txt").arg(partType).arg(electrodeType).arg(machineType);
+	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
+	if (fileList.isEmpty()) {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = QString("No program template found for PartType: %1, ElectrodeType: %2, MachineType: %3").arg(partType).arg(electrodeType).arg(machineType);
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 使用第一个找到的模板文件
+	templateFile = fileList.first().absoluteFilePath();
+
+	// 3. 读取模板文件
+	QFile templateNc(templateFile);
+	if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = QString("Failed to open program template: %1").arg(templateNc.errorString());
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	const QString templateContent = QTextStream(&templateNc).readAll();
+	templateNc.close();
+
+	// 4. 找到工件和电极的检测结果
+	QJsonObject partInspectResult;
+	QJsonObject electrodeInspectResult;
+
+	// 读取工件检测结果
+	QString partResultFile = appDir + "/PartResult/" + partRfid + ".json";
+	QFile partFile(partResultFile);
+	if (partFile.exists() && partFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QByteArray partData = partFile.readAll();
+		partFile.close();
+
+		QJsonParseError partParseError;
+		QJsonDocument partDoc = QJsonDocument::fromJson(partData, &partParseError);
+		if (partParseError.error == QJsonParseError::NoError && partDoc.isObject()) {
+			partInspectResult = partDoc.object();
+		}
+	}
+
+	// 读取电极检测结果
+	QString electrodeResultFile = appDir + "/ElectrodeResult/" + electrodeRfid + ".json";
+	QFile electrodeFile(electrodeResultFile);
+	if (electrodeFile.exists() && electrodeFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QByteArray electrodeData = electrodeFile.readAll();
+		electrodeFile.close();
+
+		QJsonParseError electrodeParseError;
+		QJsonDocument electrodeDoc = QJsonDocument::fromJson(electrodeData, &electrodeParseError);
+		if (electrodeParseError.error == QJsonParseError::NoError && electrodeDoc.isObject()) {
+			electrodeInspectResult = electrodeDoc.object();
+		}
+	}
+
+	// 5. 处理每个放电位置
+	QString programContent = templateContent;
+
+	// 6. 计算补偿值（这里只是创建函数框架，具体算法后面补充）
+	// 模拟计算补偿值
+	for (int i = 0; i < electrodePos.size(); ++i) {
+		QJsonObject pos = electrodePos[i].toObject();
+		QJsonArray begin = pos.value("Begin").toArray();
+		QJsonArray end = pos.value("End").toArray();
+
+		// 计算补偿值
+		// TODO: 实现RTCP算法计算补偿值
+		double compensationX = 0.0;
+		double compensationY = 0.0;
+		double compensationZ = 0.0;
+		double compensationA = 0.0;
+		double compensationB = 0.0;
+		double compensationC = 0.0;
+
+		// 替换模板中的变量
+		programContent.replace(QString("{补偿X_%1}").arg(i + 1), QString::number(compensationX));
+		programContent.replace(QString("{补偿Y_%1}").arg(i + 1), QString::number(compensationY));
+		programContent.replace(QString("{补偿Z_%1}").arg(i + 1), QString::number(compensationZ));
+		programContent.replace(QString("{补偿A_%1}").arg(i + 1), QString::number(compensationA));
+		programContent.replace(QString("{补偿B_%1}").arg(i + 1), QString::number(compensationB));
+		programContent.replace(QString("{补偿C_%1}").arg(i + 1), QString::number(compensationC));
+	}
+
+	// 7. 写入程序文件
+	QFile outputFile(path);
+	if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = QString("Failed to write program file: %1").arg(outputFile.errorString());
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	QTextStream out(&outputFile);
+	out << programContent;
+	outputFile.close();
+
+	// 返回结果
+	QJsonObject result;
+	result["Path"] = path;
+	result["MachineType"] = machineType;
+	result["PartType"] = partType;
+	result["ElectrodeType"] = electrodeType;
+	result["ElectrodePosCount"] = electrodePos.size();
+
+	resObj[strCmd + "_Ret"] = "0";
+	resObj["Result"]        = result;
+	sendRes(socket, resObj, idCode);
 }
 
 
