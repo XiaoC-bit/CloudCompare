@@ -1179,6 +1179,43 @@ Eigen::Matrix4d PointCloudService::invertRigid(const Eigen::Matrix4d& T)
     return T_inv;
 }
 
+Eigen::Matrix4d PointCloudService::rigidTransform(
+    const Eigen::MatrixXd& p,  // n×3 测量点 
+    const Eigen::MatrixXd& q)  // n×3 理论点 
+{
+    // 1. 计算质心 
+    Eigen::Vector3d p_bar = p.colwise().mean(); 
+    Eigen::Vector3d q_bar = q.colwise().mean(); 
+
+    // 2. 去质心 
+    Eigen::MatrixXd P = p.rowwise() - p_bar.transpose(); 
+    Eigen::MatrixXd Q = q.rowwise() - q_bar.transpose(); 
+
+    // 3. 协方差矩阵 
+    Eigen::Matrix3d H = P.transpose() * Q; 
+
+    // 4. SVD分解 
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(
+        H, Eigen::ComputeFullU | Eigen::ComputeFullV); 
+    Eigen::Matrix3d U = svd.matrixU(); 
+    Eigen::Matrix3d V = svd.matrixV(); 
+
+    // 5. 求旋转矩阵，处理反射情况 
+    Eigen::Matrix3d D = Eigen::Matrix3d::Identity(); 
+    D(2,2) = (V * U.transpose()).determinant(); 
+    Eigen::Matrix3d R = V * D * U.transpose(); 
+
+    // 6. 求平移 
+    Eigen::Vector3d t = q_bar - R * p_bar; 
+
+    // 7. 组装4×4齐次变换矩阵 
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity(); 
+    T.block<3,3>(0,0) = R; 
+    T.block<3,1>(0,3) = t; 
+
+    return T; 
+}
+
 Eigen::Matrix4d PointCloudService::makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot)
 {
     Eigen::Matrix4d T = Eigen::Matrix4d::Identity();

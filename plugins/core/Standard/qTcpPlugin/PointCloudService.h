@@ -113,6 +113,7 @@ class PointCloudService : public QObject
     static Eigen::Matrix4d makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot);
     static Eigen::Matrix4d computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg);
     static Eigen::Matrix4d buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
+    static Eigen::Matrix4d rigidTransform(const Eigen::MatrixXd& p, const Eigen::MatrixXd& q);
     bool               applyTransformationInternal(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage); // 内部应用变换函数
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
