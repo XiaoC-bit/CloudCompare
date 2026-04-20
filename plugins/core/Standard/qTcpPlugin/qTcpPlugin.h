@@ -27,7 +27,9 @@ private slots:
 	void stopServer();
 	void showCalibrationDialog();
 
-private:
+  private:
+	QThread* m_tcpThread = nullptr;
+  private:
 	void               updateActions();
 	QAction*           m_startAction;
 	QAction*           m_stopAction;

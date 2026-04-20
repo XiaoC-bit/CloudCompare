@@ -28,6 +28,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
 
 qTcpPlugin::~qTcpPlugin()
 {
+	stopServer();
 }
 
 void qTcpPlugin::onNewSelection(const ccHObject::Container&)
@@ -118,14 +119,14 @@ void qTcpPlugin::startServer()
 	auto machineHandler = std::make_shared<MachineCommandHandler>(m_machineProxy);
 	m_dispatcher->registerHandler("machine", machineHandler);
 
-
-	QThread* tcpThread = new QThread(this);
+	
+	m_tcpThread = new QThread(this);
 	// 4. 创建并启动 TCP 服务器
 	m_server = new CcTcpServer(nullptr);
 	m_server->setCommandDispatcher(m_dispatcher);
-	m_server->moveToThread(tcpThread);
+	m_server->moveToThread(m_tcpThread);
 
-	connect(tcpThread, &QThread::started, [this]()
+	connect(m_tcpThread, &QThread::started, [this]()
 	        {
 				quint16 port = 52700;
 				m_server->startListening(port);
@@ -133,11 +134,11 @@ void qTcpPlugin::startServer()
 
 	
 // 可选：线程结束时释放
-	connect(tcpThread, &QThread::finished, m_server, &QObject::deleteLater);
+	connect(m_tcpThread, &QThread::finished, m_server, &QObject::deleteLater);
 
 
 	
-	tcpThread->start();
+	m_tcpThread->start();
 
 	/*if (m_server->startListening(port))
 	{
@@ -169,8 +170,18 @@ void qTcpPlugin::stopServer()
 		return;
 	}
 
-	m_server->close();
-	delete m_server;
+	 // 让 server 在自己的线程里关闭，不要跨线程 delete
+	QMetaObject::invokeMethod(m_server, "close", Qt::BlockingQueuedConnection);
+
+	  // 停止线程
+	if (m_tcpThread)
+	{
+		m_tcpThread->quit();
+		m_tcpThread->wait(3000); // 最多等3秒
+		m_tcpThread = nullptr;
+	}
+
+	// 此时线程已停止，m_server 由 deleteLater 自动释放（你已连接了finished信号）
 	m_server = nullptr;
 
 	delete m_dispatcher;
