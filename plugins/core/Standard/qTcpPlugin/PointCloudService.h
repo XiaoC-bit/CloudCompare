@@ -104,6 +104,8 @@ class PointCloudService : public QObject
 	//电极检测函数
 	void electrodeInspectFunc(const QJsonObject& params);
 	void electrodeInspectFuncMock(const QJsonObject& params);
+	//电极程序生成函数
+	void generateElectrodeProgramFuncMock(const QJsonObject& params);
 	// 辅助函数
 	void               sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode);
 	void               sendRes(QTcpSocket* socket, QJsonObject& msg, const QString& idCode);
