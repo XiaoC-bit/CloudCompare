@@ -4015,6 +4015,143 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 	m_cameraCalibrationResult["CalibrationResult"] = obj;
 }
 
+void PointCloudService::cameraCalibrationFuncMock(const QJsonObject& params)
+{
+	QString errorMessage;
+	
+	// 检查标定位置参数
+	const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
+	if (positions.isEmpty())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	if (mode != "Auto")
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 获取Mock文件路径
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString mockDir = appDir + "/Mock";
+	QString mockFile = mockDir + "/Calibration.nc";
+	
+	QDir dir(mockDir);
+	if (!dir.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock directory does not exist";
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QFile mockNc(mockFile);
+	if (!mockNc.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock Calibration.nc file does not exist";
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 发送Mock文件到机床
+	if (!sendFileToMachine(mockFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to send mock calibration file: %1").arg(errorMessage);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to set main program: %1").arg(errorMessage);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to start machine: %1").arg(errorMessage);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 等待机床空闲
+	if (!waitForMachineIdle(120, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// Mock模式下，返回成功结果
+	QJsonObject obj;
+	obj["Result"] = "OK";
+	obj["Message"] = "Mock calibration completed successfully";
+	obj["PositionCount"] = positions.size();
+	obj["MockMode"] = true;
+	m_cameraCalibrationResult["CalibrationResult"] = obj;
+	saveCalibrationStatus();
+}
+
 void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 
@@ -4736,7 +4873,14 @@ void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket*
 
 	QMetaObject::invokeMethod(qApp, [this, params]()
 	                          {
-		cameraCalibrationFunc(params);
+		if (m_enableMock)
+		{
+			cameraCalibrationFuncMock(params);
+		}
+		else
+		{
+			cameraCalibrationFunc(params);
+		}
 		m_Status = MachineStatus::Idle;
 		saveCalibrationStatus();
 		},

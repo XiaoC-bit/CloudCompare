@@ -93,6 +93,7 @@ class PointCloudService : public QObject
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);
+	void cameraCalibrationFuncMock(const QJsonObject& params);
 	void probeCalibrationFunc(const QJsonObject& params);
 	//工件检测函数
 	void partInspectFunc(const QJsonObject& params);
