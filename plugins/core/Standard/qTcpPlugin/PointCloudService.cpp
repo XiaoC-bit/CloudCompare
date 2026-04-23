@@ -4152,6 +4152,376 @@ void PointCloudService::cameraCalibrationFuncMock(const QJsonObject& params)
 	saveCalibrationStatus();
 }
 
+void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
+{
+	QString errorMessage;
+	
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	if (mode != "Auto")
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 获取Mock文件路径
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString mockDir = appDir + "/Mock";
+	QString mockFile = mockDir + "/probe.nc";
+	
+	QDir dir(mockDir);
+	if (!dir.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock directory does not exist";
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QFile mockNc(mockFile);
+	if (!mockNc.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock probe.nc file does not exist";
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 发送Mock文件到机床
+	if (!sendFileToMachine(mockFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to send mock probe file: %1").arg(errorMessage);
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to set main program: %1").arg(errorMessage);
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to start machine: %1").arg(errorMessage);
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 等待机床空闲
+	if (!waitForMachineIdle(120, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// Mock模式下，返回成功结果
+	QJsonObject obj;
+	obj["Result"] = "OK";
+	obj["Message"] = "Mock probe calibration completed successfully";
+	obj["RotationCenter"] = QJsonObject{{"X", 0.0}, {"Y", 0.0}, {"Z", 0.0}};
+	obj["MockMode"] = true;
+	m_probeCalibrationResult["CalibrationResult"] = obj;
+	saveCalibrationStatus();
+}
+
+void PointCloudService::partInspectFuncMock(const QJsonObject& params)
+{
+	QString errorMessage;
+	
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	if (mode != "Auto")
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 获取Mock文件路径
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString mockDir = appDir + "/Mock";
+	QString mockFile = mockDir + "/partInspect.nc";
+	
+	QDir dir(mockDir);
+	if (!dir.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock directory does not exist";
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QFile mockNc(mockFile);
+	if (!mockNc.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock partInspect.nc file does not exist";
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 发送Mock文件到机床
+	if (!sendFileToMachine(mockFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to send mock part inspect file: %1").arg(errorMessage);
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to set main program: %1").arg(errorMessage);
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to start machine: %1").arg(errorMessage);
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 等待机床空闲
+	if (!waitForMachineIdle(120, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		m_partInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// Mock模式下，返回成功结果
+	QJsonObject obj;
+	obj["Result"] = "OK";
+	obj["Message"] = "Mock part inspection completed successfully";
+	obj["MockMode"] = true;
+	m_partInspectResult["InspectResult"] = obj;
+	saveCalibrationStatus();
+}
+
+void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
+{
+	QString errorMessage;
+	
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	if (mode != "Auto")
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 获取Mock文件路径
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString mockDir = appDir + "/Mock";
+	QString mockFile = mockDir + "/electrodeInspect.nc";
+	
+	QDir dir(mockDir);
+	if (!dir.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock directory does not exist";
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	QFile mockNc(mockFile);
+	if (!mockNc.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = "Mock electrodeInspect.nc file does not exist";
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 发送Mock文件到机床
+	if (!sendFileToMachine(mockFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to send mock electrode inspect file: %1").arg(errorMessage);
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to set main program: %1").arg(errorMessage);
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Failed to start machine: %1").arg(errorMessage);
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// 等待机床空闲
+	if (!waitForMachineIdle(120, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Message"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		m_electrodeInspectResult["InspectResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+	
+	// Mock模式下，返回成功结果
+	QJsonObject obj;
+	obj["Result"] = "OK";
+	obj["Message"] = "Mock electrode inspection completed successfully";
+	obj["MockMode"] = true;
+	m_electrodeInspectResult["InspectResult"] = obj;
+	saveCalibrationStatus();
+}
+
 void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 
@@ -4276,7 +4646,14 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	m_Status = MachineStatus::Running;
 
 	QMetaObject::invokeMethod(qApp, [this, params]() {
-		partInspectFunc(params);
+		if (m_enableMock)
+		{
+			partInspectFuncMock(params);
+		}
+		else
+		{
+			partInspectFunc(params);
+		}
 		m_Status = MachineStatus::Idle;
 	},
 	Qt::QueuedConnection);
@@ -4410,7 +4787,14 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 
 	QMetaObject::invokeMethod(qApp, [this, params]()
 	                          {
-		electrodeInspectFunc(params);
+		if (m_enableMock)
+		{
+			electrodeInspectFuncMock(params);
+		}
+		else
+		{
+			electrodeInspectFunc(params);
+		}
 		m_Status = MachineStatus::Idle; },
 	                          Qt::QueuedConnection);
 }
@@ -5079,7 +5463,14 @@ void PointCloudService::probeCalibration(const QJsonObject& params, QTcpSocket* 
 
 	QMetaObject::invokeMethod(qApp, [this, params]()
 	                          {
-		probeCalibrationFunc(params);
+		if (m_enableMock)
+		{
+			probeCalibrationFuncMock(params);
+		}
+		else
+		{
+			probeCalibrationFunc(params);
+		}
 		m_Status = MachineStatus::Idle;
 		saveCalibrationStatus(); },
 	                          Qt::QueuedConnection);

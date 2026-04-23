@@ -86,6 +86,8 @@ class PointCloudService : public QObject
 	Eigen::Matrix4d             m_cameraCalibrationMatrix;   // 相机标定结果矩阵
 
 	QJsonObject m_probeCalibrationResult; // 探针标定结果	
+	QJsonObject m_partInspectResult; // 工件检测结果
+	QJsonObject m_electrodeInspectResult; // 电极检测结果
 
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
@@ -95,10 +97,13 @@ class PointCloudService : public QObject
 	void cameraCalibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFuncMock(const QJsonObject& params);
 	void probeCalibrationFunc(const QJsonObject& params);
+	void probeCalibrationFuncMock(const QJsonObject& params);
 	//工件检测函数
 	void partInspectFunc(const QJsonObject& params);
+	void partInspectFuncMock(const QJsonObject& params);
 	//电极检测函数
 	void electrodeInspectFunc(const QJsonObject& params);
+	void electrodeInspectFuncMock(const QJsonObject& params);
 	// 辅助函数
 	void               sendOk(QTcpSocket* socket, const QString& msg, const QString& idCode);
 	void               sendRes(QTcpSocket* socket, QJsonObject& msg, const QString& idCode);
