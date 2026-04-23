@@ -22,6 +22,9 @@ class PointCloudService : public QObject
 	explicit PointCloudService(ccMainAppInterface* app, QObject* parent = nullptr);
 	~PointCloudService() override;
 
+	void setEnableMock(bool enable);
+	bool getEnableMock() const { return m_enableMock; }
+
 	// 命令响应函数
 	void load(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void filter(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -38,6 +41,8 @@ class PointCloudService : public QObject
 	void clone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
+
+	// 以下是与自动化相关的命令响应函数
 	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -84,6 +89,7 @@ class PointCloudService : public QObject
 
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
+	bool m_enableMock; // 是否启用mock命令
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);

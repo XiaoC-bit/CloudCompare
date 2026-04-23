@@ -68,6 +68,7 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
     , m_machineSocket(nullptr)
     , m_workerMachineSocket(nullptr)
     , m_Status(MachineStatus::Idle)
+    , m_enableMock(false)
 {
 	// 设置状态文件路径
 	QString appDir      = QCoreApplication::applicationDirPath();
@@ -140,6 +141,11 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	{
 		m_probeCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "NG"}, {"Message", "not inited"}};
 	}
+}
+
+void PointCloudService::setEnableMock(bool enable)
+{
+	m_enableMock = enable;
 }
 
 PointCloudService::~PointCloudService()
@@ -3716,7 +3722,6 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 	const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
 	if (positions.isEmpty())
 	{
-
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
 		obj["Result"]                            = "NG";
@@ -4733,7 +4738,8 @@ void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket*
 	                          {
 		cameraCalibrationFunc(params);
 		m_Status = MachineStatus::Idle;
-		saveCalibrationStatus(); },
+		saveCalibrationStatus();
+		},
 	                          Qt::QueuedConnection);
 }
 

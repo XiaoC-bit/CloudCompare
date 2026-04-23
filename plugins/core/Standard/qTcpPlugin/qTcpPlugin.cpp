@@ -1,4 +1,3 @@
-// qTcpPlugin.cpp
 #include "qTcpPlugin.h"
 
 #include "CcTcpServer.h"
@@ -10,6 +9,9 @@
 #include "CalibrationDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QSettings>
 #include <qthread.h>
 #include <memory>
 
@@ -78,6 +80,26 @@ void qTcpPlugin::startServer()
 
 	// 1. 创建服务和代理
 	m_pointCloudService = new PointCloudService(m_app, this);
+	
+	// 读取配置文件
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/config";
+	QString configFile = configDir + "/config.ini";
+	
+	QDir dir(configDir);
+	if (!dir.exists()) {
+		dir.mkpath(configDir);
+	}
+	
+	QSettings settings(configFile, QSettings::IniFormat);
+	if (!QFile::exists(configFile)) {
+		settings.setValue("General/enableMock", false);
+		settings.sync();
+	}
+	
+	bool enableMock = settings.value("General/enableMock", false).toBool();
+	m_pointCloudService->setEnableMock(enableMock);
+	
 	m_machineProxy = new MachineProxy(this);
 	
 	// 2. 创建命令分发器
