@@ -148,6 +148,29 @@ void PointCloudService::setEnableMock(bool enable)
 	m_enableMock = enable;
 }
 
+void PointCloudService::setBAxisCenter(double x, double y, double z)
+{
+	m_bAxisCenter.x() = x;
+	m_bAxisCenter.y() = y;
+	m_bAxisCenter.z() = z;
+}
+
+void PointCloudService::setCAxisCenter(double x, double y, double z)
+{
+	m_cAxisCenter.x() = x;
+	m_cAxisCenter.y() = y;
+	m_cAxisCenter.z() = z;
+}
+
+void PointCloudService::setG54Config(double x, double y, double z, double B_deg, double C_deg)
+{
+	m_g54Config.xyz.x() = x;
+	m_g54Config.xyz.y() = y;
+	m_g54Config.xyz.z() = z;
+	m_g54Config.B_deg = B_deg;
+	m_g54Config.C_deg = C_deg;
+}
+
 PointCloudService::~PointCloudService()
 {
 	if (m_machineSocket)
