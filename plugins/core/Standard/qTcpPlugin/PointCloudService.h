@@ -11,6 +11,13 @@
 #include <vector>
 #include <ccGLMatrix.h>
 
+// G54偏置（从机床坐标系到G54）
+struct G54Config {
+    Eigen::Vector3d xyz;      // G54的XYZ偏置（机床坐标系）
+    double B_deg;             // G54的B角偏置
+    double C_deg;             // G54的C角偏置
+};
+
 class ccMainAppInterface;
 
 class PointCloudService : public QObject
@@ -24,6 +31,13 @@ class PointCloudService : public QObject
 
 	void setEnableMock(bool enable);
 	bool getEnableMock() const { return m_enableMock; }
+	
+	// 设置旋转中心
+	void setBAxisCenter(double x, double y, double z);
+	void setCAxisCenter(double x, double y, double z);
+	
+	// 设置G54工件坐标系
+	void setG54Config(double x, double y, double z, double B_deg, double C_deg);
 
 	// 命令响应函数
 	void load(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -92,6 +106,13 @@ class PointCloudService : public QObject
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
 	bool m_enableMock; // 是否启用mock命令
+	
+	// 旋转中心
+	Eigen::Vector3d m_bAxisCenter; // B轴旋转中心
+	Eigen::Vector3d m_cAxisCenter; // C轴旋转中心
+	
+	// G54工件坐标系
+	G54Config m_g54Config;
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);

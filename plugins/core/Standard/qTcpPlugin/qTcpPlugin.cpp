@@ -94,11 +94,45 @@ void qTcpPlugin::startServer()
 	QSettings settings(configFile, QSettings::IniFormat);
 	if (!QFile::exists(configFile)) {
 		settings.setValue("General/enableMock", false);
+		// B轴旋转中心默认值
+		settings.setValue("RotationCenter/B_x", 0.0);
+		settings.setValue("RotationCenter/B_y", 0.0);
+		settings.setValue("RotationCenter/B_z", 0.0);
+		// C轴旋转中心默认值
+		settings.setValue("RotationCenter/C_x", 0.0);
+		settings.setValue("RotationCenter/C_y", 0.0);
+		settings.setValue("RotationCenter/C_z", 0.0);
+		// G54工件坐标系默认值
+		settings.setValue("G54/X", 0.0);
+		settings.setValue("G54/Y", 0.0);
+		settings.setValue("G54/Z", 0.0);
+		settings.setValue("G54/B", 0.0);
+		settings.setValue("G54/C", 0.0);
 		settings.sync();
 	}
 	
 	bool enableMock = settings.value("General/enableMock", false).toBool();
 	m_pointCloudService->setEnableMock(enableMock);
+	
+	// 读取B轴旋转中心
+	double b_x = settings.value("RotationCenter/B_x", 0.0).toDouble();
+	double b_y = settings.value("RotationCenter/B_y", 0.0).toDouble();
+	double b_z = settings.value("RotationCenter/B_z", 0.0).toDouble();
+	m_pointCloudService->setBAxisCenter(b_x, b_y, b_z);
+	
+	// 读取C轴旋转中心
+	double c_x = settings.value("RotationCenter/C_x", 0.0).toDouble();
+	double c_y = settings.value("RotationCenter/C_y", 0.0).toDouble();
+	double c_z = settings.value("RotationCenter/C_z", 0.0).toDouble();
+	m_pointCloudService->setCAxisCenter(c_x, c_y, c_z);
+	
+	// 读取G54工件坐标系
+	double g54_x = settings.value("G54/X", 0.0).toDouble();
+	double g54_y = settings.value("G54/Y", 0.0).toDouble();
+	double g54_z = settings.value("G54/Z", 0.0).toDouble();
+	double g54_b = settings.value("G54/B", 0.0).toDouble();
+	double g54_c = settings.value("G54/C", 0.0).toDouble();
+	m_pointCloudService->setG54Config(g54_x, g54_y, g54_z, g54_b, g54_c);
 	
 	m_machineProxy = new MachineProxy(this);
 	

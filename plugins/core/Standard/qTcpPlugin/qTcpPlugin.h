@@ -34,6 +34,7 @@ private slots:
 	QAction*           m_startAction;
 	QAction*           m_stopAction;
 	QAction*           m_calibrationAction;
+private:
     CcTcpServer *m_server;
     CommandDispatcher *m_dispatcher;
     PointCloudService *m_pointCloudService;
