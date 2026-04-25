@@ -134,6 +134,7 @@ class PointCloudService : public QObject
 	class ccHObject*   getDbRoot(QTcpSocket* socket, const QString& idCode);
     void               saveCalibrationStatus(); // 保存标定状态
     void               savePartInspectResult(const QString& rfid, const QJsonObject& result); // 保存工件检查结果
+    void               saveElectrodeInspectResult(const QString& rfid, const QJsonObject& result); // 保存电极检查结果
     // 内部函数
     bool               loadInternal(const QJsonObject& params, QString* errorMessage); // 内部加载函数
     bool               applyViewportInternal(const QJsonObject& params, QString* errorMessage); // 内部应用视口函数
