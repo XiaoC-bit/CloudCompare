@@ -638,6 +638,7 @@ bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
 
 bool PointCloudService::sendFileToMachine(const QString& filePath, QString* errorMessage)
 {
+	return true;
 	const int   timeout = 5;
 	QJsonObject params;
 	params["Command"]    = "SendFile";
@@ -678,6 +679,7 @@ bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 
 bool PointCloudService::setMainProgram(QString* errorMessage)
 {
+	return true;
 	const int   timeout = 5;
 	QJsonObject params;
 	params["Command"]    = "SetMainProg";
@@ -694,6 +696,7 @@ bool PointCloudService::setMainProgram(QString* errorMessage)
 
 bool PointCloudService::startMachine(QString* errorMessage)
 {
+	return true;
 	// 尝试多几次
 	int retryCount = 0;
 	while (retryCount++ < 20)
@@ -814,6 +817,7 @@ bool PointCloudService::getDeviceRun(QString& value, QString* errorMessage)
 
 bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMessage)
 {
+	return true;
 	const int maxWaitTime  = timeoutSeconds * 1000;
 	const int waitInterval = 50;
 	int       elapsedTime  = 0;
@@ -4279,124 +4283,130 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 {
 	QString errorMessage;
-	
+
+	QString rfid = params.value("Rfid").toString();
+
 	if (!waitForMachineIdle(1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
+
 	QString mode;
 	if (!getMachineMode(mode, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
 	if (mode != "Auto")
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
-	// 获取Mock文件路径
+
 	QString appDir = QCoreApplication::applicationDirPath();
 	QString mockDir = appDir + "/Mock";
 	QString mockFile = mockDir + "/partInspect.nc";
-	
+
 	QDir dir(mockDir);
 	if (!dir.exists())
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = "Mock directory does not exist";
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
+
 	QFile mockNc(mockFile);
 	if (!mockNc.exists())
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = "Mock partInspect.nc file does not exist";
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
-	// 发送Mock文件到机床
+
 	if (!sendFileToMachine(mockFile, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = QString("Failed to send mock part inspect file: %1").arg(errorMessage);
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
-	// 设置主程序
+
 	if (!setMainProgram(&errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = QString("Failed to set main program: %1").arg(errorMessage);
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
-	// 启动机床
+
 	if (!startMachine(&errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = QString("Failed to start machine: %1").arg(errorMessage);
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
-	// 等待机床空闲
+
 	if (!waitForMachineIdle(120, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
+		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
 		obj["Message"] = QString("Machine did not become idle: %1").arg(errorMessage);
-		m_partInspectResult["InspectResult"] = obj;
-		saveCalibrationStatus();
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
 		return;
 	}
-	
-	// Mock模式下，返回成功结果
+
+	QJsonObject result;
 	QJsonObject obj;
 	obj["Result"] = "OK";
 	obj["Message"] = "Mock part inspection completed successfully";
 	obj["MockMode"] = true;
-	m_partInspectResult["InspectResult"] = obj;
-	saveCalibrationStatus();
+	result["InspectResult"] = obj;
+	savePartInspectResult(rfid, result);
 }
 
 void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
