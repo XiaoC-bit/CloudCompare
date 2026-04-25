@@ -36,3 +36,8 @@ class CommLogger
 	QString     m_logDir;
 	QDate       m_currentDate;
 };
+
+// 方便使用的宏
+#define LOG_INTERNAL(content) CommLogger::instance().logInternal(content)
+#define LOG_RECEIVED(content) CommLogger::instance().logReceived(content)
+#define LOG_SENT(content) CommLogger::instance().logSent(content)
