@@ -17,17 +17,22 @@ class CommLogger
 	void init(const QString& exeDir);
 	void logReceived(const QString& content);
 	void logSent(const QString& content);
+	void logInternal(const QString& content);
 
   private:
 	CommLogger() = default;
 	~CommLogger();
 
-	void ensureFileOpen();
-	void writeLine(const QString& tag, const QString& content);
+	void ensureCommFileOpen();
+	void ensureInternalFileOpen();
+	void writeLine(QFile& file, QTextStream& stream, QMutex& mutex, const QString& tag, const QString& content);
 
-	QFile       m_file;
-	QTextStream m_stream;
-	QMutex      m_mutex;
+	QFile       m_commFile;
+	QTextStream m_commStream;
+	QMutex      m_commMutex;
+	QFile       m_internalFile;
+	QTextStream m_internalStream;
+	QMutex      m_internalMutex;
 	QString     m_logDir;
 	QDate       m_currentDate;
 };
