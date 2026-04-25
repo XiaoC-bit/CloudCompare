@@ -35,6 +35,8 @@ if( PLUGIN_STANDARD_QTCP )
 		MachineProxy.cpp
 		Handlers.h
 		Handlers.cpp
+		ProbeFit6DOF_BC.h
+		ProbeFit6DOF_BC.cpp
 	)
 	
 	target_link_libraries( ${PROJECT_NAME} 
