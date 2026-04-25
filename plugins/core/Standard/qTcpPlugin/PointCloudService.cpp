@@ -171,6 +171,16 @@ void PointCloudService::setG54Config(double x, double y, double z, double B_deg,
 	m_g54Config.C_deg = C_deg;
 }
 
+void PointCloudService::setLoadingPosition(double x, double y, double z, double a, double b, double c)
+{
+	m_loadingPosition.x = x;
+	m_loadingPosition.y = y;
+	m_loadingPosition.z = z;
+	m_loadingPosition.a = a;
+	m_loadingPosition.b = b;
+	m_loadingPosition.c = c;
+}
+
 PointCloudService::~PointCloudService()
 {
 	if (m_machineSocket)
@@ -715,6 +725,34 @@ bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 	}
 
 	mode = response["Msg"].toString();
+	return true;
+}
+
+bool PointCloudService::getDeviceMainAxisCoor(double& x, double& y, double& z, double& a, double& b, double& c, QString* errorMessage)
+{
+	const int   timeout = 5;
+	QJsonObject params;
+	params["Command"]    = "GetDeviceMainAxisCoor";
+	params["DeviceType"] = MACHINE_DEVICE_TYPE;
+	params["DeviceName"] = MACHINE_DEVICE_NAME;
+	params["Timeout"]    = timeout * 1000;
+
+	QJsonObject response;
+	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000))
+	{
+		return false;
+	}
+	if (!checkMachineCommandRet(response, "GetDeviceMainAxisCoor", errorMessage))
+	{
+		return false;
+	}
+
+	x = response["X"].toDouble();
+	y = response["Y"].toDouble();
+	z = response["Z"].toDouble();
+	a = response["A"].toDouble();
+	b = response["B"].toDouble();
+	c = response["C"].toDouble();
 	return true;
 }
 
@@ -5694,7 +5732,35 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 		}
 		else if (value == "0")
 		{
-			status["Status"] = "Ready";
+			// 获取机床当前坐标
+			double x, y, z, a, b, c;
+			QString coordError;
+			if (getDeviceMainAxisCoor(x, y, z, a, b, c, &coordError))
+			{
+				// 与配置的上料坐标点进行比较
+				const double tolerance = 0.001; // 容差
+				bool isAtLoadingPosition = 
+					fabs(x - m_loadingPosition.x) < tolerance &&
+					fabs(y - m_loadingPosition.y) < tolerance &&
+					fabs(z - m_loadingPosition.z) < tolerance &&
+					fabs(a - m_loadingPosition.a) < tolerance &&
+					fabs(b - m_loadingPosition.b) < tolerance &&
+					fabs(c - m_loadingPosition.c) < tolerance;
+				
+				if (isAtLoadingPosition)
+				{
+					status["Status"] = "Ready";
+				}
+				else
+				{
+					status["Status"] = "Idle";
+				}
+			}
+			else
+			{
+				// 获取坐标失败，返回Idle
+				status["Status"] = "Idle";
+			}
 		}
 		else
 		{
@@ -5705,6 +5771,36 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 	}
 	sendRes(socket, status, idCode);
 
+}
+
+void PointCloudService::getDeviceMainAxisCoor(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	QString strCmd = "GetDeviceMainAxisCoor";
+	QJsonObject resObj;
+
+	QString deviceName = params.value("DeviceName").toString();
+	QString deviceType = params.value("DeviceType").toString();
+
+	double x, y, z, a, b, c;
+	QString errorMessage;
+	if (!getDeviceMainAxisCoor(x, y, z, a, b, c, &errorMessage))
+	{
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Message"]       = errorMessage.isEmpty() ? "Failed to get device main axis coordinate" : errorMessage;
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	resObj[strCmd + "_Ret"] = "0";
+	resObj["DeviceName"]    = deviceName;
+	resObj["DeviceType"]   = deviceType;
+	resObj["X"]            = x;
+	resObj["Y"]            = y;
+	resObj["Z"]            = z;
+	resObj["A"]            = a;
+	resObj["B"]            = b;
+	resObj["C"]            = c;
+	sendRes(socket, resObj, idCode);
 }
 
 bool PointCloudService::readMacro(int addr, double& value, QString* errorMessage)

@@ -38,6 +38,8 @@ class PointCloudService : public QObject
 	
 	// 设置G54工件坐标系
 	void setG54Config(double x, double y, double z, double B_deg, double C_deg);
+	// 设置上料坐标点
+	void setLoadingPosition(double x, double y, double z, double a, double b, double c);
 
 	// 命令响应函数
 	void load(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -62,6 +64,7 @@ class PointCloudService : public QObject
 	void probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void probeCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void getDeviceMainAxisCoor(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); // 获取工件检查结果
 	void electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -113,6 +116,10 @@ class PointCloudService : public QObject
 	
 	// G54工件坐标系
 	G54Config m_g54Config;
+	// 上料坐标点
+	struct LoadingPosition {
+		double x, y, z, a, b, c;
+	} m_loadingPosition;
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);
@@ -170,6 +177,7 @@ class PointCloudService : public QObject
 	bool               checkMachineCommandRet(const QJsonObject& response, const QString& commandName, QString* errorMessage = nullptr, const QString& messageKey = QString());
 	bool               sendFileToMachine(const QString& filePath, QString* errorMessage = nullptr);
 	bool               getMachineMode(QString& mode, QString* errorMessage = nullptr);
+	bool               getDeviceMainAxisCoor(double& x, double& y, double& z, double& a, double& b, double& c, QString* errorMessage = nullptr);
 	bool               setMainProgram(QString* errorMessage = nullptr);
 	bool               startMachine(QString* errorMessage = nullptr);
 	bool               waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);

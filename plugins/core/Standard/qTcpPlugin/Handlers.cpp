@@ -53,6 +53,10 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
 	{
 		m_service->getStatus(cmd.params, cmd.socket, cmd.idCode);
 	}
+	else if (cmd.type == "GetDeviceMainAxisCoor")
+	{
+		m_service->getDeviceMainAxisCoor(cmd.params, cmd.socket, cmd.idCode);
+	}
 	else if (cmd.type == "PartInspect")
 	{
 		m_service->partInspect(cmd.params, cmd.socket, cmd.idCode);

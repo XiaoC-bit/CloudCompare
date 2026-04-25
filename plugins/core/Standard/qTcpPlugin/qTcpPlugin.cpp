@@ -108,6 +108,13 @@ void qTcpPlugin::startServer()
 		settings.setValue("G54/Z", 0.0);
 		settings.setValue("G54/B", 0.0);
 		settings.setValue("G54/C", 0.0);
+		// 上料坐标点默认值
+		settings.setValue("LoadingPosition/X", 0.0);
+		settings.setValue("LoadingPosition/Y", 0.0);
+		settings.setValue("LoadingPosition/Z", 0.0);
+		settings.setValue("LoadingPosition/A", 0.0);
+		settings.setValue("LoadingPosition/B", 0.0);
+		settings.setValue("LoadingPosition/C", 0.0);
 		settings.sync();
 	}
 	
@@ -133,6 +140,15 @@ void qTcpPlugin::startServer()
 	double g54_b = settings.value("G54/B", 0.0).toDouble();
 	double g54_c = settings.value("G54/C", 0.0).toDouble();
 	m_pointCloudService->setG54Config(g54_x, g54_y, g54_z, g54_b, g54_c);
+	
+	// 读取上料坐标点
+	double loading_x = settings.value("LoadingPosition/X", 0.0).toDouble();
+	double loading_y = settings.value("LoadingPosition/Y", 0.0).toDouble();
+	double loading_z = settings.value("LoadingPosition/Z", 0.0).toDouble();
+	double loading_a = settings.value("LoadingPosition/A", 0.0).toDouble();
+	double loading_b = settings.value("LoadingPosition/B", 0.0).toDouble();
+	double loading_c = settings.value("LoadingPosition/C", 0.0).toDouble();
+	m_pointCloudService->setLoadingPosition(loading_x, loading_y, loading_z, loading_a, loading_b, loading_c);
 	
 	m_machineProxy = new MachineProxy(this);
 	
