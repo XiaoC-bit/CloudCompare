@@ -680,7 +680,6 @@ bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
 
 bool PointCloudService::sendFileToMachine(const QString& filePath, QString* errorMessage)
 {
-	return true;
 	const int   timeout = 5;
 	QJsonObject params;
 	params["Command"]    = "SendFile";
@@ -721,7 +720,6 @@ bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 
 bool PointCloudService::setMainProgram(QString* errorMessage)
 {
-	return true;
 	const int   timeout = 5;
 	QJsonObject params;
 	params["Command"]    = "SetMainProg";
@@ -738,7 +736,6 @@ bool PointCloudService::setMainProgram(QString* errorMessage)
 
 bool PointCloudService::startMachine(QString* errorMessage)
 {
-	return true;
 	// 尝试多几次
 	int retryCount = 0;
 	while (retryCount++ < 20)
@@ -859,7 +856,6 @@ bool PointCloudService::getDeviceRun(QString& value, QString* errorMessage)
 
 bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMessage)
 {
-	return true;
 	const int maxWaitTime  = timeoutSeconds * 1000;
 	const int waitInterval = 50;
 	int       elapsedTime  = 0;
