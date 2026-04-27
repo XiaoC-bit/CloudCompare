@@ -5742,7 +5742,16 @@ void PointCloudService::cameraCalibrationResult(const QJsonObject& params, QTcpS
 
 void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
+
 	QJsonObject status;
+
+	{
+		status["GetStatus_Ret"] = "1";
+		status["Message"]       = "Failed to get device run status";
+		sendRes(socket, status, idCode);
+		return;
+	}
+
 	// 先获取机床状态，再获取标定状态
 	QString value, errorMsg, strCmd;
 	strCmd = "GetStatus";

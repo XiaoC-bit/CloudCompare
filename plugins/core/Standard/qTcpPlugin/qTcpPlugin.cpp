@@ -40,9 +40,21 @@ void qTcpPlugin::setMainAppInterface(ccMainAppInterface* app)
 {
 	ccStdPluginInterface::setMainAppInterface(app);
 	startServer();
+}
 
-	// 插件初始化时调用一次
-	CommLogger::instance().init(QCoreApplication::applicationDirPath());
+void qTcpPlugin::initializeLogger()
+{
+	// 读取配置文件获取日志文件大小限制
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/config";
+	QString configFile = configDir + "/config.ini";
+	
+	QSettings settings(configFile, QSettings::IniFormat);
+	// 默认50MB
+	qint64 maxFileSize = settings.value("Log/MaxFileSizeMB", 50).toInt() * 1024 *1024;
+	
+	// 初始化日志
+	CommLogger::instance().init(appDir, maxFileSize);
 }
 
 QList<QAction*> qTcpPlugin::getActions()
@@ -77,6 +89,9 @@ void qTcpPlugin::startServer()
 		                     ccMainAppInterface::WRN_CONSOLE_MESSAGE);
 		return;
 	}
+
+	// 初始化日志
+	initializeLogger();
 
 	// 1. 创建服务和代理
 	m_pointCloudService = new PointCloudService(m_app, this);
@@ -117,6 +132,8 @@ void qTcpPlugin::startServer()
 		settings.setValue("LoadingPosition/C", 0.0);
 		// EDM程序路径默认值
 		settings.setValue("Paths/EdmProg", "D:/EdmProg/");
+		// 日志文件大小限制默认值（50MB）
+		settings.setValue("Log/MaxFileSizeMB", 50);
 		settings.sync();
 	}
 	// 确认实际读取的文件路径

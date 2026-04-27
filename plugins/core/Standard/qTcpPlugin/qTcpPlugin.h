@@ -39,4 +39,7 @@ private:
     CommandDispatcher *m_dispatcher;
     PointCloudService *m_pointCloudService;
     MachineProxy *m_machineProxy;
+    
+    // 初始化日志
+    void initializeLogger();
 };

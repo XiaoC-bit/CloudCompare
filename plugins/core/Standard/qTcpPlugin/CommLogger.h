@@ -14,7 +14,7 @@ class CommLogger
 		return s_instance;
 	}
 
-	void init(const QString& exeDir);
+	void init(const QString& exeDir, qint64 maxFileSize);
 	void logReceived(const QString& content);
 	void logSent(const QString& content);
 	void logInternal(const QString& content);
@@ -26,6 +26,8 @@ class CommLogger
 	void ensureCommFileOpen();
 	void ensureInternalFileOpen();
 	void writeLine(QFile& file, QTextStream& stream, QMutex& mutex, const QString& tag, const QString& content);
+	bool shouldRollFile(const QFile& file) const;
+	QString getRolledFileName(const QString& baseName) const;
 
 	QFile       m_commFile;
 	QTextStream m_commStream;
@@ -35,6 +37,9 @@ class CommLogger
 	QMutex      m_internalMutex;
 	QString     m_logDir;
 	QDate       m_currentDate;
+	
+	// 日志文件大小限制
+	qint64 m_maxFileSize;
 };
 
 // 方便使用的宏
