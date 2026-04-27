@@ -328,7 +328,7 @@ void PointCloudService::sendRes(QTcpSocket* socket, QJsonObject& resp, const QSt
 	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Indented) + "\n";
 
 	// 记录发送内容
-	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+	LOG_SENT(QString::fromUtf8(responseBytes).trimmed());
 
 	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
 	socket->flush();

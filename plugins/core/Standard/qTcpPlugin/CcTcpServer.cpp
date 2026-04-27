@@ -1,6 +1,7 @@
 #include "CcTcpServer.h"
 #include "CommandParser.h"
 #include "CommandDispatcher.h"
+#include "CommLogger.h"
 
 CcTcpServer::CcTcpServer(QObject* parent) : QTcpServer(parent) {
     m_parser = new CommandParser();
@@ -33,6 +34,7 @@ void CcTcpServer::onReadyRead() {
     // 简单的 JSON 解析，假设每个命令是一个完整的 JSON 对象
     if (m_buffer.contains('{') && m_buffer.contains('}')) {
         QString jsonStr = QString::fromUtf8(m_buffer);
+        LOG_RECEIVED(jsonStr);
         Command cmd = m_parser->parse(jsonStr);
         cmd.socket = socket;
         
