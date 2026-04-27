@@ -181,6 +181,15 @@ void PointCloudService::setLoadingPosition(double x, double y, double z, double 
 	m_loadingPosition.c = c;
 }
 
+void PointCloudService::setEdmProgPath(const QString& path)
+{
+	m_edmProgPath = path;
+	// 确保路径以 '/' 结尾
+	if (!m_edmProgPath.endsWith('/') && !m_edmProgPath.endsWith('\\')) {
+		m_edmProgPath += '/';
+	}
+}
+
 PointCloudService::~PointCloudService()
 {
 	if (m_machineSocket)
@@ -4622,7 +4631,7 @@ void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& para
 	QString partRfid      = params.value("PartRfid").toString();
 	QString electrodeRfid = params.value("ElectrodeRfid").toString();
 
-	QString path = "D:/EdmProg/" + partRfid + "_" + electrodeRfid + ".nc";
+	QString path = m_edmProgPath + partRfid + "_" + electrodeRfid + ".nc";
 	
 	// 获取Mock文件路径
 	QString appDir = QCoreApplication::applicationDirPath();
@@ -5381,7 +5390,7 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 			programContent.replace(QString("{补偿C_%1}").arg(i + 1), QString::number(compensation.c));
 		}
 
-		QString path = "D:/EdmProg/" + partRfid + "_" + electrodeRfid + ".nc";
+		QString path = m_edmProgPath + partRfid + "_" + electrodeRfid + ".nc";
 		// 7. 写入程序文件
 		QFile outputFile(path);
 		if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Text)) {

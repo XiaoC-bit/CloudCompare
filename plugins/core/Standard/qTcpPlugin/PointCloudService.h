@@ -40,6 +40,9 @@ class PointCloudService : public QObject
 	void setG54Config(double x, double y, double z, double B_deg, double C_deg);
 	// 设置上料坐标点
 	void setLoadingPosition(double x, double y, double z, double a, double b, double c);
+	
+	// 设置EDM程序路径
+	void setEdmProgPath(const QString& path);
 
 	// 命令响应函数
 	void load(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -120,6 +123,9 @@ class PointCloudService : public QObject
 	struct LoadingPosition {
 		double x, y, z, a, b, c;
 	} m_loadingPosition;
+	
+	// EDM程序路径
+	QString m_edmProgPath;
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);

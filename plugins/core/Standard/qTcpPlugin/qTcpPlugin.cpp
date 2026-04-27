@@ -93,7 +93,7 @@ void qTcpPlugin::startServer()
 	
 	QSettings settings(configFile, QSettings::IniFormat);
 	if (!QFile::exists(configFile)) {
-		settings.setValue("General/enableMock", false);
+		settings.setValue("GeneralConfig/enableMock", false);
 		// B轴旋转中心默认值
 		settings.setValue("RotationCenter/B_x", 0.0);
 		settings.setValue("RotationCenter/B_y", 0.0);
@@ -115,10 +115,12 @@ void qTcpPlugin::startServer()
 		settings.setValue("LoadingPosition/A", 0.0);
 		settings.setValue("LoadingPosition/B", 0.0);
 		settings.setValue("LoadingPosition/C", 0.0);
+		// EDM程序路径默认值
+		settings.setValue("Paths/EdmProg", "D:/EdmProg/");
 		settings.sync();
 	}
-	
-	bool enableMock = settings.value("General/enableMock", true).toBool();
+	// 确认实际读取的文件路径
+	bool enableMock = settings.value("GeneralConfig/enableMock", false).toBool();
 	m_pointCloudService->setEnableMock(enableMock);
 	
 	// 读取B轴旋转中心
@@ -149,6 +151,10 @@ void qTcpPlugin::startServer()
 	double loading_b = settings.value("LoadingPosition/B", 0.0).toDouble();
 	double loading_c = settings.value("LoadingPosition/C", 0.0).toDouble();
 	m_pointCloudService->setLoadingPosition(loading_x, loading_y, loading_z, loading_a, loading_b, loading_c);
+	
+	// 读取EDM程序路径
+	QString edmProgPath = settings.value("Paths/EdmProg", "D:/EdmProg/").toString();
+	m_pointCloudService->setEdmProgPath(edmProgPath);
 	
 	m_machineProxy = new MachineProxy(this);
 	
