@@ -4617,7 +4617,12 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& params)
 {
 	// 提取参数
-	QString path = params.value("Path").toString();
+
+	
+	QString partRfid      = params.value("PartRfid").toString();
+	QString electrodeRfid = params.value("ElectrodeRfid").toString();
+
+	QString path = "D:/EdmProg/" + partRfid + "_" + electrodeRfid + ".nc";
 	
 	// 获取Mock文件路径
 	QString appDir = QCoreApplication::applicationDirPath();
@@ -4635,11 +4640,29 @@ void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& para
 	{
 		throw std::runtime_error("Mock Prog.nc file does not exist");
 	}
-	
-	// 拷贝文件到指定路径
+
+
+	// 先检查文件属性
+	if (QFile::exists(path))
+	{
+		QFileInfo fileInfo(path);
+		qDebug() << "File permissions:" << fileInfo.permissions();
+		qDebug() << "Is writable:" << fileInfo.isWritable();
+		qDebug() << "Is readable:" << fileInfo.isReadable();
+		qDebug() << "Is hidden:" << fileInfo.isHidden();
+
+		// 尝试修改为可写
+		QFile::setPermissions(path, QFile::WriteUser | QFile::ReadUser);
+
+		if (!QFile::remove(path))
+		{
+			throw std::runtime_error("Failed to remove: " + path.toStdString() + ", error: " );//+ QFile::remove(path).errorString().toStdString());
+		}
+	}
+
 	if (!QFile::copy(mockFile, path))
 	{
-		throw std::runtime_error("Failed to copy mock Prog.nc file");
+		throw std::runtime_error("Failed to copy mock Prog.nc from " + mockFile.toStdString() + " to " + path.toStdString());
 	}
 }
 
@@ -5185,14 +5208,14 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 		sendRes(socket, obj, idCode);
 		return;
 	}
-	if(!params.contains("Path"))
+	/*if(!params.contains("Path"))
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
 		obj["Message"]       = "Path is required";
 		sendRes(socket, obj, idCode);
 		return;
-	}
+	}*/
 	if(!params.contains("EdmParameters"))
 	{
 		QJsonObject obj;
@@ -5210,7 +5233,7 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 	QJsonArray electrodePos = params.value("ElectrodePos").toArray();
 	QString partRfid = params.value("PartRfid").toString();
 	QString electrodeRfid = params.value("ElectrodeRfid").toString();
-	QString path = params.value("Path").toString();
+	//QString path = params.value("Path").toString();
 	QJsonObject edmParameters = params.value("EdmParameters").toObject();
 	QJsonObject resObj;
 
@@ -5219,10 +5242,15 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 		// Mock模式
 		try {
 			generateElectrodeProgramFuncMock(params);
+
 			
+			QString partRfid      = params.value("PartRfid").toString();
+			QString electrodeRfid = params.value("ElectrodeRfid").toString();
+
+			QString fileName = partRfid + "_" + electrodeRfid + ".nc";
 			// 返回Mock结果
 			QJsonObject result;
-			result["Path"] = path;
+			result["FileName"]          = fileName;
 			result["MachineType"] = machineType;
 			result["PartType"] = partType;
 			result["ElectrodeType"] = electrodeType;
@@ -5353,6 +5381,7 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 			programContent.replace(QString("{补偿C_%1}").arg(i + 1), QString::number(compensation.c));
 		}
 
+		QString path = "D:/EdmProg/" + partRfid + "_" + electrodeRfid + ".nc";
 		// 7. 写入程序文件
 		QFile outputFile(path);
 		if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -5706,7 +5735,8 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 {
 	QJsonObject status;
 	// 先获取机床状态，再获取标定状态
-	QString value, errorMsg;
+	QString value, errorMsg, strCmd;
+	strCmd = "GetStatus";
 	if (!getDeviceRun(value, &errorMsg))
 	{
 		status["GetStatus_Ret"] = "1";
@@ -5714,6 +5744,28 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 		sendRes(socket, status, idCode);
 		return;
 	}
+
+
+	QString mode;
+	if (!getMachineMode(mode, &errorMsg))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Message"]       = "Failed to get machine mode";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+	if (mode != "Auto")
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "0";
+		obj["Status"]        = "Running";
+		obj["Message"]       = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+
 	status["CalibrationResult"] = m_cameraCalibrationResult["CalibrationResult"];
 	status["GetStatus_Ret"]     = "0";
 	switch (m_Status)
@@ -5744,7 +5796,7 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 					fabs(y - m_loadingPosition.y) < tolerance &&
 					fabs(z - m_loadingPosition.z) < tolerance &&
 					fabs(a - m_loadingPosition.a) < tolerance &&
-					fabs(b - m_loadingPosition.b) < tolerance &&
+					(fabs(b - m_loadingPosition.b) < tolerance || fabs(360 - b - m_loadingPosition.b) < tolerance) &&
 					fabs(c - m_loadingPosition.c) < tolerance;
 				
 				if (isAtLoadingPosition)

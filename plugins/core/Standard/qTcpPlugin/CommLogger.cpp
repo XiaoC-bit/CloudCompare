@@ -75,6 +75,7 @@ void CommLogger::writeLine(QFile& file, QTextStream& stream, QMutex& mutex, cons
 
 void CommLogger::logReceived(const QString& content)
 {
+	return;
 	QMutexLocker locker(&m_commMutex);
 	ensureCommFileOpen();
 	writeLine(m_commFile, m_commStream, m_commMutex, "RECV", content);
@@ -82,6 +83,7 @@ void CommLogger::logReceived(const QString& content)
 
 void CommLogger::logSent(const QString& content)
 {
+	return;
 	QMutexLocker locker(&m_commMutex);
 	ensureCommFileOpen();
 	writeLine(m_commFile, m_commStream, m_commMutex, "SEND", content);
@@ -89,6 +91,7 @@ void CommLogger::logSent(const QString& content)
 
 void CommLogger::logInternal(const QString& content)
 {
+	return;
 	QMutexLocker locker(&m_internalMutex);
 	ensureInternalFileOpen();
 	writeLine(m_internalFile, m_internalStream, m_internalMutex, "INTERNAL", content);

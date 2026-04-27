@@ -118,7 +118,7 @@ void qTcpPlugin::startServer()
 		settings.sync();
 	}
 	
-	bool enableMock = settings.value("General/enableMock", false).toBool();
+	bool enableMock = settings.value("General/enableMock", true).toBool();
 	m_pointCloudService->setEnableMock(enableMock);
 	
 	// 读取B轴旋转中心
