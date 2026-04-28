@@ -4795,8 +4795,8 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 	// 立即返回 OK
 	QJsonObject obj;
 	obj[strCmd + "_Ret"] = "0";
+	m_Status             = MachineStatus::Running;
 	sendRes(socket, obj, idCode);
-	m_Status = MachineStatus::Running;
 
 	QMetaObject::invokeMethod(qApp, [this, params]() {
 		if (m_enableMock)
@@ -4935,8 +4935,8 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 	// 立即返回 OK
 	QJsonObject obj;
 	obj[strCmd + "_Ret"] = "0";
+	m_Status             = MachineStatus::Running;
 	sendRes(socket, obj, idCode);
-	m_Status = MachineStatus::Running;
 
 	QMetaObject::invokeMethod(qApp, [this, params]()
 	                          {
