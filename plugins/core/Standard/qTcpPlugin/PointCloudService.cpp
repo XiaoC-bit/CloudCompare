@@ -5149,27 +5149,13 @@ void PointCloudService::getElectrodeInspectResult(const QJsonObject& params, QTc
 		return;
 	}
 
-
-	{
-		"GetElectrodeInspectResult_Ret" : "0"
-		    , "IDCode" : "a4347aed-42ab-11f1-83c8-68eda6168543"
-		    , "Result":
-		{
-			"InspectResult" : {
-				"Ret_Err" : "Mock electrode inspection completed successfully",
-				"MockMode" : true,
-				"Result" : "OK"
-			}
-		}
-	}
-
 	// 返回结果
 	QJsonObject result      = doc.object();
 	resObj[strCmd + "_Ret"] = "0";
-	auto resObj             = result["InspectResult"].toObject();
-	resObj["Data"]          = resObj;
-	resObj["Result"]  = resObj["Result"];
-	resObj["Ret_Err"]       = resObj["Ret_Err"];
+	auto inspectResult      = result["InspectResult"].toObject();
+	resObj["Data"]          = inspectResult;
+	resObj["Result"]        = inspectResult["Result"];
+	resObj["Ret_Err"]       = inspectResult["Ret_Err"];
 	sendRes(socket, resObj, idCode);
 
 }
