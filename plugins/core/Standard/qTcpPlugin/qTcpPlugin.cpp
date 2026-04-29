@@ -40,9 +40,21 @@ void qTcpPlugin::setMainAppInterface(ccMainAppInterface* app)
 {
 	ccStdPluginInterface::setMainAppInterface(app);
 	startServer();
+}
 
-	// 插件初始化时调用一次
-	CommLogger::instance().init(QCoreApplication::applicationDirPath());
+void qTcpPlugin::initializeLogger()
+{
+	// 读取配置文件获取日志文件大小限制
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/config";
+	QString configFile = configDir + "/config.ini";
+	
+	QSettings settings(configFile, QSettings::IniFormat);
+	// 默认50MB
+	qint64 maxFileSize = settings.value("Log/MaxFileSizeMB", 50).toInt() * 1024 *1024;
+	
+	// 初始化日志
+	CommLogger::instance().init(appDir, maxFileSize);
 }
 
 QList<QAction*> qTcpPlugin::getActions()
@@ -78,6 +90,9 @@ void qTcpPlugin::startServer()
 		return;
 	}
 
+	// 初始化日志
+	initializeLogger();
+
 	// 1. 创建服务和代理
 	m_pointCloudService = new PointCloudService(m_app, this);
 	
@@ -93,7 +108,7 @@ void qTcpPlugin::startServer()
 	
 	QSettings settings(configFile, QSettings::IniFormat);
 	if (!QFile::exists(configFile)) {
-		settings.setValue("General/enableMock", false);
+		settings.setValue("GeneralConfig/enableMock", false);
 		// B轴旋转中心默认值
 		settings.setValue("RotationCenter/B_x", 0.0);
 		settings.setValue("RotationCenter/B_y", 0.0);
@@ -115,10 +130,14 @@ void qTcpPlugin::startServer()
 		settings.setValue("LoadingPosition/A", 0.0);
 		settings.setValue("LoadingPosition/B", 0.0);
 		settings.setValue("LoadingPosition/C", 0.0);
+		// EDM程序路径默认值
+		settings.setValue("Paths/EdmProg", "D:/EdmProg/");
+		// 日志文件大小限制默认值（50MB）
+		settings.setValue("Log/MaxFileSizeMB", 50);
 		settings.sync();
 	}
-	
-	bool enableMock = settings.value("General/enableMock", true).toBool();
+	// 确认实际读取的文件路径
+	bool enableMock = settings.value("GeneralConfig/enableMock", false).toBool();
 	m_pointCloudService->setEnableMock(enableMock);
 	
 	// 读取B轴旋转中心
@@ -149,6 +168,10 @@ void qTcpPlugin::startServer()
 	double loading_b = settings.value("LoadingPosition/B", 0.0).toDouble();
 	double loading_c = settings.value("LoadingPosition/C", 0.0).toDouble();
 	m_pointCloudService->setLoadingPosition(loading_x, loading_y, loading_z, loading_a, loading_b, loading_c);
+	
+	// 读取EDM程序路径
+	QString edmProgPath = settings.value("Paths/EdmProg", "D:/EdmProg/").toString();
+	m_pointCloudService->setEdmProgPath(edmProgPath);
 	
 	m_machineProxy = new MachineProxy(this);
 	

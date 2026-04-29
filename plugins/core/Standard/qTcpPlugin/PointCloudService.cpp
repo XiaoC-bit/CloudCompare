@@ -5783,7 +5783,6 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 		return;
 	}
 
-
 	QString mode;
 	if (!getMachineMode(mode, &errorMsg))
 	{

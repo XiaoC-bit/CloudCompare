@@ -57,6 +57,7 @@ class PointCloudService : public QObject
 	void clone(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
+	void setEdmProgPath(const QString& path);
 
 	// 以下是与自动化相关的命令响应函数
 	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -106,6 +107,7 @@ class PointCloudService : public QObject
 	QJsonObject m_partInspectResult; // 工件检测结果
 	QJsonObject m_electrodeInspectResult; // 电极检测结果
 
+	QString m_edmProgPath;
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
 	bool m_enableMock; // 是否启用mock命令
