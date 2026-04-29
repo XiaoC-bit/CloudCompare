@@ -175,8 +175,9 @@ class PointCloudService : public QObject
 	bool               acquirePcdInternal(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, QJsonObject* result = nullptr);
 	bool               sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage = nullptr, int timeout = 10000);
 	bool               checkMachineCommandRet(const QJsonObject& response, const QString& commandName, QString* errorMessage = nullptr, const QString& messageKey = QString());
-	bool               sendFileToMachine(const QString& filePath, QString* errorMessage = nullptr);
-	bool               getMachineMode(QString& mode, QString* errorMessage = nullptr);
+	bool sendFileToMachine(const QString& filePath, QString* errorMessage = nullptr);
+	bool downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage = nullptr);
+	bool getMachineMode(QString& mode, QString* errorMessage = nullptr);
 	bool               getDeviceMainAxisCoor(double& x, double& y, double& z, double& a, double& b, double& c, QString* errorMessage = nullptr);
 	bool               setMainProgram(QString* errorMessage = nullptr);
 	bool               startMachine(QString* errorMessage = nullptr);
