@@ -907,7 +907,8 @@ bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMes
 	const int waitInterval = 50;
 	int       elapsedTime  = 0;
 
-	while (elapsedTime < maxWaitTime)
+	// timeoutSeconds小于零表示无限等待
+	while (elapsedTime < maxWaitTime || maxWaitTime < -1)
 	{
 		QString value;
 		if (!getDeviceRun(value, errorMessage))
@@ -917,6 +918,12 @@ bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMes
 		if (value == "0")
 		{
 			return true;
+		}
+		else if (value != "2")
+		{
+			// 2为运行中
+			// 不是空闲，且不是运行中，说明可能有报警或者其他状态，直接返回错误
+			return false;
 		}
 
 		// 用 QEventLoop 替代 sleep，保持UI响应
@@ -3410,7 +3417,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 }
 
                 // 等待机床完成
-                if (!waitForMachineIdle(120, &errorMessage)) {
+                if (!waitForMachineIdle(-1, &errorMessage)) {
                     QJsonObject result;
                     QJsonObject obj;
                     obj["Result"] = "NG";
@@ -3699,7 +3706,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
             }
 
             // 等待机床完成
-            if (!waitForMachineIdle(120, &errorMessage)) {
+            if (!waitForMachineIdle(-1, &errorMessage)) {
                 QJsonObject result;
                 QJsonObject obj;
                 obj["Result"] = "NG";
@@ -3958,7 +3965,7 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 			return;
 		}
 
-		if (!waitForMachineIdle(120, &errorMessage))
+		if (!waitForMachineIdle(-1, &errorMessage))
 		{
 			QJsonObject obj;
 			obj["Result"]                            = "NG";
@@ -4220,7 +4227,7 @@ void PointCloudService::cameraCalibrationFuncMock(const QJsonObject& params)
 	}
 	
 	// 等待机床空闲
-	if (!waitForMachineIdle(120, &errorMessage))
+	if (!waitForMachineIdle(-1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
@@ -4344,7 +4351,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 	}
 	
 	// 等待机床空闲
-	if (!waitForMachineIdle(120, &errorMessage))
+	if (!waitForMachineIdle(-1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
@@ -4473,7 +4480,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 		return;
 	}
 
-	if (!waitForMachineIdle(120, &errorMessage))
+	if (!waitForMachineIdle(-1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
@@ -4602,7 +4609,7 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		return;
 	}
 
-	if (!waitForMachineIdle(120, &errorMessage))
+	if (!waitForMachineIdle(-1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
@@ -5039,7 +5046,7 @@ void PointCloudService::electrodeInspectFunc(const QJsonObject& params)
 		return;
 	}
 
-	if (!waitForMachineIdle(120, &errorMessage))
+	if (!waitForMachineIdle(-1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
@@ -5570,7 +5577,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 	}
 
 	// 等待机床空闲
-	if (!waitForMachineIdle(120, &errorMessage))
+	if (!waitForMachineIdle(-1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
