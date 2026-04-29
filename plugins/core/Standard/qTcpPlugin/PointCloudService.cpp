@@ -716,6 +716,7 @@ bool PointCloudService::sendFileToMachine(const QString& filePath, QString* erro
 
 bool PointCloudService::downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage)
 {
+	//{"CNCFile":"O1236____C0","CNCPath":"/h/lnc8/prog/","Command":"ReadFile","DeviceName":"CNC_1","DeviceType":"Cnc","LocalFile":"D:\\test.nc","Timeout":5}
 	const int   timeout = 5;
 	QJsonObject params;
 	params["Command"]    = "ReadFile";
