@@ -60,6 +60,9 @@ namespace
 	const double  CALIBRATION_RMS_THRESHOLD      = 0.012;
 	const double  CALIBRATION_RESIDUAL_THRESHOLD = 0.12;
 	const int     CALIBRATION_MAX_FIT_RETRIES    = 3;
+	const QString PART_INSPECT_RESULT_FILE_NAME = "O1236";
+	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1536";
+
 } // namespace
 
 PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
@@ -3734,6 +3737,35 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 return;
             }
 
+			QString cncPath = "/h/lnc8/prog/";
+			QString cncFile = PART_INSPECT_RESULT_FILE_NAME;
+			QString localFile = "D:\\Elec\\" + rfid + ".res";
+				
+			if(!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"] = "NG";
+				obj["Ret_Err"] = QString("Failed to download file from machine: %1").arg(errorMessage);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return;
+			}
+
+			//解析文件
+			QFile file(localFile);
+			if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"] = "NG";
+				obj["Ret_Err"] = QString("Failed to open inspection result file: %1").arg(file.errorString());
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return;
+			}	
+
             // 读取宏变量获取测点数据
             // 假设宏变量从#1000开始，每个测点占用3个宏变量（XYZ）
             Eigen::MatrixXd measuredPoints(theoryPos.size(), 3);
@@ -4704,6 +4736,14 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 {
 
 	QString strCmd = "PartInspect";
+	//判断状态
+	if(m_Status != MachineStatus::Idle){
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Ret_Err"]       = "Machine is not idle";
+		sendRes(socket, obj, idCode);
+		return;
+	}
 
 	// 1. 检查参数
 	QString partType = params.value("PartType").toString();
@@ -4843,6 +4883,14 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 {
 
 	QString strCmd = "ElectrodeInspect";
+	//判断状态
+	if(m_Status != MachineStatus::Idle){
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Ret_Err"]       = "Machine is not idle";
+		sendRes(socket, obj, idCode);
+		return;
+	}
 
 	// 1. 检查参数
 	QString partType = params.value("ElectrodeType").toString();
@@ -5076,43 +5124,36 @@ void PointCloudService::electrodeInspectFunc(const QJsonObject& params)
 		return;
 	}
 
-	double offsetX, offsetY, offsetZ;
+	double offsetX, offsetY, offsetZ,offsetA,offsetB,offsetC;
 
-	if (!readMacro(570, offsetX, &errorMessage))
+	QString cncPath = "/h/lnc8/prog/";
+	QString cncFile = ELEC_INSPECT_RESULT_FILE_NAME;
+	QString localFile = "D:\\Elec\\" + rfid + ".res";
+		
+	if(!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to read X offset: %1").arg(errorMessage);
+		obj["Ret_Err"] = QString("Failed to download file from machine: %1").arg(errorMessage);
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
 	}
 
-	if (!readMacro(571, offsetY, &errorMessage))
-	{
+	//解析文件
+	QFile file(localFile);
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to read Y offset: %1").arg(errorMessage);
+		obj["Ret_Err"] = QString("Failed to open inspection result file: %1").arg(file.errorString());
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
-	}
-
-	if (!readMacro(572, offsetZ, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to read Z offset: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
+	}	
 
 	QJsonObject resultObj;
 	resultObj["Result"]        = "OK";
@@ -5459,7 +5500,7 @@ void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket*
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Ret_Err"]         = "Calibration is already running";
+		obj["Ret_Err"]         = "machine is running";
 		sendRes(socket, obj, idCode);
 		return;
 	}
@@ -5666,7 +5707,7 @@ void PointCloudService::probeCalibration(const QJsonObject& params, QTcpSocket* 
 	{
 		QJsonObject obj;
 		obj[strCmd + "_Ret"] = "1";
-		obj["Ret_Err"]       = "Calibration is already running";
+		obj["Ret_Err"]       = "machine is running";
 		sendRes(socket, obj, idCode);
 		return;
 	}
