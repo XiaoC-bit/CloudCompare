@@ -714,6 +714,23 @@ bool PointCloudService::sendFileToMachine(const QString& filePath, QString* erro
 	       && checkMachineCommandRet(response, "SendFile", errorMessage);
 }
 
+bool PointCloudService::downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage)
+{
+	const int   timeout = 5;
+	QJsonObject params;
+	params["Command"]    = "ReadFile";
+	params["DeviceName"] = MACHINE_DEVICE_NAME;
+	params["DeviceType"] = MACHINE_DEVICE_TYPE;
+	params["CNCPath"]    = cncPath;
+	params["CNCFile"]    = cncFile;
+	params["LocalFile"]  = localFile;
+	params["Timeout"]    = timeout * 1000;
+
+	QJsonObject response;
+	return sendMachineCommand(params, response, errorMessage, timeout * 1000)
+	       && checkMachineCommandRet(response, "ReadFile", errorMessage);
+}
+
 bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 {
 	const int   timeout = 5;
