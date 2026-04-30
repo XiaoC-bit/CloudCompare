@@ -61,7 +61,7 @@ extern "C"
 		startReq.bySendPosition = 2;
 		LJS8IF_HEIGHT_IMAGE_INFO heightImageInfo;
 
-		errCode = LJS8IF_PreStartHighSpeedDataCommunication(lDeviceId, &startReq, (byte)pSetParam->usePcImageFilter, &heightImageInfo);
+		errCode = LJS8IF_PreStartHighSpeedDataCommunication(lDeviceId, &startReq, (BYTE)pSetParam->usePcImageFilter, &heightImageInfo);
 		printf("[@(LJS8_ACQ_Acquire) PreStart](0x%x)\n", errCode);
 
 		//Allocate memory
@@ -199,7 +199,7 @@ extern "C"
 		startReq.bySendPosition = 2;
 		LJS8IF_HEIGHT_IMAGE_INFO heightImageInfo;
 
-		errCode = LJS8IF_PreStartHighSpeedDataCommunication(lDeviceId, &startReq, (byte)pSetParam->usePcImageFilter, &heightImageInfo);
+		errCode = LJS8IF_PreStartHighSpeedDataCommunication(lDeviceId, &startReq, (BYTE)pSetParam->usePcImageFilter, &heightImageInfo);
 		printf("[@(LJS8_ACQ_StartAsync) PreStart](0x%x)\n", errCode);
 
 		_apwHeightBuf[lDeviceId] = (unsigned short*)malloc(heightImageInfo.wYLineNum * MAX_LJS8_XDATANUM * sizeof(unsigned short));

@@ -3,7 +3,7 @@ option( PLUGIN_STANDARD_QTCP "Install qTcpPlugin" ON )
 if( PLUGIN_STANDARD_QTCP )
 	project( qTcpPlugin )
 	
-    find_package( Qt5 COMPONENTS Network REQUIRED )  # 加这一行
+    find_package( Qt5 COMPONENTS Network REQUIRED ) 
 	AddPlugin( NAME ${PROJECT_NAME} )
 	
 	target_sources( ${PROJECT_NAME} PRIVATE
@@ -53,7 +53,7 @@ if( PLUGIN_STANDARD_QTCP )
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 	)
 
-	target_compile_options( ${PROJECT_NAME} PRIVATE
+	target_compile_features( ${PROJECT_NAME} PRIVATE cxx_std_17 )
     /utf-8
 )
 	
