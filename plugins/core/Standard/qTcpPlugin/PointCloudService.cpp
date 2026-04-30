@@ -57,7 +57,7 @@ namespace
 	const QString MACHINE_DEVICE_NAME            = "CNC_1";
 	const QString MACHINE_DEVICE_TYPE            = "Cnc";
 	const QString CALIBRATION_CNC_FILE           = "O1236";
-	const QString CALIBRATION_CNC_PATH           = "/c/";
+	const QString CALIBRATION_CNC_PATH           = "/c/AC/";
 	const double  CALIBRATION_RADIUS             = 12.5;
 	const double  CALIBRATION_RMS_THRESHOLD      = 0.012;
 	const double  CALIBRATION_RESIDUAL_THRESHOLD = 0.12;
