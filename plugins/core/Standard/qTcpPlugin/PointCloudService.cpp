@@ -541,7 +541,7 @@ bool PointCloudService::ensureConnected(QString* errorMessage, int connectTimeou
 		*socket = nullptr;
 	}
 
-	*socket = new QTcpSocket(this);
+	*socket = new QTcpSocket(nullptr);
 	(*socket)->connectToHost(MACHINE_HOST, MACHINE_PORT);
 	if (!(*socket)->waitForConnected(connectTimeout))
 	{
@@ -557,17 +557,24 @@ bool PointCloudService::ensureConnected(QString* errorMessage, int connectTimeou
 
 void PointCloudService::resetConnection()
 {
-	if (m_machineSocket)
+	// 只清当前线程对应的 socket
+	if (QThread::currentThread() == this->thread())
 	{
-		m_machineSocket->abort();
-		m_machineSocket->deleteLater();
-		m_machineSocket = nullptr;
+		if (m_machineSocket)
+		{
+			m_machineSocket->abort();
+			m_machineSocket->deleteLater();
+			m_machineSocket = nullptr;
+		}
 	}
-	if (m_workerMachineSocket)
+	else
 	{
-		m_workerMachineSocket->abort();
-		m_workerMachineSocket->deleteLater();
-		m_workerMachineSocket = nullptr;
+		if (m_workerMachineSocket)
+		{
+			m_workerMachineSocket->abort();
+			m_workerMachineSocket->deleteLater();
+			m_workerMachineSocket = nullptr;
+		}
 	}
 }
 
