@@ -5112,15 +5112,15 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 
 			ProbeFit6DOF_BC::Result result = fitter.solve();
 
-			// 读取宏变量获取测点数据
-			// 假设宏变量从#1000开始，每个测点占用3个宏变量（XYZ）
-			Eigen::MatrixXd measuredPoints(theoryPos.size(), 3);
-			Eigen::MatrixXd theoreticalPoints(theoryPos.size(), 3);
+			QJsonObject holeIcpReuslt;
+			holeIcpReuslt["holdId"]    = holdId;
 
-			// 使用SVD算法计算变换矩阵
-			Eigen::Matrix4d transformMatrix = computeSVDTransform(measuredPoints, theoreticalPoints);
+			// 构建 4x4 变换矩阵
+			Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
+			transformMatrix.block<3, 3>(0, 0) = result.R;
+			transformMatrix.block<3, 1>(0, 3) = result.t;
 
-			// 存储变换矩阵结果
+			// 存储变换矩阵
 			QJsonArray matrixArray;
 			for (int i = 0; i < 4; ++i)
 			{
@@ -5131,10 +5131,35 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				}
 				matrixArray.append(rowArray);
 			}
-
-			QJsonObject holeIcpReuslt;
-			holeIcpReuslt["holdId"]    = holdId;
 			holeIcpReuslt["icpMatrix"] = matrixArray;
+
+			// 存储质心
+			QJsonArray centroidArray;
+			centroidArray.append(result.centroid.x());
+			centroidArray.append(result.centroid.y());
+			centroidArray.append(result.centroid.z());
+			holeIcpReuslt["centroid"] = centroidArray;
+
+			// 存储旋转向量
+			QJsonArray omegaArray;
+			omegaArray.append(result.omega.x());
+			omegaArray.append(result.omega.y());
+			omegaArray.append(result.omega.z());
+			holeIcpReuslt["omega"] = omegaArray;
+
+			// 存储拟合精度指标
+			holeIcpReuslt["rms"]              = result.rms;
+			holeIcpReuslt["maxResidual"]      = result.maxResidual;
+			holeIcpReuslt["maxResidualIndex"] = result.maxResidualIndex;
+			holeIcpReuslt["dof"]              = result.dof;
+
+			// 存储残差列表
+			QJsonArray residualsArray;
+			for (double residual : result.residuals)
+			{
+				residualsArray.append(residual);
+			}
+			holeIcpReuslt["residuals"] = residualsArray;
 
 			// 存储电极放电位置信息
 			if (holePos.contains("electrodePos"))
@@ -5170,81 +5195,61 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 {
 	QString errorMessage;
 
-	QString rfid = params.value("Rfid").toString();
+	QString electrodeType = params.value("ElectrodeType").toString();
+	QString rfid          = params.value("Rfid").toString();
 
-	if (!waitForMachineIdle(1, &errorMessage))
+	if (electrodeType.isEmpty() || rfid.isEmpty())
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = "ElectrodeType or Rfid is empty";
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
 	}
 
-	QString mode;
-	if (!getMachineMode(mode, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-	if (mode != "Auto")
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	QString appDir = QCoreApplication::applicationDirPath();
-	QString mockDir = appDir + "/Mock";
-	QString mockFile = mockDir + "/electrodeInspect.nc";
-
-	QDir dir(mockDir);
+	QString appDir      = QCoreApplication::applicationDirPath();
+	QString templateDir = appDir + "/Mock";
+	QDir    dir(templateDir);
 	if (!dir.exists())
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = "Mock directory does not exist";
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = "Template directory does not exist";
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
 	}
 
-	QFile mockNc(mockFile);
-	if (!mockNc.exists())
+	QString     electrodeFile;
+	QStringList filters;
+	filters << QString("elecInpect.nc");
+	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
+	if (fileList.isEmpty())
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = "Mock electrodeInspect.nc file does not exist";
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("No electrode file found for type: %1").arg(electrodeType);
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
 	}
 
-	if (!sendFileToMachine(mockFile, &errorMessage))
+	electrodeFile = fileList.first().absoluteFilePath();
+
+	if (!sendFileToMachine(electrodeFile, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to send mock electrode inspect file: %1").arg(errorMessage);
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to send electrode file: %1").arg(errorMessage);
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
@@ -5255,8 +5260,8 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to set main program: %1").arg(errorMessage);
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to set main program: %1").arg(errorMessage);
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
@@ -5267,8 +5272,8 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to start machine: %1").arg(errorMessage);
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to start machine: %1").arg(errorMessage);
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
@@ -5279,20 +5284,211 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Machine did not become idle: %1").arg(errorMessage);
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
 	}
 
-	QJsonObject result;
+	double offsetX, offsetY, offsetZ, offsetA, offsetB, offsetC;
+
+	QString cncPath   = "/h/lnc8/prog/";
+	QString cncFile   = ELEC_INSPECT_RESULT_FILE_NAME;
+	QString localFile = "D:\\Elec\\" + rfid + ".res";
+
+	if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to download file from machine: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		saveElectrodeInspectResult(rfid, result);
+		return;
+	}
+
+	// 解析文件
+	QFile file(localFile);
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
+		result["InspectResult"] = obj;
+		saveElectrodeInspectResult(rfid, result);
+		return;
+	}
+
+
+	ProbeFit6DOF_BC::G54Config measureG54;
+	measureG54.xyz   = Eigen::Vector3d(-51.837, -82.130, -93.148);
+	measureG54.B_deg = 0.0;
+	measureG54.C_deg = 0.0;
+
+	Eigen::Vector3d measureBcenter(-51.828, -82.531, -173.454);
+	Eigen::Vector3d measureCcenter(-51.798, -82.531, -173.454);
+
+	// ── 拟合器 ──
+	ProbeFit6DOF_BC fitter(measureG54, measureBcenter, measureCcenter);
+
+	// 解析文件
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
+		return;
+	}
+
+	// ── 解析数据并添加测点 ──
+	QTextStream in(&file);
+	QString     content = in.readAll();
+	file.close();
+
+	// 正则：匹配一组数据（支持任意空白分隔）
+	// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
+	QRegularExpression regex(
+	    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
+	    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
+	    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
+	    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
+	);
+
+	QRegularExpressionMatchIterator it         = regex.globalMatch(content);
+	int                             pointCount = 0;
+
+	bool ok = false;
+	while (it.hasNext())
+	{
+		QRegularExpressionMatch match = it.next();
+
+		double B = match.captured(1).toDouble(&ok);
+		if (!ok)
+			break;
+		double C = match.captured(2).toDouble(&ok);
+		if (!ok)
+			break;
+
+		double I = match.captured(3).toDouble(&ok);
+		if (!ok)
+			break;
+		double J = match.captured(4).toDouble(&ok);
+		if (!ok)
+			break;
+		double K = match.captured(5).toDouble(&ok);
+		if (!ok)
+			break;
+
+		double theoX = match.captured(6).toDouble(&ok);
+		if (!ok)
+			break;
+		double theoY = match.captured(7).toDouble(&ok);
+		if (!ok)
+			break;
+		double theoZ = match.captured(8).toDouble(&ok);
+		if (!ok)
+			break;
+
+		double actualX = match.captured(9).toDouble(&ok);
+		if (!ok)
+			break;
+		double actualY = match.captured(10).toDouble(&ok);
+		if (!ok)
+			break;
+		double actualZ = match.captured(11).toDouble(&ok);
+		if (!ok)
+			break;
+
+		fitter.addPoint({theoX, theoY, theoZ},
+		                {actualX, actualY, actualZ},
+		                {I, J, K},
+		                B,
+		                C);
+		pointCount++;
+	}
+
+	// 如果有任何解析失败，直接报异常
+	if (!ok)
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
+		return;
+	}
+
+	ProbeFit6DOF_BC::Result result = fitter.solve();
+
+	QJsonObject partResult;
+
+	// 构建 4x4 变换矩阵
+	Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
+	transformMatrix.block<3, 3>(0, 0) = result.R;
+	transformMatrix.block<3, 1>(0, 3) = result.t;
+
+	// 存储变换矩阵
+	QJsonArray matrixArray;
+	for (int i = 0; i < 4; ++i)
+	{
+		QJsonArray rowArray;
+		for (int j = 0; j < 4; ++j)
+		{
+			rowArray.append(transformMatrix(i, j));
+		}
+		matrixArray.append(rowArray);
+	}
+	partResult["icpMatrix"] = matrixArray;
+
+	// 存储质心
+	QJsonArray centroidArray;
+	centroidArray.append(result.centroid.x());
+	centroidArray.append(result.centroid.y());
+	centroidArray.append(result.centroid.z());
+	partResult["centroid"] = centroidArray;
+
+	// 存储旋转向量
+	QJsonArray omegaArray;
+	omegaArray.append(result.omega.x());
+	omegaArray.append(result.omega.y());
+	omegaArray.append(result.omega.z());
+	partResult["omega"] = omegaArray;
+
+	// 存储拟合精度指标
+	partResult["rms"]              = result.rms;
+	partResult["maxResidual"]      = result.maxResidual;
+	partResult["maxResidualIndex"] = result.maxResidualIndex;
+	partResult["dof"]              = result.dof;
+
+	// 存储残差列表
+	QJsonArray residualsArray;
+	for (double residual : result.residuals)
+	{
+		residualsArray.append(residual);
+	}
+	partResult["residuals"] = residualsArray;
+	
+	QJsonObject res;
 	QJsonObject obj;
-	obj["Result"] = "OK";
-	obj["Ret_Err"] = "Mock electrode inspection completed successfully";
-	obj["MockMode"] = true;
-	result["InspectResult"] = obj;
-	saveElectrodeInspectResult(rfid, result);
+	obj["Result"]           = "OK";
+	obj["Ret_Err"]          = "Mock electrode inspection completed successfully";
+	obj["MockMode"]         = true;
+	obj["Detail"]           = partResult;
+	res["InspectResult"]    = obj;
+
+	saveElectrodeInspectResult(rfid, res);
+
+	m_Status = MachineStatus::Idle;
 }
 
 void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& params)
@@ -5349,7 +5545,6 @@ void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& para
 
 void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
-
 	QString strCmd = "PartInspect";
 	//判断状态
 	if(m_Status != MachineStatus::Idle){
