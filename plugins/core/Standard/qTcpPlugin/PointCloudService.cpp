@@ -810,7 +810,7 @@ bool PointCloudService::startMachine(QString* errorMessage)
 	int retryCount = 0;
 	while (retryCount++ < 20)
 	{
-		const int   timeout = 5;
+		const int   timeout = 5; 
 		QJsonObject params;
 		params["Command"]    = "WritePlc";
 		params["DeviceType"] = MACHINE_DEVICE_TYPE;
@@ -3741,7 +3741,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
 
 			QString cncPath = "/h/lnc8/prog/";
 			QString cncFile = PART_INSPECT_RESULT_FILE_NAME;
-			QString localFile = "D:\\Elec\\" + rfid + ".res";
+			QString localFile = "D:\\Result\\Part\\" + rfid + ".res";
 				
 			if(!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 			{
@@ -4448,7 +4448,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 	// 4. 找到对应的扫描配置 JSON 文件
 	QString appDir      = QCoreApplication::applicationDirPath();
 	QString templateDir = appDir + "/Mock";
-	QString configFile  = templateDir + "/inspect_config.json";
+	QString configFile  = templateDir + "/PartInspect.json";
 
 	QFile file(configFile);
 	if (!file.exists())
@@ -4902,7 +4902,6 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 		{
 			// 测头检测逻辑
 			QString    progPath  = holePos.value("progPath").toString();
-			QJsonArray theoryPos = holePos.value("theoryPos").toArray();
 
 			if (progPath.isEmpty())
 			{
@@ -4910,17 +4909,6 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				QJsonObject obj;
 				obj["Result"]           = "NG";
 				obj["Ret_Err"]          = QString("ProgPath is required for probe inspection");
-				result["InspectResult"] = obj;
-				savePartInspectResult(rfid, result);
-				return;
-			}
-
-			if (theoryPos.isEmpty())
-			{
-				QJsonObject result;
-				QJsonObject obj;
-				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = QString("TheoryPos is required for probe inspection");
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
 				return;
@@ -4990,7 +4978,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 
 			QString cncPath   = "/h/lnc8/prog/";
 			QString cncFile   = PART_INSPECT_RESULT_FILE_NAME;
-			QString localFile = "D:\\Elec\\" + rfid + ".res";
+			QString localFile = "D:\\Result\\Part\\" + rfid + ".res";
 
 			if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 			{
@@ -5227,7 +5215,7 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 
 	QString     electrodeFile;
 	QStringList filters;
-	filters << QString("elecInpect.nc");
+	filters << QString("electrodeInspect.nc");
 	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
 	if (fileList.isEmpty())
 	{
@@ -5291,11 +5279,9 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		return;
 	}
 
-	double offsetX, offsetY, offsetZ, offsetA, offsetB, offsetC;
-
 	QString cncPath   = "/h/lnc8/prog/";
 	QString cncFile   = ELEC_INSPECT_RESULT_FILE_NAME;
-	QString localFile = "D:\\Elec\\" + rfid + ".res";
+	QString localFile = "D:\\Result\\Elec\\" + rfid + ".res";
 
 	if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 	{
@@ -5304,20 +5290,6 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		QJsonObject obj;
 		obj["Result"]           = "NG";
 		obj["Ret_Err"]          = QString("Failed to download file from machine: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	// 解析文件
-	QFile file(localFile);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
 		result["InspectResult"] = obj;
 		saveElectrodeInspectResult(rfid, result);
 		return;
@@ -5336,6 +5308,7 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 	ProbeFit6DOF_BC fitter(measureG54, measureBcenter, measureCcenter);
 
 	// 解析文件
+	QFile file(localFile);
 	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
 		m_Status = MachineStatus::Idle;
