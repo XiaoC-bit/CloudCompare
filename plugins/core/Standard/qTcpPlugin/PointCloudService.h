@@ -183,6 +183,7 @@ class PointCloudService : public QObject
 	bool downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage = nullptr);
 	bool getMachineMode(QString& mode, QString* errorMessage = nullptr);
 	bool               getDeviceMainAxisCoor(double& x, double& y, double& z, double& a, double& b, double& c, QString* errorMessage = nullptr);
+	bool               setTempMainProgram(QString* errorMessage = nullptr);
 	bool               setMainProgram(QString* errorMessage = nullptr);
 	bool               startMachine(QString* errorMessage = nullptr);
 	bool               waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);

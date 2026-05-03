@@ -57,6 +57,7 @@ namespace
 	const QString MACHINE_DEVICE_NAME            = "CNC_1";
 	const QString MACHINE_DEVICE_TYPE            = "Cnc";
 	const QString CALIBRATION_CNC_FILE           = "O1236";
+	const QString CALIBRATION_TEMP_CNC_FILE           = "O8210";
 	const QString CALIBRATION_CNC_PATH           = "/c/AC/";
 	const double  CALIBRATION_RADIUS             = 12.5;
 	const double  CALIBRATION_RMS_THRESHOLD      = 0.012;
@@ -711,7 +712,7 @@ bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
 
 bool PointCloudService::sendFileToMachine(const QString& filePath, QString* errorMessage)
 {
-	const int   timeout = 5;
+	const int   timeout = 20;
 	QJsonObject params;
 	params["Command"]    = "SendFile";
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
@@ -719,7 +720,7 @@ bool PointCloudService::sendFileToMachine(const QString& filePath, QString* erro
 	params["CNCPath"]    = CALIBRATION_CNC_PATH;
 	params["CNCFile"]    = CALIBRATION_CNC_FILE;
 	params["LocalFile"]  = filePath;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
 	return sendMachineCommand(params, response, errorMessage, timeout * 1000)
@@ -729,7 +730,7 @@ bool PointCloudService::sendFileToMachine(const QString& filePath, QString* erro
 bool PointCloudService::downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage)
 {
 	//{"CNCFile":"O1236____C0","CNCPath":"/h/lnc8/prog/","Command":"ReadFile","DeviceName":"CNC_1","DeviceType":"Cnc","LocalFile":"D:\\test.nc","Timeout":5}
-	const int   timeout = 5;
+	const int   timeout = 20;
 	QJsonObject params;
 	params["Command"]    = "ReadFile";
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
@@ -737,7 +738,7 @@ bool PointCloudService::downloadFileFromMachine(const QString& cncPath, const QS
 	params["CNCPath"]    = cncPath;
 	params["CNCFile"]    = cncFile;
 	params["LocalFile"]  = localFile;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
 	return sendMachineCommand(params, response, errorMessage, timeout * 1000)
@@ -751,7 +752,7 @@ bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 	params["Command"]    = "GetDeviceMode";
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
 	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000))
@@ -774,7 +775,7 @@ bool PointCloudService::getDeviceMainAxisCoor(double& x, double& y, double& z, d
 	params["Command"]    = "GetDeviceMainAxisCoor";
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
 	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000))
@@ -795,20 +796,46 @@ bool PointCloudService::getDeviceMainAxisCoor(double& x, double& y, double& z, d
 	return true;
 }
 
+bool PointCloudService::setTempMainProgram(QString* errorMessage)
+{
+	const int   timeout = 10;
+	QJsonObject params;
+	params["Command"]    = "SetMainProg";
+	params["DeviceType"] = MACHINE_DEVICE_TYPE;
+	params["DeviceName"] = MACHINE_DEVICE_NAME;
+	params["MainProg"]   = CALIBRATION_TEMP_CNC_FILE;
+	params["Path"]       = CALIBRATION_CNC_PATH;
+	params["Timeout"]    = timeout ;
+
+	// 先切换临时程序
+	QJsonObject response;
+	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000)
+	    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+	{
+		return false;
+	}
+
+	return true;
+}
 bool PointCloudService::setMainProgram(QString* errorMessage)
 {
-	const int   timeout = 5;
+	const int   timeout = 10;
 	QJsonObject params;
 	params["Command"]    = "SetMainProg";
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
 	params["MainProg"]   = CALIBRATION_CNC_FILE;
 	params["Path"]       = CALIBRATION_CNC_PATH;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
-	return sendMachineCommand(params, response, errorMessage, timeout * 1000)
-	       && checkMachineCommandRet(response, "SetMainProg", errorMessage);
+	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000)
+	    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 bool PointCloudService::startMachine(QString* errorMessage)
@@ -817,7 +844,7 @@ bool PointCloudService::startMachine(QString* errorMessage)
 	int retryCount = 0;
 	while (retryCount++ < 20)
 	{
-		const int   timeout = 5; 
+		const int   timeout = 10; 
 		QJsonObject params;
 		params["Command"]    = "WritePlc";
 		params["DeviceType"] = MACHINE_DEVICE_TYPE;
@@ -825,7 +852,7 @@ bool PointCloudService::startMachine(QString* errorMessage)
 		params["Addr"]       = "999";
 		params["AddrType"]   = "R";
 		params["Bit"]        = "0";
-		params["Timeout"]    = timeout * 1000;
+		params["Timeout"]    = timeout ;
 
 		QJsonObject response;
 		params["Value"] = "1";
@@ -869,7 +896,7 @@ bool PointCloudService::getDeviceRun(QString& value, QString* errorMessage)
 	params["Command"]    = "GetDeviceRun";
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
 	QString     currentError;
@@ -901,7 +928,7 @@ bool PointCloudService::getDeviceRun(QString& value, QString* errorMessage)
 	params["Command"]    = "GetAlarm";
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 	if (!sendMachineCommand(params, response, &currentError, timeout * 1000))
 	{
 		return false;
@@ -940,21 +967,25 @@ bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMes
 	// timeoutSeconds小于零表示无限等待
 	while (elapsedTime < maxWaitTime || maxWaitTime < -1)
 	{
-		QString value;
-		if (!getDeviceRun(value, errorMessage))
+		do
 		{
-			continue;
-		}
-		if (value == "0")
-		{
-			return true;
-		}
-		else if (value != "2")
-		{
-			// 2为运行中
-			// 不是空闲，且不是运行中，说明可能有报警或者其他状态，直接返回错误
-			return false;
-		}
+			QString value;
+			if (!getDeviceRun(value, errorMessage))
+			{
+				break;
+			}
+			if (value == "0")
+			{
+				return true;
+			}
+			else if (value != "2")
+			{
+				// 2为运行中
+				// 不是空闲，且不是运行中，说明可能有报警或者其他状态，直接返回错误
+				return false;
+			}
+		} while (0);
+		
 
 		// 用 QEventLoop 替代 sleep，保持UI响应
 		QEventLoop loop;
@@ -3413,6 +3444,16 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
                 out << content;
                 outputNc.close();
 
+				if (!setTempMainProgram(&errorMessage))
+				{
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return;
+				}
                 // 发送文件到机床
                 if (!sendFileToMachine(outputFile, &errorMessage)) {
                     QJsonObject result;
@@ -4435,6 +4476,25 @@ bool PointCloudService::machineBackHome(QString& errorMessage)
 {
 	QString appDir      = QCoreApplication::applicationDirPath();
 	QString templateDir = appDir + "/PartInfo";
+
+	QString value, errorMsg, strCmd;
+	strCmd = "GetStatus";
+	if (!getDeviceRun(value, &errorMsg))
+	{
+		return false;
+	}
+
+	if (value != "0")
+	{
+		false;
+	}
+
+
+	if (!setTempMainProgram(&errorMessage))
+	{
+		return false;
+	}
+
 	// 发送文件到机床
 	if (!sendFileToMachine(templateDir + "/Home.nc", &errorMessage))
 	{
@@ -4657,6 +4717,17 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				out << content;
 				outputNc.close();
 
+				// 设置主程序
+				if (!setTempMainProgram(&errorMessage))
+				{
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Failed to set main program for position %1-%2: %3").arg(i + 1).arg(j + 1).arg(errorMessage);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return;
+				}
 				// 发送文件到机床
 				if (!sendFileToMachine(outputFile, &errorMessage))
 				{
@@ -4970,6 +5041,16 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				return;
 			}
 
+			if (!setTempMainProgram(&errorMessage))
+			{
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to set main program: %1").arg(errorMessage);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return;
+			}
 			// 发送文件到机床
 			if (!sendFileToMachine(probeProgPath, &errorMessage))
 			{
@@ -5273,6 +5354,17 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 
 	electrodeFile = fileList.first().absoluteFilePath();
 
+	if (!setTempMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to set main program: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		saveElectrodeInspectResult(rfid, result);
+		return;
+	}
 	if (!sendFileToMachine(electrodeFile, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
@@ -5849,6 +5941,9 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 		{
 			electrodeInspectFunc(params);
 		}
+		QString errMsg;
+
+		machineBackHome(errMsg);
 		m_Status = MachineStatus::Idle; },
 	                          Qt::QueuedConnection);
 }
@@ -6770,7 +6865,7 @@ bool PointCloudService::readMacro(int addr, double& value, QString* errorMessage
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
 	params["Addr"]       = addr;
-	params["Timeout"]    = timeout * 1000;
+	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
 	QString     currentError;
