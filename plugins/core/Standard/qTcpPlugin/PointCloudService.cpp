@@ -5600,54 +5600,80 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 
 void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& params)
 {
-	// 提取参数
-
-	
 	QString partRfid      = params.value("PartRfid").toString();
 	QString electrodeRfid = params.value("ElectrodeRfid").toString();
 
 	QString path = m_edmProgPath + partRfid + "_" + electrodeRfid + ".nc";
-	
-	// 获取Mock文件路径
+
 	QString appDir = QCoreApplication::applicationDirPath();
 	QString mockDir = appDir + "/Mock";
 	QString mockFile = mockDir + "/Prog.nc";
-	
+
 	QDir dir(mockDir);
 	if (!dir.exists())
 	{
 		throw std::runtime_error("Mock directory does not exist");
 	}
-	
+
 	QFile mockNc(mockFile);
 	if (!mockNc.exists())
 	{
 		throw std::runtime_error("Mock Prog.nc file does not exist");
 	}
 
+	double MAN_X = 1.549;
+	double MAN_Y = -2.343;
+	double MAN_Z = -0.529;
+	double MAN_U = 0.642;
+	double MAN_V = 0.328;
+	double MAN_W = 2.354;
+	double CALC_X = -MAN_X;
+	double CALC_Y = -MAN_Y;
+	double CALC_Z = -MAN_Z;
+	double CALC_U = -MAN_U;
+	double CALC_V = -MAN_V;
+	double CALC_W = -MAN_W;	
 
-	// 先检查文件属性
+	QFile file(mockFile);
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		throw std::runtime_error("Failed to open mock Prog.nc");
+	}
+
+	QString content = QTextStream(&file).readAll();
+	file.close();
+
+	content.replace("{MAN_X}", QString::number(MAN_X));
+	content.replace("{MAN_Y}", QString::number(MAN_Y));
+	content.replace("{MAN_Z}", QString::number(MAN_Z));
+	content.replace("{MAN_U}", QString::number(MAN_U));
+	content.replace("{MAN_V}", QString::number(MAN_V));
+	content.replace("{MAN_W}", QString::number(MAN_W));
+	content.replace("{CALC_X}", QString::number(CALC_X));
+	content.replace("{CALC_Y}", QString::number(CALC_Y));
+	content.replace("{CALC_Z}", QString::number(CALC_Z));
+	content.replace("{CALC_U}", QString::number(CALC_U));
+	content.replace("{CALC_V}", QString::number(CALC_V));
+	content.replace("{CALC_W}", QString::number(CALC_W));
+
 	if (QFile::exists(path))
 	{
-		QFileInfo fileInfo(path);
-		qDebug() << "File permissions:" << fileInfo.permissions();
-		qDebug() << "Is writable:" << fileInfo.isWritable();
-		qDebug() << "Is readable:" << fileInfo.isReadable();
-		qDebug() << "Is hidden:" << fileInfo.isHidden();
-
-		// 尝试修改为可写
 		QFile::setPermissions(path, QFile::WriteUser | QFile::ReadUser);
-
 		if (!QFile::remove(path))
 		{
-			throw std::runtime_error("Failed to remove: " + path.toStdString() + ", error: " );//+ QFile::remove(path).errorString().toStdString());
+			throw std::runtime_error("Failed to remove: " + path.toStdString());
 		}
 	}
 
-	if (!QFile::copy(mockFile, path))
+	QFile outputFile(path);
+	if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Text))
 	{
-		throw std::runtime_error("Failed to copy mock Prog.nc from " + mockFile.toStdString() + " to " + path.toStdString());
+		throw std::runtime_error("Failed to create output file: " + path.toStdString());
 	}
+
+	QTextStream out(&outputFile);
+	out << content;
+	outputFile.close();
 }
 
 void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
