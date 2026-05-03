@@ -4343,12 +4343,12 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	// 获取Mock文件路径
 	QString appDir = QCoreApplication::applicationDirPath();
 	QString mockDir = appDir + "/Mock";
 	QString mockFile = mockDir + "/probe.nc";
-	
+
 	QDir dir(mockDir);
 	if (!dir.exists())
 	{
@@ -4360,7 +4360,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	QFile mockNc(mockFile);
 	if (!mockNc.exists())
 	{
@@ -4372,7 +4372,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	// 发送Mock文件到机床
 	if (!sendFileToMachine(mockFile, &errorMessage))
 	{
@@ -4384,7 +4384,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	// 设置主程序
 	if (!setMainProgram(&errorMessage))
 	{
@@ -4396,7 +4396,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	// 启动机床
 	if (!startMachine(&errorMessage))
 	{
@@ -4408,7 +4408,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	// 等待机床空闲
 	if (!waitForMachineIdle(-1, &errorMessage))
 	{
@@ -4420,15 +4420,46 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 		saveCalibrationStatus();
 		return;
 	}
-	
+
 	// Mock模式下，返回成功结果
 	QJsonObject obj;
 	obj["Result"] = "OK";
 	obj["Ret_Err"] = "Mock probe calibration completed successfully";
-	obj["RotationCenter"] = QJsonObject{{"X", 0.0}, {"Y", 0.0}, {"Z", 0.0}};
+	obj["RotationCenter"] = QJsonObject{ {"X", 0.0}, {"Y", 0.0}, {"Z", 0.0} };
 	obj["MockMode"] = true;
 	m_probeCalibrationResult["CalibrationResult"] = obj;
 	saveCalibrationStatus();
+}
+
+bool PointCloudService::machineBackHome(QString& errorMessage)
+{
+	QString appDir      = QCoreApplication::applicationDirPath();
+	QString templateDir = appDir + "/PartInfo";
+	// 发送文件到机床
+	if (!sendFileToMachine(templateDir + "/Home.nc", &errorMessage))
+	{
+		return false;
+	}
+
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		return false;
+	}
+
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		return false;
+	}
+
+	// 等待机床完成
+	if (!waitForMachineIdle(-1, &errorMessage))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 void PointCloudService::partInspectFuncMock(const QJsonObject& params)
@@ -4691,41 +4722,45 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 					return;
 				}
 
-				// 7. 应用变换
-				// 7.1 应用 T1 矩阵
-				Eigen::Matrix4d T1;
-				T1 << -1.000000, 0.000000, 0.000000, 0.000000,
-				    0.000000, 1.000000, 0.000000, 0.000000,
-				    0.000000, 0.000000, 1.000000, 0.000000,
-				    0.000000, 0.000000, 0.000000, 1.000000;
-
-				// 7.2 应用基于 x, y, z, B, C 的变换
-				Eigen::Matrix4d T_cam_motion = computeCameraMotion(
-				    m_cameraCalibrationMatrix,
-				    -(x - ZeroX),
-				    -(y - ZeroY),
-				    -(z - ZeroZ),
-				    b,
-				    c);
-
-				Eigen::Matrix4d finalTransform = (T_cam_motion * T1);
-
-				ccGLMatrixd t1GlMatrix(finalTransform.data()); // 直接传指针，无需循环
-
-				QString errorMessage;
-				if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage))
+				if (false)
 				{
-					QJsonObject result;
-					QJsonObject obj;
-					obj["Result"]           = "NG";
-					obj["Ret_Err"]          = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
-					result["InspectResult"] = obj;
-					savePartInspectResult(rfid, result);
-					return;
+					// 7. 应用变换
+					// 7.1 应用 T1 矩阵
+					Eigen::Matrix4d T1;
+					T1 << -1.000000, 0.000000, 0.000000, 0.000000,
+					    0.000000, 1.000000, 0.000000, 0.000000,
+					    0.000000, 0.000000, 1.000000, 0.000000,
+					    0.000000, 0.000000, 0.000000, 1.000000;
+
+					// 7.2 应用基于 x, y, z, B, C 的变换
+					Eigen::Matrix4d T_cam_motion = computeCameraMotion(
+					    m_cameraCalibrationMatrix,
+					    -(x - ZeroX),
+					    -(y - ZeroY),
+					    -(z - ZeroZ),
+					    b,
+					    c);
+
+					Eigen::Matrix4d finalTransform = (T_cam_motion * T1);
+
+					ccGLMatrixd t1GlMatrix(finalTransform.data()); // 直接传指针，无需循环
+
+					QString errorMessage;
+					if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage))
+					{
+						QJsonObject result;
+						QJsonObject obj;
+						obj["Result"]           = "NG";
+						obj["Ret_Err"]          = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
+						result["InspectResult"] = obj;
+						savePartInspectResult(rfid, result);
+						return;
+					}
 				}
+				
 
 				// 7. 处理裁剪区域
-				if (capturePos.contains("cropRegion"))
+				if (false && capturePos.contains("cropRegion"))
 				{
 					QJsonObject cropRegion = capturePos["cropRegion"].toObject();
 
@@ -4856,7 +4891,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 			}
 
 			// 9. 与理论模型进行 ICP 配准
-			if (!mergedCloudName.isEmpty() && config.contains("modelFile"))
+			if (false && !mergedCloudName.isEmpty() && config.contains("modelFile"))
 			{
 				QJsonObject icpParams;
 				icpParams["source"]         = mergedCloudName;
@@ -5662,6 +5697,9 @@ void PointCloudService::partInspect(const QJsonObject& params, QTcpSocket* socke
 		{
 			partInspectFunc(params);
 		}
+		QString errMsg;
+		machineBackHome(errMsg);
+
 		m_Status = MachineStatus::Idle;
 	},
 	Qt::QueuedConnection);

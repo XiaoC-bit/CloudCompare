@@ -122,6 +122,8 @@ class PointCloudService : public QObject
 	struct LoadingPosition {
 		double x, y, z, a, b, c;
 	} m_loadingPosition;
+
+	bool machineBackHome(QString &errMsg);
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);
