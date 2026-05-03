@@ -3327,13 +3327,13 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     }
 
     // 4. 生成并发送 NC 文件
-    QString templateFile = templateDir + "/Inspect.nc";
+    QString templateFile = templateDir + "/CameraPartInspect.nc";
     QFile templateNc(templateFile);
     if (!templateNc.exists()) {
         QJsonObject result;
         QJsonObject obj;
         obj["Result"] = "NG";
-        obj["Ret_Err"] = "Inspect.nc template file does not exist";
+        obj["Ret_Err"] = "CameraPartInspect.nc template file does not exist";
         result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -3343,7 +3343,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
         QJsonObject result;
         QJsonObject obj;
         obj["Result"] = "NG";
-        obj["Ret_Err"] = "Failed to open Inspect.nc template";
+        obj["Ret_Err"] = "Failed to open CameraPartInspect.nc template";
         result["InspectResult"] = obj;
         savePartInspectResult(rfid, result);
         return;
@@ -4563,14 +4563,14 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 	}
 
 	// 4. 生成并发送 NC 文件
-	QString templateFile = templateDir + "/Inspect.nc";
+	QString templateFile = templateDir + "/CameraPartInspect.nc";
 	QFile   templateNc(templateFile);
 	if (!templateNc.exists())
 	{
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = "Inspect.nc template file does not exist";
+		obj["Ret_Err"]          = "CameraPartInspect.nc template file does not exist";
 		result["InspectResult"] = obj;
 		savePartInspectResult(rfid, result);
 		return;
@@ -4581,7 +4581,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = "Failed to open Inspect.nc template";
+		obj["Ret_Err"]          = "Failed to open CameraPartInspect.nc template";
 		result["InspectResult"] = obj;
 		savePartInspectResult(rfid, result);
 		return;
