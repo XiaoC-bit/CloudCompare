@@ -1,26 +1,45 @@
 #pragma once
-#include <QJsonObject>
+
+#include <QMap>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 
 class CommandParser;
 class CommandDispatcher;
 
-class CcTcpServer : public QTcpServer {
-    Q_OBJECT
-public:
-    explicit CcTcpServer(QObject* parent = nullptr);
-    bool startListening(quint16 port = 52700);
-    void setCommandDispatcher(CommandDispatcher* dispatcher);
+struct SocketBuffer
+{
+	QByteArray data;
+	QTimer*    timeoutTimer = nullptr;
+};
 
-protected:
-    void incomingConnection(qintptr socketDescriptor) override;
+class CcTcpServer : public QTcpServer
+{
+	Q_OBJECT
 
-private slots:
-    void onReadyRead();
+  public:
+	explicit CcTcpServer(QObject* parent = nullptr);
+	~CcTcpServer();
 
-private:
-    QByteArray m_buffer;
-    CommandParser* m_parser;
-    CommandDispatcher* m_dispatcher;
+	bool startListening(quint16 port = 52700);
+	void setCommandDispatcher(CommandDispatcher* dispatcher);
+
+  protected:
+	void incomingConnection(qintptr socketDescriptor) override;
+
+  private slots:
+	void onReadyRead();
+	void onDisconnected();
+
+  private:
+	void processBuffer(QTcpSocket* socket);
+	void cleanupSocket(QTcpSocket* socket);
+
+	QMap<QTcpSocket*, SocketBuffer> m_buffers;
+	CommandParser*                  m_parser;
+	CommandDispatcher*              m_dispatcher;
+
+	static constexpr int MAX_BUFFER_SIZE   = 4 * 1024 * 1024; // 4MB
+	static constexpr int BUFFER_TIMEOUT_MS = 5000;            // 5秒
 };
