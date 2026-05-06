@@ -65,6 +65,7 @@ namespace
 	const int     CALIBRATION_MAX_FIT_RETRIES    = 3;
 	const QString PART_INSPECT_RESULT_FILE_NAME = "O1236";
 	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1536";
+	const int     MACHINE_COMMAND_RETRY_COUNT   = 3;
 
 } // namespace
 
@@ -723,8 +724,19 @@ bool PointCloudService::sendFileToMachine(const QString& filePath, QString* erro
 	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
-	return sendMachineCommand(params, response, errorMessage, timeout * 1000)
-	       && checkMachineCommandRet(response, "SendFile", errorMessage);
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
+	{
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "SendFile", errorMessage))
+		{
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
+	}
+	return false;
 }
 
 bool PointCloudService::downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage)
@@ -741,8 +753,19 @@ bool PointCloudService::downloadFileFromMachine(const QString& cncPath, const QS
 	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
-	return sendMachineCommand(params, response, errorMessage, timeout * 1000)
-	       && checkMachineCommandRet(response, "ReadFile", errorMessage);
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
+	{
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "ReadFile", errorMessage))
+		{
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
+	}
+	return false;
 }
 
 bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
@@ -755,17 +778,20 @@ bool PointCloudService::getMachineMode(QString& mode, QString* errorMessage)
 	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
-	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		return false;
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "GetDeviceMode", errorMessage))
+		{
+			mode = response["Msg"].toString();
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
 	}
-	if (!checkMachineCommandRet(response, "GetDeviceMode", errorMessage))
-	{
-		return false;
-	}
-
-	mode = response["Msg"].toString();
-	return true;
+	return false;
 }
 
 bool PointCloudService::getDeviceMainAxisCoor(double& x, double& y, double& z, double& a, double& b, double& c, QString* errorMessage)
@@ -778,22 +804,25 @@ bool PointCloudService::getDeviceMainAxisCoor(double& x, double& y, double& z, d
 	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
-	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		return false;
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "GetDeviceMainAxisCoor", errorMessage))
+		{
+			x = response["X"].toDouble();
+			y = response["Y"].toDouble();
+			z = response["Z"].toDouble();
+			a = response["A"].toDouble();
+			b = response["B"].toDouble();
+			c = response["C"].toDouble();
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
 	}
-	if (!checkMachineCommandRet(response, "GetDeviceMainAxisCoor", errorMessage))
-	{
-		return false;
-	}
-
-	x = response["X"].toDouble();
-	y = response["Y"].toDouble();
-	z = response["Z"].toDouble();
-	a = response["A"].toDouble();
-	b = response["B"].toDouble();
-	c = response["C"].toDouble();
-	return true;
+	return false;
 }
 
 bool PointCloudService::setTempMainProgram(QString* errorMessage)
@@ -807,15 +836,20 @@ bool PointCloudService::setTempMainProgram(QString* errorMessage)
 	params["Path"]       = CALIBRATION_CNC_PATH;
 	params["Timeout"]    = timeout ;
 
-	// 先切换临时程序
 	QJsonObject response;
-	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000)
-	    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		return false;
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+		{
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
 	}
-
-	return true;
+	return false;
 }
 bool PointCloudService::setMainProgram(QString* errorMessage)
 {
@@ -829,13 +863,19 @@ bool PointCloudService::setMainProgram(QString* errorMessage)
 	params["Timeout"]    = timeout ;
 
 	QJsonObject response;
-	if (!sendMachineCommand(params, response, errorMessage, timeout * 1000)
-	    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		return false;
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+		{
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
 	}
-
-	return true;
+	return false;
 }
 
 bool PointCloudService::startMachine(QString* errorMessage)
@@ -901,61 +941,60 @@ bool PointCloudService::getDeviceRun(QString& value, QString* errorMessage)
 	QJsonObject response;
 	QString     currentError;
 
-	if (!sendMachineCommand(params, response, &currentError, timeout * 1000))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		return false;
+		if (sendMachineCommand(params, response, &currentError, timeout * 1000)
+		    && checkMachineCommandRet(response, "GetDeviceRun", errorMessage)
+		    && response.contains("Value"))
+		{
+			value = response["Value"].toString();
+			if (value != "0")
+			{
+				return true;
+			}
+			break;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
 	}
-
-	if (!checkMachineCommandRet(response, "GetDeviceRun", errorMessage))
-	{
-		return false;
-	}
-
-	if (!response.contains("Value"))
-	{
-		return false;
-	}
-
-	value = response["Value"].toString();
 
 	if (value != "0")
 	{
-
 		return true;
-
 	}
 
 	params["Command"]    = "GetAlarm";
 	params["DeviceName"] = MACHINE_DEVICE_NAME;
 	params["DeviceType"] = MACHINE_DEVICE_TYPE;
 	params["Timeout"]    = timeout ;
-	if (!sendMachineCommand(params, response, &currentError, timeout * 1000))
-	{
-		return false;
-	}
 
-	if (!checkMachineCommandRet(response, "GetAlarm", errorMessage))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		return false;
-	}
-
-	if (!response.contains("AlarmCode") || !response.contains("AlarmInfo"))
-	{
-		return false;
-	}
-
-	QString alarmCode = response["AlarmCode"].toString();
-	QString alarmInfo = response["AlarmInfo"].toString();
-	if (alarmCode != "0")
-	{
-		value = "3";
-		if (errorMessage)
+		if (sendMachineCommand(params, response, &currentError, timeout * 1000)
+		    && checkMachineCommandRet(response, "GetAlarm", errorMessage)
+		    && response.contains("AlarmCode") && response.contains("AlarmInfo"))
 		{
-			*errorMessage = QString("Machine alarm: [%1] %2").arg(alarmCode, alarmInfo);
+			QString alarmCode = response["AlarmCode"].toString();
+			QString alarmInfo = response["AlarmInfo"].toString();
+			if (alarmCode != "0")
+			{
+				value = "3";
+				if (errorMessage)
+				{
+					*errorMessage = QString("Machine alarm: [%1] %2").arg(alarmCode, alarmInfo);
+				}
+			}
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
 		}
 	}
 
-	return true;
+	return false;
 }
 
 bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMessage)
@@ -6902,32 +6941,30 @@ bool PointCloudService::readMacro(int addr, double& value, QString* errorMessage
 	QJsonObject response;
 	QString     currentError;
 
-	if (!sendMachineCommand(params, response, &currentError, timeout * 1000))
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
 	{
-		if (errorMessage)
+		if (sendMachineCommand(params, response, &currentError, timeout * 1000)
+		    && checkMachineCommandRet(response, "ReadMacro", errorMessage)
+		    && response.contains("Value"))
 		{
-			*errorMessage = currentError;
+			value = response["Value"].toDouble();
+			return true;
 		}
-		return false;
-	}
-
-	if (!checkMachineCommandRet(response, "ReadMacro", errorMessage))
-	{
-		return false;
-	}
-
-	if (!response.contains("Value"))
-	{
-		if (errorMessage)
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
 		{
-			*errorMessage = "No Value field in response";
+			QThread::msleep(200);
 		}
-		return false;
 	}
 
-	value = response["Value"].toDouble();
-
-	return true;
+	if (errorMessage && !currentError.isEmpty())
+	{
+		*errorMessage = currentError;
+	}
+	else if (errorMessage)
+	{
+		*errorMessage = "No Value field in response";
+	}
+	return false;
 }
 
 QVector<QVector3D> PointCloudService::getCalibrationPositionsFromFile(QString* errorMessage) const
