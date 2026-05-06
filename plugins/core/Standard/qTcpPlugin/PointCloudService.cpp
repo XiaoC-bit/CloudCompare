@@ -5621,12 +5621,18 @@ void PointCloudService::generateElectrodeProgramFuncMock(const QJsonObject& para
 		throw std::runtime_error("Mock Prog.nc file does not exist");
 	}
 
-	double MAN_X = 1.549;
+	/*double MAN_X = 1.549;
 	double MAN_Y = -2.343;
 	double MAN_Z = -0.529;
 	double MAN_U = 0.642;
 	double MAN_V = 0.328;
-	double MAN_W = 2.354;
+	double MAN_W = 2.354;*/
+	double MAN_X  = 0;
+	double MAN_Y  = 0;
+	double MAN_Z  = 0;
+	double MAN_U  = 0;
+	double MAN_V  = 0;
+	double MAN_W  = 0;
 	double CALC_X = -MAN_X;
 	double CALC_Y = -MAN_Y;
 	double CALC_Z = -MAN_Z;
