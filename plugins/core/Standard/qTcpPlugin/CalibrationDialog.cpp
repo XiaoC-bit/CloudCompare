@@ -111,7 +111,7 @@ CalibrationDialog::CalibrationDialog(ccMainAppInterface* app, PointCloudService*
     , m_pointCloudService(pointCloudService)
     , m_positions(DEFAULT_POSITIONS)
 {
-    setWindowTitle("标定");
+    setWindowTitle("激光相机标定");
     setFixedSize(450, 400);
     setupUI();
     populateTable();

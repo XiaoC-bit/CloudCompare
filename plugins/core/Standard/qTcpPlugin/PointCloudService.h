@@ -58,28 +58,35 @@ class PointCloudService : public QObject
 	void acquirePcd(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
 	void setEdmProgPath(const QString& path);
-
-	// 以下是与自动化相关的命令响应函数
-	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void probeCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void getDeviceMainAxisCoor(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); // 获取工件检查结果
-	void electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-	void generateElectrodeProgram(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
-
-
-
-
-
-
-
 	//
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
+
+
+	// 以下是与自动化相关的命令响应函数
+	// 相机标定
+	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	// 探针标定
+	void probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void probeCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	// 工件检测
+	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	// 获取工件检查结果
+	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); 
+	// 电极检测
+	void electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	// 获取电极检查结果
+	void getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); 
+	// 生成电极程序	
+	void generateElectrodeProgram(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); 
+
+
+
+	void getStatus(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void getDeviceMainAxisCoor(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+
+
+
 
   private:
 	enum class MachineStatus

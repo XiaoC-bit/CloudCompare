@@ -73,7 +73,7 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_calibrationAction)
 	{
-		m_calibrationAction = new QAction("标定", this);
+		m_calibrationAction = new QAction("激光相机标定", this);
 		connect(m_calibrationAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationDialog);
 	}
 
@@ -230,28 +230,7 @@ void qTcpPlugin::startServer()
 	
 // 可选：线程结束时释放
 	connect(m_tcpThread, &QThread::finished, m_server, &QObject::deleteLater);
-
-
-	
 	m_tcpThread->start();
-
-	/*if (m_server->startListening(port))
-	{
-		m_app->dispToConsole(QString("[TcpPlugin] Listening on port %1").arg(port));
-	}
-	else
-	{
-		m_app->dispToConsole("[TcpPlugin] Failed to start server",
-		                     ccMainAppInterface::ERR_CONSOLE_MESSAGE);
-		delete m_server;
-		m_server = nullptr;
-		delete m_dispatcher;
-		m_dispatcher = nullptr;
-		delete m_pointCloudService;
-		m_pointCloudService = nullptr;
-		delete m_machineProxy;
-		m_machineProxy = nullptr;
-	}*/
 
 	updateActions();
 }
