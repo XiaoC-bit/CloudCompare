@@ -5414,143 +5414,10 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 
 void PointCloudService::electrodeInspectFunc(const QJsonObject& params)
 {
-	QString errorMessage;
-
 	QString electrodeType = params.value("ElectrodeType").toString();
 	QString rfid = params.value("Rfid").toString();
 
-	if (electrodeType.isEmpty() || rfid.isEmpty())
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = "ElectrodeType or Rfid is empty";
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	QString appDir = QCoreApplication::applicationDirPath();
-	QString templateDir = appDir + "/Template";
-	QDir dir(templateDir);
-	if (!dir.exists())
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = "Template directory does not exist";
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	QString electrodeFile;
-	QStringList filters; filters << QString("%1*.nc").arg(electrodeType) << QString("%1*.txt").arg(electrodeType);
-	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
-	if (fileList.isEmpty())
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("No electrode file found for type: %1").arg(electrodeType);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	electrodeFile = fileList.first().absoluteFilePath();
-
-	if (!sendFileToMachine(electrodeFile, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to send electrode file: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	if (!setMainProgram(&errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to set main program: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	if (!startMachine(&errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to start machine: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	if (!waitForMachineIdle(-1, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Machine did not become idle: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	double offsetX, offsetY, offsetZ,offsetA,offsetB,offsetC;
-
-	QString cncPath = "/h/lnc8/prog/";
-	QString cncFile = ELEC_INSPECT_RESULT_FILE_NAME;
-	QString localFile = "D:\\Elec\\" + rfid + ".res";
-		
-	if(!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to download file from machine: %1").arg(errorMessage);
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}
-
-	//解析文件
-	QFile file(localFile);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to open inspection result file: %1").arg(file.errorString());
-		result["InspectResult"] = obj;
-		saveElectrodeInspectResult(rfid, result);
-		return;
-	}	
-
-	QJsonObject resultObj;
-	resultObj["Result"]        = "OK";
-	resultObj["ElectrodeType"] = electrodeType;
-	resultObj["Rfid"] = rfid;
-	resultObj["Offset"] = QJsonObject{{"X", offsetX}, {"Y", offsetY}, {"Z", offsetZ}};
-	resultObj["Timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
-	saveElectrodeInspectResult(rfid, resultObj);
-
-	m_Status = MachineStatus::Idle;
+	executeElectrodeInspect(electrodeType, rfid);
 }
 
 void PointCloudService::getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
@@ -7256,4 +7123,157 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	compensation.c = C_deg; // C轴角度
 
 	return compensation;
+}
+
+bool PointCloudService::executeElectrodeInspect(const QString& electrodeType, const QString& rfid)
+{
+	m_Status = MachineStatus::Running;
+
+	QString errorMessage;
+
+	if (electrodeType.isEmpty() || rfid.isEmpty())
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "ElectrodeType or Rfid is empty";
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString templateDir = appDir + "/Template";
+	QDir dir(templateDir);
+	if (!dir.exists())
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "Template directory does not exist";
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	QString electrodeFile;
+	QStringList filters; filters << QString("%1*.nc").arg(electrodeType) << QString("%1*.txt").arg(electrodeType);
+	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
+	if (fileList.isEmpty())
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("No electrode file found for type: %1").arg(electrodeType);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	electrodeFile = fileList.first().absoluteFilePath();
+
+	if (!sendFileToMachine(electrodeFile, &errorMessage))
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to send electrode file: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (!setMainProgram(&errorMessage))
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to set main program: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (!startMachine(&errorMessage))
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to start machine: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (!waitForMachineIdle(-1, &errorMessage))
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	double offsetX, offsetY, offsetZ, offsetA, offsetB, offsetC;
+
+	QString cncPath = "/h/lnc8/prog/";
+	QString cncFile = ELEC_INSPECT_RESULT_FILE_NAME;
+	QString localFile = "D:\\Elec\\" + rfid + ".res";
+
+	if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to download file from machine: %1").arg(errorMessage);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	QFile file(localFile);
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to open inspection result file: %1").arg(file.errorString());
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	QJsonObject resultObj;
+	resultObj["Result"] = "OK";
+	resultObj["ElectrodeType"] = electrodeType;
+	resultObj["Rfid"] = rfid;
+	resultObj["Offset"] = QJsonObject{ {"X", offsetX}, {"Y", offsetY}, {"Z", offsetZ} };
+	resultObj["Timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+	QJsonObject result;
+	result["InspectResult"] = resultObj;
+	m_electrodeInspectResult = result;
+	saveElectrodeInspectResult(rfid, result);
+
+	m_Status = MachineStatus::Idle;
+	return true;
 }

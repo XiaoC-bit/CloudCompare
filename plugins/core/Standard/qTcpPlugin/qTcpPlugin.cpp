@@ -9,6 +9,7 @@
 #include "CalibrationDialog.h"
 #include "ProbeCalibrationDialog.h"
 #include "PartInspectDialog.h"
+#include "ElectrodeInspectDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -25,6 +26,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_calibrationAction(nullptr)
     , m_probeCalibrationAction(nullptr)
     , m_partInspectAction(nullptr)
+    , m_electrodeInspectAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -93,8 +95,14 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_partInspectAction, &QAction::triggered, this, &qTcpPlugin::showPartInspectDialog);
 	}
 
+	if (!m_electrodeInspectAction)
+	{
+		m_electrodeInspectAction = new QAction("电极检测", this);
+		connect(m_electrodeInspectAction, &QAction::triggered, this, &qTcpPlugin::showElectrodeInspectDialog);
+	}
+
 	updateActions();
-	return {m_startAction, m_stopAction, m_calibrationAction, m_probeCalibrationAction, m_partInspectAction};
+	return {m_startAction, m_stopAction, m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction};
 }
 
 void qTcpPlugin::startServer()
@@ -315,5 +323,11 @@ void qTcpPlugin::showProbeCalibrationDialog()
 void qTcpPlugin::showPartInspectDialog()
 {
 	PartInspectDialog dialog(m_app, m_pointCloudService, nullptr);
+	dialog.exec();
+}
+
+void qTcpPlugin::showElectrodeInspectDialog()
+{
+	ElectrodeInspectDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
 }

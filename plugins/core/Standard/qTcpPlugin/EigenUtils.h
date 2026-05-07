@@ -13,14 +13,6 @@ struct RigidTransform {
 
 class EigenUtils {
 public:
-    // 输入：
-    // - scanner_points: 扫描仪坐标系的 N 个球心 (std::vector<Eigen::Vector3d>)
-    // - machine_points: 机床坐标系的 N 个球心
-    // 输出：
-    // - RigidTransform {R, T}
-    static RigidTransform computeRigidTransform(
-        const std::vector<Eigen::Vector3d>& scanner_points,
-        const std::vector<Eigen::Vector3d>& machine_points);
 
         void RTCP();
 };

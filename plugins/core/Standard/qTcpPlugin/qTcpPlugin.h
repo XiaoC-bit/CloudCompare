@@ -28,6 +28,7 @@ private slots:
 	void showCalibrationDialog();
 	void showProbeCalibrationDialog();
 	void showPartInspectDialog();
+	void showElectrodeInspectDialog();
 
   private:
 	QThread* m_tcpThread = nullptr;
@@ -38,6 +39,7 @@ private slots:
 	QAction*           m_calibrationAction;
 	QAction*           m_probeCalibrationAction;
 	QAction*           m_partInspectAction;
+	QAction*           m_electrodeInspectAction;
 private:
     CcTcpServer *m_server;
     CommandDispatcher *m_dispatcher;
