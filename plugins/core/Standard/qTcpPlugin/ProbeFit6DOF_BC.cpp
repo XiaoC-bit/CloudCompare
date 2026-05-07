@@ -174,12 +174,12 @@ void ProbeFit6DOF_BC::decomposeRotation(const Eigen::Matrix3d& R,
 // SVD 求解
 // ─────────────────────────────────────────────
 
-ProbeFit6DOF_BC::Result ProbeFit6DOF_BC::solve() const
+bool ProbeFit6DOF_BC::solve(Result& result) const
 {
 	using namespace Eigen;
 	const int N = static_cast<int>(points_.size());
 	if (N < 6)
-		throw std::runtime_error("ProbeFit6DOF_BC: at least 6 points required");
+		return false;
 
 	MatrixXd                nominal(N, 3), actual(N, 3), normals(N, 3);
 	std::vector<ProbePoint> pts = points_;
@@ -228,17 +228,16 @@ ProbeFit6DOF_BC::Result ProbeFit6DOF_BC::solve() const
 	VectorXd pred = A * x;
 	VectorXd res  = dev - pred;
 
-	Result r;
-	r.R           = R;
-	r.t           = t;
-	r.centroid    = centroid;
-	r.omega       = omega;
-	r.rms         = std::sqrt(res.squaredNorm() / N);
-	r.maxResidual = res.cwiseAbs().maxCoeff(&r.maxResidualIndex);
-	r.residuals.resize(N);
+	result.R           = R;
+	result.t           = t;
+	result.centroid    = centroid;
+	result.omega       = omega;
+	result.rms         = std::sqrt(res.squaredNorm() / N);
+	result.maxResidual = res.cwiseAbs().maxCoeff(&result.maxResidualIndex);
+	result.residuals.resize(N);
 	for (int i = 0; i < N; ++i)
-		r.residuals[i] = res(i);
-	return r;
+		result.residuals[i] = res(i);
+	return true;
 }
 
 // ─────────────────────────────────────────────

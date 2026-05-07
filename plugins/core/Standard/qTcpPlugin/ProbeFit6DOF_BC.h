@@ -1,4 +1,4 @@
-﻿#ifndef PROBE_FIT_6DOF_BC_H
+#ifndef PROBE_FIT_6DOF_BC_H
 #define PROBE_FIT_6DOF_BC_H
 
 #include "Eigen/Dense"
@@ -117,9 +117,10 @@ class ProbeFit6DOF_BC
 
 	/**
 	 * 执行 SVD 拟合
-	 * @return Result（旋转中心 = 测点质心）
+	 * @param result 输出参数，拟合结果
+	 * @return true 表示成功，false 表示失败（如点数不足）
 	 */
-	Result solve() const;
+	bool solve(Result& result) const;
 
 	/**
 	 * 剥离指定火花机旋转中心，得到最终补偿值

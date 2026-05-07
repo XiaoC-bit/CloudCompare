@@ -1116,14 +1116,15 @@ QVector<QVector3D> PointCloudService::resolveCalibrationPositions(const QJsonObj
 	return positions;
 }
 
-PointCloudService::CalibrationRigidTransform PointCloudService::computeRigidTransform(
+bool PointCloudService::computeRigidTransform(
     const std::vector<Eigen::Vector3d>& scanner_points,
-    const std::vector<Eigen::Vector3d>& machine_points)
+    const std::vector<Eigen::Vector3d>& machine_points,
+    CalibrationRigidTransform& transform)
 {
 	const size_t count = scanner_points.size();
 	if (count < 3 || count != machine_points.size())
 	{
-		throw std::runtime_error("At least 3 corresponding calibration points are required");
+		return false;
 	}
 
 	Eigen::Vector3d scannerCenter = Eigen::Vector3d::Zero();
@@ -1154,10 +1155,9 @@ PointCloudService::CalibrationRigidTransform PointCloudService::computeRigidTran
 		rotation = V * svd.matrixU().transpose();
 	}
 
-	CalibrationRigidTransform transform;
 	transform.R = rotation;
 	transform.T = machineCenter - rotation * scannerCenter;
-	return transform;
+	return true;
 }
 
 Eigen::Matrix4d PointCloudService::toMatrix4d(const CalibrationRigidTransform& tf)
@@ -3547,15 +3547,11 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 	}
 
 	CalibrationRigidTransform transform;
-	try
-	{
-		transform = computeRigidTransform(scannerPoints, machinePoints);
-	}
-	catch (const std::exception& e)
+	if (!computeRigidTransform(scannerPoints, machinePoints, transform))
 	{
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Calibration matrix computation failed: %1").arg(e.what());
+		obj["Ret_Err"] = "Calibration matrix computation failed: at least 3 corresponding calibration points are required";
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return false;
@@ -4653,15 +4649,26 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				return;
 			}
 
-			ProbeFit6DOF_BC::Result result = fitter.solve();
+			ProbeFit6DOF_BC::Result probeResult;
+			if (!fitter.solve(probeResult))
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return;
+			}
 
 			QJsonObject holeIcpReuslt;
 			holeIcpReuslt["holdId"]    = holdId;
 
 			// 构建 4x4 变换矩阵
 			Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
-			transformMatrix.block<3, 3>(0, 0) = result.R;
-			transformMatrix.block<3, 1>(0, 3) = result.t;
+			transformMatrix.block<3, 3>(0, 0) = probeResult.R;
+			transformMatrix.block<3, 1>(0, 3) = probeResult.t;
 
 			// 存储变换矩阵
 			QJsonArray matrixArray;
@@ -4678,27 +4685,27 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 
 			// 存储质心
 			QJsonArray centroidArray;
-			centroidArray.append(result.centroid.x());
-			centroidArray.append(result.centroid.y());
-			centroidArray.append(result.centroid.z());
+			centroidArray.append(probeResult.centroid.x());
+			centroidArray.append(probeResult.centroid.y());
+			centroidArray.append(probeResult.centroid.z());
 			holeIcpReuslt["centroid"] = centroidArray;
 
 			// 存储旋转向量
 			QJsonArray omegaArray;
-			omegaArray.append(result.omega.x());
-			omegaArray.append(result.omega.y());
-			omegaArray.append(result.omega.z());
+			omegaArray.append(probeResult.omega.x());
+			omegaArray.append(probeResult.omega.y());
+			omegaArray.append(probeResult.omega.z());
 			holeIcpReuslt["omega"] = omegaArray;
 
 			// 存储拟合精度指标
-			holeIcpReuslt["rms"]              = result.rms;
-			holeIcpReuslt["maxResidual"]      = result.maxResidual;
-			holeIcpReuslt["maxResidualIndex"] = result.maxResidualIndex;
-			holeIcpReuslt["dof"]              = result.dof;
+			holeIcpReuslt["rms"]              = probeResult.rms;
+			holeIcpReuslt["maxResidual"]      = probeResult.maxResidual;
+			holeIcpReuslt["maxResidualIndex"] = probeResult.maxResidualIndex;
+			holeIcpReuslt["dof"]              = probeResult.dof;
 
 			// 存储残差列表
 			QJsonArray residualsArray;
-			for (double residual : result.residuals)
+			for (double residual : probeResult.residuals)
 			{
 				residualsArray.append(residual);
 			}
@@ -4967,14 +4974,25 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 		return;
 	}
 
-	ProbeFit6DOF_BC::Result result = fitter.solve();
+	ProbeFit6DOF_BC::Result probeResult;
+	if (!fitter.solve(probeResult))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+		result["InspectResult"] = obj;
+		savePartInspectResult(rfid, result);
+		return;
+	}
 
 	QJsonObject partResult;
 
 	// 构建 4x4 变换矩阵
 	Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
-	transformMatrix.block<3, 3>(0, 0) = result.R;
-	transformMatrix.block<3, 1>(0, 3) = result.t;
+	transformMatrix.block<3, 3>(0, 0) = probeResult.R;
+	transformMatrix.block<3, 1>(0, 3) = probeResult.t;
 
 	// 存储变换矩阵
 	QJsonArray matrixArray;
@@ -4991,27 +5009,27 @@ void PointCloudService::electrodeInspectFuncMock(const QJsonObject& params)
 
 	// 存储质心
 	QJsonArray centroidArray;
-	centroidArray.append(result.centroid.x());
-	centroidArray.append(result.centroid.y());
-	centroidArray.append(result.centroid.z());
+	centroidArray.append(probeResult.centroid.x());
+	centroidArray.append(probeResult.centroid.y());
+	centroidArray.append(probeResult.centroid.z());
 	partResult["centroid"] = centroidArray;
 
 	// 存储旋转向量
 	QJsonArray omegaArray;
-	omegaArray.append(result.omega.x());
-	omegaArray.append(result.omega.y());
-	omegaArray.append(result.omega.z());
+	omegaArray.append(probeResult.omega.x());
+	omegaArray.append(probeResult.omega.y());
+	omegaArray.append(probeResult.omega.z());
 	partResult["omega"] = omegaArray;
 
 	// 存储拟合精度指标
-	partResult["rms"]              = result.rms;
-	partResult["maxResidual"]      = result.maxResidual;
-	partResult["maxResidualIndex"] = result.maxResidualIndex;
-	partResult["dof"]              = result.dof;
+	partResult["rms"]              = probeResult.rms;
+	partResult["maxResidual"]      = probeResult.maxResidual;
+	partResult["maxResidualIndex"] = probeResult.maxResidualIndex;
+	partResult["dof"]              = probeResult.dof;
 
 	// 存储残差列表
 	QJsonArray residualsArray;
-	for (double residual : result.residuals)
+	for (double residual : probeResult.residuals)
 	{
 		residualsArray.append(residual);
 	}

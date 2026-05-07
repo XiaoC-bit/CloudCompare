@@ -243,7 +243,8 @@ class PointCloudService : public QObject
 	void resetConnection();
 	void setError(QString* out, const QString& msg);
 
-	static CalibrationRigidTransform computeRigidTransform(const std::vector<Eigen::Vector3d>& scanner_points,
-	                                                       const std::vector<Eigen::Vector3d>& machine_points);
+	static bool computeRigidTransform(const std::vector<Eigen::Vector3d>& scanner_points,
+	                                  const std::vector<Eigen::Vector3d>& machine_points,
+	                                  CalibrationRigidTransform& transform);
 	static Eigen::Matrix4d           toMatrix4d(const CalibrationRigidTransform& tf);
 };
