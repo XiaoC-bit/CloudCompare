@@ -31,11 +31,11 @@ class PointCloudService : public QObject
 
 	void setEnableMock(bool enable);
 	bool getEnableMock() const { return m_enableMock; }
-	
+
 	// 设置旋转中心
 	void setBAxisCenter(double x, double y, double z);
 	void setCAxisCenter(double x, double y, double z);
-	
+
 	// 设置G54工件坐标系
 	void setG54Config(double x, double y, double z, double B_deg, double C_deg);
 	// 设置上料坐标点
@@ -61,6 +61,11 @@ class PointCloudService : public QObject
 	//
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
+	// 执行相机标定（供CalibrationDialog直接调用）
+	// 返回值：true表示标定成功，false表示失败
+	// 标定结果通过m_cameraCalibrationMatrix和m_cameraCalibrationResult获取
+	bool executeCalibration(const QVector<QVector3D>& positions);
+
 
 	// 以下是与自动化相关的命令响应函数
 	// 相机标定
@@ -72,13 +77,13 @@ class PointCloudService : public QObject
 	// 工件检测
 	void partInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	// 获取工件检查结果
-	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); 
+	void getPartInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	// 电极检测
 	void electrodeInspect(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	// 获取电极检查结果
-	void getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); 
-	// 生成电极程序	
-	void generateElectrodeProgram(const QJsonObject& params, QTcpSocket* socket, const QString& idCode); 
+	void getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	// 生成电极程序
+	void generateElectrodeProgram(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 
 
 
@@ -110,7 +115,7 @@ class PointCloudService : public QObject
 	QJsonObject                 m_cameraCalibrationResult;   // 相机标定结果
 	Eigen::Matrix4d             m_cameraCalibrationMatrix;   // 相机标定结果矩阵
 
-	QJsonObject m_probeCalibrationResult; // 探针标定结果	
+	QJsonObject m_probeCalibrationResult; // 探针标定结果
 	QJsonObject m_partInspectResult; // 工件检测结果
 	QJsonObject m_electrodeInspectResult; // 电极检测结果
 
@@ -118,11 +123,11 @@ class PointCloudService : public QObject
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
 	bool m_enableMock; // 是否启用mock命令
-	
+
 	// 旋转中心
 	Eigen::Vector3d m_bAxisCenter; // B轴旋转中心
 	Eigen::Vector3d m_cAxisCenter; // C轴旋转中心
-	
+
 	// G54工件坐标系
 	G54Config m_g54Config;
 	// 上料坐标点
@@ -162,7 +167,7 @@ class PointCloudService : public QObject
     bool               deleteObjectInternal(const QJsonObject& params, QString* errorMessage); // 内部删除对象函数
     bool               mergeInternal(const QJsonObject& params, QString* errorMessage); // 内部合并函数
     bool               icpInternal(const QJsonObject& params, QString* errorMessage, ccGLMatrix* transMat = nullptr); // 内部ICP配准函数
-    
+
     // 数学工具函数
     static constexpr double PI = 3.14159265358979323846;
     static inline double deg2rad(double deg) { return deg * PI / 180.0; }

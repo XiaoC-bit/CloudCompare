@@ -3951,30 +3951,30 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     savePartInspectResult(rfid, result);
 }
 
-void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
+bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 {
-	QString                  errorMessage;
-	const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
 	if (positions.isEmpty())
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "No calibration positions provided";
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
+
+	QString errorMessage;
 
 	if (!waitForMachineIdle(1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = errorMessage.isEmpty() ? "Machine is not idle" : errorMessage;
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	QString mode;
@@ -3982,32 +3982,32 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = errorMessage.isEmpty() ? "Failed to get machine mode" : errorMessage;
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 	if (mode != "Auto")
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	if (!clearDbInternal(nullptr, ""))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = QString("Failed to clear DB before calibration");
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to clear DB before calibration");
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	std::vector<Eigen::Vector3d> machinePoints;
@@ -4024,29 +4024,32 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 	if (!dir.exists())
 	{
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = "Calibration template directory does not exist";
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "Calibration template directory does not exist";
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		return;
+		saveCalibrationStatus();
+		return false;
 	}
 
 	QFile templateNc(templateFile);
 	if (!templateNc.exists())
 	{
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = "Calibration.nc template file does not exist";
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "Calibration.nc template file does not exist";
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		return;
+		saveCalibrationStatus();
+		return false;
 	}
 
 	if (!templateNc.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = "Failed to open Calibration.nc template";
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "Failed to open Calibration.nc template";
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		return;
+		saveCalibrationStatus();
+		return false;
 	}
 	const QString templateContent = QTextStream(&templateNc).readAll();
 	templateNc.close();
@@ -4068,10 +4071,11 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 		if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
 			QJsonObject obj;
-			obj["Result"]                            = "NG";
-			obj["Ret_Err"]                             = QString("Failed to write NC file for position %1").arg(i + 1);
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to write NC file for position %1").arg(i + 1);
 			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			return;
+			saveCalibrationStatus();
+			return false;
 		}
 		QTextStream out(&outputNc);
 		out << content;
@@ -4080,37 +4084,41 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 		if (!sendFileToMachine(outputFile, &errorMessage))
 		{
 			QJsonObject obj;
-			obj["Result"]                            = "NG";
-			obj["Ret_Err"]                             = QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage);
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to send NC file for position %1: %2").arg(i + 1).arg(errorMessage);
 			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			return;
+			saveCalibrationStatus();
+			return false;
 		}
 
 		if (!setMainProgram(&errorMessage))
 		{
 			QJsonObject obj;
-			obj["Result"]                            = "NG";
-			obj["Ret_Err"]                             = QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage);
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to set main program for position %1: %2").arg(i + 1).arg(errorMessage);
 			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			return;
+			saveCalibrationStatus();
+			return false;
 		}
 
 		if (!startMachine(&errorMessage))
 		{
 			QJsonObject obj;
-			obj["Result"]                            = "NG";
-			obj["Ret_Err"]                             = QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage);
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to start machine for position %1: %2").arg(i + 1).arg(errorMessage);
 			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			return;
+			saveCalibrationStatus();
+			return false;
 		}
 
 		if (!waitForMachineIdle(-1, &errorMessage))
 		{
 			QJsonObject obj;
-			obj["Result"]                            = "NG";
-			obj["Ret_Err"]                             = QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage);
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Machine did not become idle for position %1: %2").arg(i + 1).arg(errorMessage);
 			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			return;
+			saveCalibrationStatus();
+			return false;
 		}
 
 		bool   fitSuccess = false;
@@ -4160,8 +4168,8 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 		{
 			m_cameraCalibrationResult["Result"] = "NG";
 			m_cameraCalibrationResult["Ret_Err"]  = QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES);
-
-			return;
+			saveCalibrationStatus();
+			return false;
 		}
 
 		scannerPoints.emplace_back(centerX, centerY, centerZ);
@@ -4182,10 +4190,11 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 	catch (const std::exception& e)
 	{
 		QJsonObject obj;
-		obj["Result"]                            = "NG";
-		obj["Ret_Err"]                             = QString("Calibration matrix computation failed: %1").arg(e.what());
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Calibration matrix computation failed: %1").arg(e.what());
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		return;
+		saveCalibrationStatus();
+		return false;
 	}
 
 	const Eigen::Matrix4d matrix = toMatrix4d(transform);
@@ -4229,7 +4238,6 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 	}
 	m_app->dispToConsole(QString("[TcpPlugin][Calibration]\n%1").arg(matrixText));
 
-	// 保存标定结果
 	QJsonObject obj;
 	obj["Result"] = residualOk ? "OK" : "NG";
 	if (residualOk)
@@ -4240,7 +4248,6 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 		obj["ResidualThreshold"] = CALIBRATION_RESIDUAL_THRESHOLD;
 		obj["ResidualOk"]        = residualOk;
 		obj["PositionCount"]     = positions.size();
-		// 保存矩阵到成员变量
 		m_cameraCalibrationMatrix = matrix;
 	}
 	else
@@ -4248,6 +4255,28 @@ void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Calibration completed but residuals exceed threshold");
 	}
 	m_cameraCalibrationResult["CalibrationResult"] = obj;
+	saveCalibrationStatus();
+	m_Status = MachineStatus::Idle;
+	return residualOk;
+}
+
+void PointCloudService::cameraCalibrationFunc(const QJsonObject& params)
+{
+	QString                  errorMessage;
+	const QVector<QVector3D> positions = resolveCalibrationPositions(params, &errorMessage);
+	if (positions.isEmpty())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"]                            = "NG";
+		obj["Ret_Err"]                             = errorMessage.isEmpty() ? "No calibration positions provided" : errorMessage;
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return;
+	}
+
+	// 直接调用 executeCalibration 执行标定逻辑，避免重复代码
+	executeCalibration(positions);
 }
 
 void PointCloudService::cameraCalibrationFuncMock(const QJsonObject& params)
