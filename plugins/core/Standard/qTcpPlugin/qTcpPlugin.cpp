@@ -79,30 +79,30 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_calibrationAction)
 	{
-		m_calibrationAction = new QAction("激光相机标定", this);
+		m_calibrationAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/camera.png"), "激光相机标定", this);
 		connect(m_calibrationAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationDialog);
 	}
 
 	if (!m_probeCalibrationAction)
 	{
-		m_probeCalibrationAction = new QAction("测头标定", this);
+		m_probeCalibrationAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/probe.png"), "测头标定", this);
 		connect(m_probeCalibrationAction, &QAction::triggered, this, &qTcpPlugin::showProbeCalibrationDialog);
 	}
 
 	if (!m_partInspectAction)
 	{
-		m_partInspectAction = new QAction("工件检测", this);
+		m_partInspectAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/part.png"), "工件检测", this);
 		connect(m_partInspectAction, &QAction::triggered, this, &qTcpPlugin::showPartInspectDialog);
 	}
 
 	if (!m_electrodeInspectAction)
 	{
-		m_electrodeInspectAction = new QAction("电极检测", this);
+		m_electrodeInspectAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/elec.png"), "电极检测", this);
 		connect(m_electrodeInspectAction, &QAction::triggered, this, &qTcpPlugin::showElectrodeInspectDialog);
 	}
 
 	updateActions();
-	return {m_startAction, m_stopAction, m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction};
+	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction};
 }
 
 void qTcpPlugin::startServer()

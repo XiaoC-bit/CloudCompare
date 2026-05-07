@@ -1,5 +1,9 @@
 <RCC>
     <qresource prefix="/CC/plugin/qTcpPlugin">
         <file>info.json</file>
+        <file>res/camera.png</file>
+        <file>res/elec.png</file>
+        <file>res/part.png</file>
+        <file>res/probe.png</file>
     </qresource>
 </RCC>
