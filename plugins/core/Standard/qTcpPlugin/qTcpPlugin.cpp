@@ -8,6 +8,7 @@
 #include "CommLogger.h"
 #include "CalibrationDialog.h"
 #include "ProbeCalibrationDialog.h"
+#include "PartInspectDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -23,6 +24,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_stopAction(nullptr)
     , m_calibrationAction(nullptr)
     , m_probeCalibrationAction(nullptr)
+    , m_partInspectAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -85,8 +87,14 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_probeCalibrationAction, &QAction::triggered, this, &qTcpPlugin::showProbeCalibrationDialog);
 	}
 
+	if (!m_partInspectAction)
+	{
+		m_partInspectAction = new QAction("工件检测", this);
+		connect(m_partInspectAction, &QAction::triggered, this, &qTcpPlugin::showPartInspectDialog);
+	}
+
 	updateActions();
-	return {m_startAction, m_stopAction, m_calibrationAction, m_probeCalibrationAction};
+	return {m_startAction, m_stopAction, m_calibrationAction, m_probeCalibrationAction, m_partInspectAction};
 }
 
 void qTcpPlugin::startServer()
@@ -301,5 +309,11 @@ void qTcpPlugin::showCalibrationDialog()
 void qTcpPlugin::showProbeCalibrationDialog()
 {
 	ProbeCalibrationDialog dialog(m_app, m_pointCloudService, nullptr);
+	dialog.exec();
+}
+
+void qTcpPlugin::showPartInspectDialog()
+{
+	PartInspectDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
 }

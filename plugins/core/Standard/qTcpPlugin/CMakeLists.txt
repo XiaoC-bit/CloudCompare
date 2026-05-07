@@ -15,6 +15,8 @@ if( PLUGIN_STANDARD_QTCP )
 		CalibrationDialog.cpp
 		ProbeCalibrationDialog.h
 		ProbeCalibrationDialog.cpp
+		PartInspectDialog.h
+		PartInspectDialog.cpp
 		CcTcpServer.h
 		CcTcpServer.cpp
 		CommandDispatcher.h
@@ -42,6 +44,8 @@ if( PLUGIN_STANDARD_QTCP )
 		ProbeFit6DOF_BC.h
 		ProbeFit6DOF_BC.cpp
 	)
+
+	target_compile_features( ${PROJECT_NAME} PRIVATE cxx_std_17 )
 	
 	target_link_libraries( ${PROJECT_NAME} 
 		CCCoreLib
