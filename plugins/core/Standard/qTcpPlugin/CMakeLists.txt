@@ -9,6 +9,8 @@ if( PLUGIN_STANDARD_QTCP )
 	target_sources( ${PROJECT_NAME} PRIVATE
 		qTcpPlugin.h
 		qTcpPlugin.cpp
+		MachineStatusDialog.h
+		MachineStatusDialog.cpp
 		CalibrationDialog.h
 		CalibrationDialog.cpp
 		ProbeCalibrationDialog.h
