@@ -11,6 +11,8 @@ if( PLUGIN_STANDARD_QTCP )
 		qTcpPlugin.cpp
 		CalibrationDialog.h
 		CalibrationDialog.cpp
+		ProbeCalibrationDialog.h
+		ProbeCalibrationDialog.cpp
 		CcTcpServer.h
 		CcTcpServer.cpp
 		CommandDispatcher.h

@@ -7,6 +7,7 @@
 #include "Handlers.h"
 #include "CommLogger.h"
 #include "CalibrationDialog.h"
+#include "ProbeCalibrationDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -21,6 +22,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_startAction(nullptr)
     , m_stopAction(nullptr)
     , m_calibrationAction(nullptr)
+    , m_probeCalibrationAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -77,8 +79,14 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_calibrationAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationDialog);
 	}
 
+	if (!m_probeCalibrationAction)
+	{
+		m_probeCalibrationAction = new QAction("测头标定", this);
+		connect(m_probeCalibrationAction, &QAction::triggered, this, &qTcpPlugin::showProbeCalibrationDialog);
+	}
+
 	updateActions();
-	return {m_startAction, m_stopAction, m_calibrationAction};
+	return {m_startAction, m_stopAction, m_calibrationAction, m_probeCalibrationAction};
 }
 
 void qTcpPlugin::startServer()
@@ -288,4 +296,10 @@ void qTcpPlugin::showCalibrationDialog()
 		QVector<QVector3D> positions = dialog.getPositions();
 		m_app->dispToConsole(QString("[TcpPlugin] 标定完成，共 %1 个位置").arg(positions.size()));
 	}
+}
+
+void qTcpPlugin::showProbeCalibrationDialog()
+{
+	ProbeCalibrationDialog dialog(m_app, m_pointCloudService, nullptr);
+	dialog.exec();
 }

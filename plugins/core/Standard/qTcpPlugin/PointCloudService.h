@@ -66,6 +66,14 @@ class PointCloudService : public QObject
 	// 标定结果通过m_cameraCalibrationMatrix和m_cameraCalibrationResult获取
 	bool executeCalibration(const QVector<QVector3D>& positions);
 
+	// 执行测头标定（供ProbeCalibrationDialog直接调用）
+	// 返回值：true表示标定成功，false表示失败
+	// 标定结果通过getProbeCalibrationResult()获取
+	bool executeProbeCalibration();
+
+	// 获取测头标定结果
+	QJsonObject getProbeCalibrationResult() const { return m_probeCalibrationResult; }
+
 
 	// 以下是与自动化相关的命令响应函数
 	// 相机标定

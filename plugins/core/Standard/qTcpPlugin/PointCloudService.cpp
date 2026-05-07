@@ -6584,8 +6584,7 @@ void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket*
 	                          Qt::QueuedConnection);
 }
 
-
-void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
+bool PointCloudService::executeProbeCalibration()
 {
 	QString errorMessage;
 
@@ -6601,12 +6600,14 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = "Template directory does not exist";
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 查找probe前缀的测头检测程序文件
 	QString probeFile;
-	QStringList filters; filters << "probe*.nc" << "probe*.txt";
+	QStringList filters;
+	filters << "probe*.nc"
+	        << "probe*.txt";
 	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
 	if (fileList.isEmpty())
 	{
@@ -6616,7 +6617,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = "No probe calibration file found in Template directory";
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 使用第一个找到的probe文件
@@ -6631,7 +6632,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Failed to send probe calibration file: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 设置主程序
@@ -6643,7 +6644,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Failed to set main program: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 启动机床
@@ -6655,7 +6656,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Failed to start machine: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 等待机床空闲
@@ -6667,11 +6668,10 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Machine did not become idle: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 读取机床的宏变量，获取BC旋转中心的测量值
-	// 这里需要根据实际机床的宏变量地址来读取，假设使用#560-#562存储XYZ值
 	double centerX, centerY, centerZ;
 
 	// 读取X值
@@ -6683,7 +6683,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Failed to read rotation center X: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 读取Y值
@@ -6695,7 +6695,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Failed to read rotation center Y: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 读取Z值
@@ -6707,7 +6707,7 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 		obj["Ret_Err"] = QString("Failed to read rotation center Z: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
-		return;
+		return false;
 	}
 
 	// 保存旋转中心到结果中
@@ -6719,6 +6719,14 @@ void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
 
 	// 保存状态
 	saveCalibrationStatus();
+	m_Status = MachineStatus::Idle;
+	return true;
+}
+
+void PointCloudService::probeCalibrationFunc(const QJsonObject& params)
+{
+	// 直接调用 executeProbeCalibration 执行测头标定逻辑，避免重复代码
+	executeProbeCalibration();
 }
 
 void PointCloudService::probeCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
