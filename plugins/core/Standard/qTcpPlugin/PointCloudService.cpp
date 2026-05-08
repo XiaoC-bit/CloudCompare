@@ -346,7 +346,10 @@ void PointCloudService::sendRes(QTcpSocket* socket, QJsonObject& resp, const QSt
 	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Indented) + "\n";
 
 	// 记录发送内容
-	LOG_SENT(QString::fromUtf8(responseBytes).trimmed());
+	//LOG_SENT(QString::fromUtf8(responseBytes).trimmed());
+	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+	const QString addr = QString("%1:%2").arg(socket->peerAddress().toString()).arg(socket->peerPort());
+	UI_LOG_PLUG(QString("[%1] → %2").arg(addr, QString::fromUtf8(responseBytes).trimmed()));
 
 	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
 	socket->flush();

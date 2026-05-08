@@ -30,6 +30,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_probeCalibrationAction(nullptr)
     , m_partInspectAction(nullptr)
     , m_electrodeInspectAction(nullptr)
+    , m_toggleLogDockAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -54,6 +55,8 @@ void qTcpPlugin::setMainAppInterface(ccMainAppInterface* app)
 	mainWin->addDockWidget(Qt::RightDockWidgetArea, m_logDock);
 	m_logDock->show();
 	AppLogger::instance().setWidget(m_logDock);
+
+	connect(m_logDock, &LogDockWidget::visibilityChanged, this, &qTcpPlugin::onLogDockVisibilityChanged);
 
 	startServer();
 }
@@ -111,8 +114,16 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_electrodeInspectAction, &QAction::triggered, this, &qTcpPlugin::showElectrodeInspectDialog);
 	}
 
+	if (!m_toggleLogDockAction)
+	{
+		m_toggleLogDockAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/log.png") ,"显示日志窗口", this);
+		m_toggleLogDockAction->setCheckable(true);
+		m_toggleLogDockAction->setChecked(true);
+		connect(m_toggleLogDockAction, &QAction::triggered, this, &qTcpPlugin::toggleLogDock);
+	}
+
 	updateActions();
-	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction};
+	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_toggleLogDockAction};
 }
 
 void qTcpPlugin::startServer()
@@ -340,4 +351,28 @@ void qTcpPlugin::showElectrodeInspectDialog()
 {
 	ElectrodeInspectDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
+}
+
+void qTcpPlugin::toggleLogDock()
+{
+	if (m_logDock)
+	{
+		if (m_logDock->isVisible())
+		{
+			m_logDock->hide();
+		}
+		else
+		{
+			m_logDock->show();
+		}
+	}
+}
+
+void qTcpPlugin::onLogDockVisibilityChanged(bool visible)
+{
+	if (m_toggleLogDockAction)
+	{
+		m_toggleLogDockAction->setChecked(visible);
+		m_toggleLogDockAction->setText(visible ? "隐藏日志窗口" : "显示日志窗口");
+	}
 }

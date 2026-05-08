@@ -30,6 +30,8 @@ private slots:
 	void showProbeCalibrationDialog();
 	void showPartInspectDialog();
 	void showElectrodeInspectDialog();
+	void toggleLogDock();
+	void onLogDockVisibilityChanged(bool visible);
 
   private:
 	QThread* m_tcpThread = nullptr;
@@ -41,6 +43,7 @@ private slots:
 	QAction*           m_probeCalibrationAction;
 	QAction*           m_partInspectAction;
 	QAction*           m_electrodeInspectAction;
+	QAction*           m_toggleLogDockAction;
 private:
     CcTcpServer*       m_server;
     CommandDispatcher* m_dispatcher;
