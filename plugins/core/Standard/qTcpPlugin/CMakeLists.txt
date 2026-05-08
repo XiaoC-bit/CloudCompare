@@ -17,6 +17,7 @@ if( PLUGIN_STANDARD_QTCP )
 		ProbeCalibrationDialog.cpp
 		PartInspectDialog.h
 		PartInspectDialog.cpp
+		LogDockWidget.h
 		ElectrodeInspectDialog.h
 		ElectrodeInspectDialog.cpp
 		CcTcpServer.h
