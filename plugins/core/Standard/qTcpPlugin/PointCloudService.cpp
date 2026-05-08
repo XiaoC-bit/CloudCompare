@@ -6774,7 +6774,7 @@ void PointCloudService::getStatus(const QJsonObject& params, QTcpSocket* socket,
 	strCmd = "GetStatus";
 	if (!getDeviceRun(value, &errorMsg))
 	{
-		status["GetStatus_Ret"] = "1";
+		status[strCmd + "_Ret"] = "1";
 		status["Ret_Err"]         = "Failed to get device run status";
 		sendRes(socket, status, idCode);
 		return;
