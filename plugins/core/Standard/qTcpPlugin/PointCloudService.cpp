@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <qhostaddress.h>
 #include <QTextStream>
 #include <QThread>
 #include <QUuid>
@@ -35,6 +36,7 @@
 #include <stdexcept>
 
 #include "CalibrationDialog.h"
+#include "AppLogger.h"
 #include "CommLogger.h"
 #include "LJS8_IF.h"
 #include "LJS8_ErrorCode.h"
@@ -366,6 +368,8 @@ void PointCloudService::sendOk(QTcpSocket* socket, const QString& msg, const QSt
 
 	// 记录发送内容
 	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+	const QString addr = QString("%1:%2").arg(socket->peerAddress().toString()).arg(socket->peerPort());
+	UI_LOG_PLUG(QString("[%1] → OK: %2").arg(addr, msg));
 
 	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
 	socket->flush();
@@ -387,6 +391,8 @@ void PointCloudService::sendError(QTcpSocket* socket, const QString& msg, const 
 
 	// 记录发送内容
 	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+	const QString addr2 = QString("%1:%2").arg(socket->peerAddress().toString()).arg(socket->peerPort());
+	UI_LOG_PLUG_ERR(QString("[%1] → ERR: %2").arg(addr2, msg));
 
 	socket->write(QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n");
 	socket->flush();
@@ -413,6 +419,11 @@ void PointCloudService::sendResponse(QTcpSocket*        socket,
 
 	QByteArray responseBytes = QJsonDocument(resp).toJson(QJsonDocument::Compact) + "\n";
 	CommLogger::instance().logSent(QString::fromUtf8(responseBytes).trimmed());
+	const QString addr3 = QString("%1:%2").arg(socket->peerAddress().toString()).arg(socket->peerPort());
+	if (ok)
+		UI_LOG_PLUG(QString("[%1] → OK: %2").arg(addr3, msg));
+	else
+		UI_LOG_PLUG_ERR(QString("[%1] → ERR: %2").arg(addr3, msg));
 
 	socket->write(responseBytes);
 	socket->flush();

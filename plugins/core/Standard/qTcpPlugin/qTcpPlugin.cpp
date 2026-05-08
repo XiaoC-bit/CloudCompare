@@ -1,6 +1,7 @@
 #include "qTcpPlugin.h"
 
 #include "LogDockWidget.h"
+#include "AppLogger.h"
 #include "CcTcpServer.h"
 #include "CommandDispatcher.h"
 #include "PointCloudService.h"
@@ -47,12 +48,14 @@ void qTcpPlugin::onNewSelection(const ccHObject::Container&)
 void qTcpPlugin::setMainAppInterface(ccMainAppInterface* app)
 {
 	ccStdPluginInterface::setMainAppInterface(app);
-	startServer();
 
 	QMainWindow* mainWin = m_app->getMainWindow();
-	auto m_logDock            = new LogDockWidget((QWidget*)mainWin);
+	m_logDock = new LogDockWidget((QWidget*)mainWin);
 	mainWin->addDockWidget(Qt::RightDockWidgetArea, m_logDock);
 	m_logDock->show();
+	AppLogger::instance().setWidget(m_logDock);
+
+	startServer();
 }
 
 void qTcpPlugin::initializeLogger()

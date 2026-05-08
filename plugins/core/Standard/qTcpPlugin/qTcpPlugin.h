@@ -6,6 +6,7 @@ class CcTcpServer;
 class CommandDispatcher;
 class PointCloudService;
 class MachineProxy;
+class LogDockWidget;
 class QAction;
 
 class qTcpPlugin : public QObject, public ccStdPluginInterface
@@ -41,11 +42,11 @@ private slots:
 	QAction*           m_partInspectAction;
 	QAction*           m_electrodeInspectAction;
 private:
-    CcTcpServer *m_server;
-    CommandDispatcher *m_dispatcher;
-    PointCloudService *m_pointCloudService;
-    MachineProxy *m_machineProxy;
-    
-    // 初始化日志
+    CcTcpServer*       m_server;
+    CommandDispatcher* m_dispatcher;
+    PointCloudService* m_pointCloudService;
+    MachineProxy*      m_machineProxy;
+    LogDockWidget*     m_logDock = nullptr;
+
     void initializeLogger();
 };
