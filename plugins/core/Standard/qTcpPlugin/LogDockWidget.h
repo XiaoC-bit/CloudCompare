@@ -1,11 +1,96 @@
 // LogDockWidget.h
 #pragma once
+#include <QAction>
+#include <QApplication>
+#include <QClipboard>
 #include <QDateTime>
 #include <QDockWidget>
-#include <QTextEdit>
-#include <QTextBlock>
+#include <QKeyEvent>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QScrollBar>
+#include <QTextBlock>
+#include <QTextEdit>
 
+// ── 内部子类：重写双击选整行、右键菜单、Ctrl+A ───────────
+class LogTextEdit : public QTextEdit
+{
+	Q_OBJECT
+  public:
+	explicit LogTextEdit(QWidget* parent = nullptr) : QTextEdit(parent)
+	{
+		setContextMenuPolicy(Qt::CustomContextMenu);
+		connect(this, &QWidget::customContextMenuRequested, this, &LogTextEdit::showContextMenu);
+	}
+
+  protected:
+	// 双击 → 选中整行（一条日志）
+	void mouseDoubleClickEvent(QMouseEvent* e) override
+	{
+		QTextCursor cursor = cursorForPosition(e->pos());
+		cursor.movePosition(QTextCursor::StartOfBlock);
+		cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+		setTextCursor(cursor);
+		e->accept();
+	}
+
+	// Ctrl+A 全选
+	void keyPressEvent(QKeyEvent* e) override
+	{
+		if (e->key() == Qt::Key_A && (e->modifiers() & Qt::ControlModifier))
+		{
+			selectAll();
+			e->accept();
+			return;
+		}
+		QTextEdit::keyPressEvent(e);
+	}
+
+  private slots:
+	void showContextMenu(const QPoint& pos)
+	{
+		// 取右键点击位置所在行的纯文本
+		QTextCursor lineCursor = cursorForPosition(pos);
+		lineCursor.movePosition(QTextCursor::StartOfBlock);
+		lineCursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+		const QString lineText = lineCursor.selectedText();
+		const bool    hasLine  = !lineText.trimmed().isEmpty();
+		const bool    hasAny   = !document()->isEmpty();
+
+		QMenu menu(this);
+
+		QAction* actCopyLine = menu.addAction("复制此行");
+		actCopyLine->setEnabled(hasLine);
+
+		QAction* actCopyAll = menu.addAction("复制全部");
+		actCopyAll->setEnabled(hasAny);
+
+		menu.addSeparator();
+
+		QAction* actSelectAll = menu.addAction("全选\tCtrl+A");
+		actSelectAll->setEnabled(hasAny);
+
+		menu.addSeparator();
+
+		QAction* actClear = menu.addAction("清空日志");
+		actClear->setEnabled(hasAny);
+
+		QAction* chosen = menu.exec(viewport()->mapToGlobal(pos));
+		if (!chosen)
+			return;
+
+		if (chosen == actCopyLine)
+			QApplication::clipboard()->setText(lineText);
+		else if (chosen == actCopyAll)
+			QApplication::clipboard()->setText(toPlainText());
+		else if (chosen == actSelectAll)
+			selectAll();
+		else if (chosen == actClear)
+			clear();
+	}
+};
+
+// ── 主窗口 ────────────────────────────────────────────────
 class LogDockWidget : public QDockWidget
 {
 	Q_OBJECT
@@ -29,7 +114,7 @@ class LogDockWidget : public QDockWidget
 	explicit LogDockWidget(QWidget* parent = nullptr)
 	    : QDockWidget("通讯日志", parent)
 	{
-		m_textEdit = new QTextEdit(this);
+		m_textEdit = new LogTextEdit(this);
 		m_textEdit->setReadOnly(true);
 		m_textEdit->setFont(QFont("Consolas", 9));
 		m_textEdit->setStyleSheet(
@@ -53,54 +138,51 @@ class LogDockWidget : public QDockWidget
 		    {
 			    trimToMaxLines();
 
-			    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+			    const QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
 
-			    // 等级标签
 			    QString levelTag;
 			    QString levelColor;
 			    switch (level)
 			    {
 				    case Level::Info:
 					    levelTag   = "INFO ";
-					    levelColor = "#4ec9b0"; // 青绿
+					    levelColor = "#4ec9b0";
 					    break;
 				    case Level::Warning:
 					    levelTag   = "WARN ";
-					    levelColor = "#dcdcaa"; // 黄
+					    levelColor = "#dcdcaa";
 					    break;
 				    case Level::Error:
 					    levelTag   = "ERROR";
-					    levelColor = "#f44747"; // 红
+					    levelColor = "#f44747";
 					    break;
 			    }
 
-			    // 类型标签
 			    QString categoryTag;
 			    QString categoryColor;
 			    switch (category)
 			    {
 				    case Category::Network:
 					    categoryTag   = "NET ";
-					    categoryColor = "#569cd6"; // 蓝
+					    categoryColor = "#569cd6";
 					    break;
 				    case Category::Plugin:
 					    categoryTag   = "PLUG";
-					    categoryColor = "#c586c0"; // 紫
+					    categoryColor = "#c586c0";
 					    break;
 			    }
 
-			    // 拼接 HTML 行，各字段用固定宽度 span 对齐
-			    QString html = QString(
-			                       "<span style='color:#6a9955;'>%1</span> "
-			                       "<span style='color:%2; font-weight:bold;'>[%3]</span> "
-			                       "<span style='color:%4;'>[%5]</span> "
-			                       "<span style='color:#d4d4d4;'>%6</span>")
-			                       .arg(timestamp.toHtmlEscaped(),
-			                            levelColor,
-			                            levelTag.toHtmlEscaped(),
-			                            categoryColor,
-			                            categoryTag.toHtmlEscaped(),
-			                            message.toHtmlEscaped());
+			    const QString html = QString(
+			                             "<span style='color:#6a9955;'>%1</span> "
+			                             "<span style='color:%2; font-weight:bold;'>[%3]</span> "
+			                             "<span style='color:%4;'>[%5]</span> "
+			                             "<span style='color:#d4d4d4;'>%6</span>")
+			                             .arg(timestamp.toHtmlEscaped(),
+			                                  levelColor,
+			                                  levelTag.toHtmlEscaped(),
+			                                  categoryColor,
+			                                  categoryTag.toHtmlEscaped(),
+			                                  message.toHtmlEscaped());
 
 			    m_textEdit->append(html);
 
@@ -131,5 +213,5 @@ class LogDockWidget : public QDockWidget
 		}
 	}
 
-	QTextEdit* m_textEdit;
+	LogTextEdit* m_textEdit;
 };
