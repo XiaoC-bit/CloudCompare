@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QCoreApplication>
 #include <qevent.h>
+#include <QGroupBox>
 
 const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS = {
     {0, 0, 0},
@@ -37,29 +38,50 @@ CalibrationDialog::~CalibrationDialog()
 
 void CalibrationDialog::setupAdditionalUI()
 {
+	m_mainLayout->setContentsMargins(24, 16, 24, 20);
+	m_mainLayout->setSpacing(16);
+
+	QGroupBox* tableGroup = new QGroupBox("标定位置", this);
+	QVBoxLayout* groupLayout = new QVBoxLayout(tableGroup);
+	groupLayout->setContentsMargins(16, 12, 16, 12);
+	groupLayout->setSpacing(12);
+
 	m_tableWidget = new QTableWidget(this);
 	m_tableWidget->setColumnCount(4);
 	m_tableWidget->setHorizontalHeaderLabels({"X", "Y", "Z", "操作"});
 	m_tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
 	m_tableWidget->setColumnWidth(3, 80);
-	m_mainLayout->addWidget(m_tableWidget);
+	groupLayout->addWidget(m_tableWidget);
 
 	m_addButton = new QPushButton("新增位置", this);
 	connect(m_addButton, &QPushButton::clicked, this, &CalibrationDialog::onAddPosition);
-	m_mainLayout->addWidget(m_addButton);
+	groupLayout->addWidget(m_addButton);
+
+	m_mainLayout->addWidget(tableGroup);
 
 	m_buttonLayout = new QHBoxLayout();
+	m_buttonLayout->setSpacing(12);
+
+	m_buttonLayout->addStretch();
+
 	m_resetButton = new QPushButton("复位", this);
+	m_resetButton->setFixedWidth(90);
 	connect(m_resetButton, &QPushButton::clicked, this, &CalibrationDialog::onReset);
+
 	m_startButton = new QPushButton("开始标定", this);
+	m_startButton->setFixedWidth(110);
+	m_startButton->setDefault(true);
 	connect(m_startButton, &QPushButton::clicked, this, &MachineStatusDialog::onStartOperation);
+
 	m_cancelButton = new QPushButton("取消", this);
+	m_cancelButton->setFixedWidth(90);
 	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
 
 	m_buttonLayout->addWidget(m_resetButton);
-	m_buttonLayout->addWidget(m_startButton);
 	m_buttonLayout->addWidget(m_cancelButton);
+	m_buttonLayout->addWidget(m_startButton);
+
 	m_mainLayout->addLayout(m_buttonLayout);
 
 	populateTable();

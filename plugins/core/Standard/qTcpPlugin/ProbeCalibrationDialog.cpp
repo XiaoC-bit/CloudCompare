@@ -18,16 +18,28 @@ ProbeCalibrationDialog::~ProbeCalibrationDialog()
 
 void ProbeCalibrationDialog::setupAdditionalUI()
 {
+	m_mainLayout->setContentsMargins(24, 16, 24, 20);
+	m_mainLayout->setSpacing(16);
+
 	m_mainLayout->addStretch();
 
 	m_buttonLayout = new QHBoxLayout();
+	m_buttonLayout->setSpacing(12);
+
+	m_buttonLayout->addStretch();
+
 	m_startButton = new QPushButton("开始标定", this);
+	m_startButton->setFixedWidth(110);
+	m_startButton->setDefault(true);
 	connect(m_startButton, &QPushButton::clicked, this, &MachineStatusDialog::onStartOperation);
+
 	m_cancelButton = new QPushButton("取消", this);
+	m_cancelButton->setFixedWidth(90);
 	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
 
-	m_buttonLayout->addWidget(m_startButton);
 	m_buttonLayout->addWidget(m_cancelButton);
+	m_buttonLayout->addWidget(m_startButton);
+
 	m_mainLayout->addLayout(m_buttonLayout);
 }
 
