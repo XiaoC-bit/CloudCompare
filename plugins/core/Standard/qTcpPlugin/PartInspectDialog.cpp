@@ -12,6 +12,7 @@ PartInspectDialog::PartInspectDialog(ccMainAppInterface* app, PointCloudService*
 {
 	setWindowTitle("工件检测");
 	setFixedSize(450, 250);
+	init();
 }
 
 PartInspectDialog::~PartInspectDialog()
@@ -34,6 +35,16 @@ void PartInspectDialog::setupAdditionalUI()
 	m_mainLayout->insertLayout(1, formLayout);
 
 	m_mainLayout->addStretch();
+
+	m_buttonLayout = new QHBoxLayout();
+	m_startButton = new QPushButton("开始检测", this);
+	connect(m_startButton, &QPushButton::clicked, this, &MachineStatusDialog::onStartOperation);
+	m_cancelButton = new QPushButton("取消", this);
+	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+
+	m_buttonLayout->addWidget(m_startButton);
+	m_buttonLayout->addWidget(m_cancelButton);
+	m_mainLayout->addLayout(m_buttonLayout);
 }
 
 void PartInspectDialog::onOperationStarted()

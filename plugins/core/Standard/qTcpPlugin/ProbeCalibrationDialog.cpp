@@ -9,6 +9,7 @@ ProbeCalibrationDialog::ProbeCalibrationDialog(ccMainAppInterface* app, PointClo
 {
 	setWindowTitle("测头标定");
 	setFixedSize(450, 200);
+	init();
 }
 
 ProbeCalibrationDialog::~ProbeCalibrationDialog()

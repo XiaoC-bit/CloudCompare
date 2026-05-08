@@ -23,6 +23,7 @@ protected:
 
 	virtual void setupUI();
 	virtual void setupAdditionalUI() {};
+	virtual void init();
 	virtual void onOperationStarted() {}
 	virtual bool performOperation() = 0;
 	virtual void onOperationCompleted(bool success) {}

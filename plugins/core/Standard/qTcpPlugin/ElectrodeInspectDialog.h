@@ -4,6 +4,8 @@
 
 class QComboBox;
 class QLineEdit;
+class QPushButton;
+class QHBoxLayout;
 
 class ElectrodeInspectDialog : public MachineStatusDialog
 {
@@ -22,4 +24,7 @@ protected:
 private:
 	QComboBox* m_electrodeTypeCombo;
 	QLineEdit* m_rfidEdit;
+	QPushButton* m_startButton;
+	QPushButton* m_cancelButton;
+	QHBoxLayout* m_buttonLayout;
 };

@@ -16,13 +16,6 @@ MachineStatusDialog::MachineStatusDialog(ccMainAppInterface* app, PointCloudServ
     , m_statusCheckTimer(nullptr)
 {
 	setupUI();
-	setupAdditionalUI();
-
-	m_statusCheckTimer = new QTimer(this);
-	connect(m_statusCheckTimer, &QTimer::timeout, this, &MachineStatusDialog::checkStatus);
-	m_statusCheckTimer->start(1000);
-
-	checkStatus();
 }
 
 MachineStatusDialog::~MachineStatusDialog()
@@ -47,6 +40,17 @@ void MachineStatusDialog::setupUI()
 	m_progressBar->setValue(0);
 	m_progressBar->setVisible(false);
 	m_mainLayout->addWidget(m_progressBar);
+}
+
+void MachineStatusDialog::init()
+{
+	setupAdditionalUI();
+
+	m_statusCheckTimer = new QTimer(this);
+	connect(m_statusCheckTimer, &QTimer::timeout, this, &MachineStatusDialog::checkStatus);
+	m_statusCheckTimer->start(1000);
+
+	checkStatus();
 }
 
 void MachineStatusDialog::closeEvent(QCloseEvent* event)
