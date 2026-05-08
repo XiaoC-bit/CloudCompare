@@ -22,49 +22,100 @@ ElectrodeInspectDialog::~ElectrodeInspectDialog()
 
 void ElectrodeInspectDialog::setupAdditionalUI()
 {
-	m_mainLayout->setContentsMargins(24, 16, 24, 20);
-	m_mainLayout->setSpacing(16);
+	m_mainLayout->setContentsMargins(20, 16, 20, 16);
+	m_mainLayout->setSpacing(10);
 
-	QGroupBox* formGroup = new QGroupBox("检测参数", this);
-	QFormLayout* formLayout = new QFormLayout(formGroup);
-	formLayout->setContentsMargins(16, 12, 16, 12);
+	// --- 标题 ---
+	QLabel* headerLabel = new QLabel("检测参数", this);
+	QFont   font        = headerLabel->font();
+	font.setBold(true);
+	font.setPointSize(font.pointSize() + 1);
+	headerLabel->setFont(font);
+	m_mainLayout->addWidget(headerLabel);
+
+	// --- 表单容器 ---
+	QWidget* formCard = new QWidget(this);
+	formCard->setStyleSheet(R"(
+    QWidget {
+        background-color: #f7f7f9;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px;
+    }
+    QComboBox, QLineEdit {
+        background-color: #ffffff;
+        border: 1px solid #d0d0d0;
+        border-radius: 3px;
+        padding: 2px 6px;
+        min-height: 26px;
+    }
+    QComboBox:focus, QLineEdit:focus {
+        border: 1px solid #4a90d9;
+    }
+    QComboBox QAbstractItemView {
+        border: 1px solid #d0d0d0;
+        outline: none;
+    }
+    QComboBox QAbstractItemView::item {
+        min-height: 58px;
+        padding: 0 8px;
+    }
+    QComboBox QAbstractItemView::item:selected {
+        background-color: #dce8ff;
+        color: #000000;
+    }
+)");
+
+	QFormLayout* formLayout = new QFormLayout(formCard);
+	formLayout->setContentsMargins(16, 14, 16, 14);
 	formLayout->setVerticalSpacing(12);
 	formLayout->setHorizontalSpacing(16);
 	formLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
+	QLabel* typeLabel = new QLabel("电极类型：");
+	typeLabel->setStyleSheet("border: none; background: transparent;");
 	m_electrodeTypeCombo = new QComboBox(this);
-	m_electrodeTypeCombo->setMinimumHeight(28);
 	m_electrodeTypeCombo->addItem("ElectrodeA");
 	m_electrodeTypeCombo->addItem("ElectrodeB");
 	m_electrodeTypeCombo->addItem("ElectrodeC");
 	m_electrodeTypeCombo->addItem("ElectrodeD");
 	m_electrodeTypeCombo->addItem("ElectrodeE");
-	formLayout->addRow("电极类型：", m_electrodeTypeCombo);
 
+	
+
+	formLayout->addRow(typeLabel, m_electrodeTypeCombo);
+
+	QLabel* rfidLabel = new QLabel("RFID：");
+	rfidLabel->setStyleSheet("border: none; background: transparent;");
 	m_rfidEdit = new QLineEdit(this);
-	m_rfidEdit->setMinimumHeight(28);
 	m_rfidEdit->setPlaceholderText("请输入RFID编号");
-	formLayout->addRow("RFID：", m_rfidEdit);
+	formLayout->addRow(rfidLabel, m_rfidEdit);
 
-	m_mainLayout->addWidget(formGroup);
+	m_mainLayout->addWidget(formCard);
 
+	// --- 弹簧 + 分隔线 ---
 	m_mainLayout->addStretch();
 
-	m_buttonLayout = new QHBoxLayout();
-	m_buttonLayout->setSpacing(12);
+	QFrame* separator = new QFrame(this);
+	separator->setFrameShape(QFrame::HLine);
+	separator->setFrameShadow(QFrame::Sunken);
+	m_mainLayout->addWidget(separator);
 
+	// --- 底部按钮 ---
+	m_buttonLayout = new QHBoxLayout();
+	m_buttonLayout->setSpacing(8);
 	m_buttonLayout->addStretch();
 
+	m_cancelButton = new QPushButton("取消", this);
+	m_cancelButton->setFixedWidth(80);
+	m_cancelButton->setFixedHeight(32);
+	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+	m_buttonLayout->addWidget(m_cancelButton);
+
 	m_startButton = new QPushButton("开始检测", this);
-	m_startButton->setFixedWidth(110);
+	m_startButton->setFixedWidth(100);
+	m_startButton->setFixedHeight(32);
 	m_startButton->setDefault(true);
 	connect(m_startButton, &QPushButton::clicked, this, &MachineStatusDialog::onStartOperation);
-
-	m_cancelButton = new QPushButton("取消", this);
-	m_cancelButton->setFixedWidth(90);
-	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
-
-	m_buttonLayout->addWidget(m_cancelButton);
 	m_buttonLayout->addWidget(m_startButton);
 
 	m_mainLayout->addLayout(m_buttonLayout);

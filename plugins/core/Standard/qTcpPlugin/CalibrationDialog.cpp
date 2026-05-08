@@ -11,7 +11,8 @@
 #include <QMessageBox>
 #include <QCoreApplication>
 #include <qevent.h>
-#include <QGroupBox>
+#include <QLabel>
+#include <QFrame>
 
 const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS = {
     {0, 0, 0},
@@ -38,48 +39,102 @@ CalibrationDialog::~CalibrationDialog()
 
 void CalibrationDialog::setupAdditionalUI()
 {
-	m_mainLayout->setContentsMargins(24, 16, 24, 20);
-	m_mainLayout->setSpacing(16);
+	m_mainLayout->setContentsMargins(20, 16, 20, 16);
+	m_mainLayout->setSpacing(10);
 
-	QGroupBox* tableGroup = new QGroupBox("标定位置", this);
-	QVBoxLayout* groupLayout = new QVBoxLayout(tableGroup);
-	groupLayout->setContentsMargins(16, 12, 16, 12);
-	groupLayout->setSpacing(12);
+	// --- 标题行 + 新增按钮 ---
+	QHBoxLayout* headerLayout = new QHBoxLayout();
+	headerLayout->setContentsMargins(0, 0, 0, 0);
 
+	QLabel* headerLabel = new QLabel("标定位置", this);
+	QFont   font        = headerLabel->font();
+	font.setBold(true);
+	font.setPointSize(font.pointSize() + 1);
+	headerLabel->setFont(font);
+	headerLayout->addWidget(headerLabel);
+	headerLayout->addStretch();
+
+	m_addButton = new QPushButton("＋ 新增", this);
+	m_addButton->setFixedHeight(28);
+	m_addButton->setFixedWidth(72);
+	connect(m_addButton, &QPushButton::clicked, this, &CalibrationDialog::onAddPosition);
+	headerLayout->addWidget(m_addButton);
+
+	m_mainLayout->addLayout(headerLayout);
+
+	// --- 表格 ---
 	m_tableWidget = new QTableWidget(this);
 	m_tableWidget->setColumnCount(4);
-	m_tableWidget->setHorizontalHeaderLabels({"X", "Y", "Z", "操作"});
+	m_tableWidget->setHorizontalHeaderLabels({"X (mm)", "Y (mm)", "Z (mm)", "操作"});
 	m_tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
-	m_tableWidget->setColumnWidth(3, 80);
-	groupLayout->addWidget(m_tableWidget);
+	m_tableWidget->setColumnWidth(3, 64);
+	m_tableWidget->setShowGrid(false);
+	m_tableWidget->setAlternatingRowColors(true);
+	m_tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+	m_tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	m_tableWidget->verticalHeader()->setVisible(false);
+	m_tableWidget->horizontalHeader()->setHighlightSections(false);
+	m_tableWidget->verticalHeader()->setDefaultSectionSize(36); // 固定行高
+	m_tableWidget->setMinimumHeight(220);
 
-	m_addButton = new QPushButton("新增位置", this);
-	connect(m_addButton, &QPushButton::clicked, this, &CalibrationDialog::onAddPosition);
-	groupLayout->addWidget(m_addButton);
+	// stylesheet 统一风格
+	m_tableWidget->setStyleSheet(R"(
+        QTableWidget {
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background-color: #ffffff;
+            alternate-background-color: #f7f7f9;
+            outline: none;
+        }
+        QHeaderView::section {
+            background-color: #f0f0f2;
+            color: #444444;
+            font-weight: bold;
+            padding: 4px 8px;
+            border: none;
+            border-bottom: 1px solid #d0d0d0;
+        }
+        QTableWidget::item {
+            padding: 0px 4px;
+        }
+        QTableWidget::item:selected {
+            background-color: #dce8ff;
+            color: #000000;
+        }
+    )");
 
-	m_mainLayout->addWidget(tableGroup);
+	m_mainLayout->addWidget(m_tableWidget, 1); // stretch factor=1，表格优先撑高
 
+	// --- 分隔线 ---
+	QFrame* separator = new QFrame(this);
+	separator->setFrameShape(QFrame::HLine);
+	separator->setFrameShadow(QFrame::Sunken);
+	m_mainLayout->addWidget(separator);
+
+	// --- 底部按钮 ---
 	m_buttonLayout = new QHBoxLayout();
-	m_buttonLayout->setSpacing(12);
+	m_buttonLayout->setSpacing(8);
+
+	m_resetButton = new QPushButton("复位", this);
+	m_resetButton->setFixedWidth(80);
+	m_resetButton->setFixedHeight(32);
+	connect(m_resetButton, &QPushButton::clicked, this, &CalibrationDialog::onReset);
+	m_buttonLayout->addWidget(m_resetButton);
 
 	m_buttonLayout->addStretch();
 
-	m_resetButton = new QPushButton("复位", this);
-	m_resetButton->setFixedWidth(90);
-	connect(m_resetButton, &QPushButton::clicked, this, &CalibrationDialog::onReset);
+	m_cancelButton = new QPushButton("取消", this);
+	m_cancelButton->setFixedWidth(80);
+	m_cancelButton->setFixedHeight(32);
+	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+	m_buttonLayout->addWidget(m_cancelButton);
 
 	m_startButton = new QPushButton("开始标定", this);
-	m_startButton->setFixedWidth(110);
+	m_startButton->setFixedWidth(100);
+	m_startButton->setFixedHeight(32);
 	m_startButton->setDefault(true);
 	connect(m_startButton, &QPushButton::clicked, this, &MachineStatusDialog::onStartOperation);
-
-	m_cancelButton = new QPushButton("取消", this);
-	m_cancelButton->setFixedWidth(90);
-	connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
-
-	m_buttonLayout->addWidget(m_resetButton);
-	m_buttonLayout->addWidget(m_cancelButton);
 	m_buttonLayout->addWidget(m_startButton);
 
 	m_mainLayout->addLayout(m_buttonLayout);
@@ -89,37 +144,58 @@ void CalibrationDialog::setupAdditionalUI()
 
 void CalibrationDialog::populateTable()
 {
+	m_tableWidget->setUpdatesEnabled(false); // 批量更新，避免闪烁
 	m_tableWidget->setRowCount(m_positions.size());
 
-	for (int i = 0; i < m_positions.size(); ++i) {
+	for (int i = 0; i < m_positions.size(); ++i)
+	{
 		const Position& pos = m_positions[i];
 
-		QDoubleSpinBox* xSpinBox = new QDoubleSpinBox();
-		xSpinBox->setMinimum(-1000);
-		xSpinBox->setMaximum(1000);
-		xSpinBox->setDecimals(3);
-		xSpinBox->setValue(pos.x);
-		m_tableWidget->setCellWidget(i, 0, xSpinBox);
+		auto makeSpinBox = [](double value) -> QDoubleSpinBox*
+		{
+			QDoubleSpinBox* sb = new QDoubleSpinBox();
+			sb->setMinimum(-1000);
+			sb->setMaximum(1000);
+			sb->setDecimals(3);
+			sb->setValue(value);
+			sb->setButtonSymbols(QAbstractSpinBox::NoButtons); // 去掉上下箭头，更整洁
+			sb->setFrame(false);
+			sb->setAlignment(Qt::AlignCenter);
+			sb->setStyleSheet("background: transparent; padding: 0 4px;");
+			return sb;
+		};
 
-		QDoubleSpinBox* ySpinBox = new QDoubleSpinBox();
-		ySpinBox->setMinimum(-1000);
-		ySpinBox->setMaximum(1000);
-		ySpinBox->setDecimals(3);
-		ySpinBox->setValue(pos.y);
-		m_tableWidget->setCellWidget(i, 1, ySpinBox);
-
-		QDoubleSpinBox* zSpinBox = new QDoubleSpinBox();
-		zSpinBox->setMinimum(-1000);
-		zSpinBox->setMaximum(1000);
-		zSpinBox->setDecimals(3);
-		zSpinBox->setValue(pos.z);
-		m_tableWidget->setCellWidget(i, 2, zSpinBox);
+		m_tableWidget->setCellWidget(i, 0, makeSpinBox(pos.x));
+		m_tableWidget->setCellWidget(i, 1, makeSpinBox(pos.y));
+		m_tableWidget->setCellWidget(i, 2, makeSpinBox(pos.z));
 
 		QPushButton* deleteButton = new QPushButton("删除");
+		deleteButton->setFixedHeight(24);
 		deleteButton->setProperty("row", i);
+		deleteButton->setStyleSheet(R"(
+            QPushButton {
+                color: #cc3333;
+                border: 1px solid #cc3333;
+                border-radius: 3px;
+                background: transparent;
+                font-size: 12px;
+                padding: 0 6px;
+            }
+            QPushButton:hover {
+                background-color: #fff0f0;
+            }
+        )");
 		connect(deleteButton, &QPushButton::clicked, this, &CalibrationDialog::onDeleteRow);
-		m_tableWidget->setCellWidget(i, 3, deleteButton);
+
+		// 让删除按钮在单元格里垂直居中
+		QWidget*     cellWidget = new QWidget();
+		QHBoxLayout* cellLayout = new QHBoxLayout(cellWidget);
+		cellLayout->setContentsMargins(4, 2, 4, 2);
+		cellLayout->addWidget(deleteButton);
+		m_tableWidget->setCellWidget(i, 3, cellWidget);
 	}
+
+	m_tableWidget->setUpdatesEnabled(true);
 }
 
 void CalibrationDialog::onAddPosition()
