@@ -270,9 +270,9 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
         const QString& partName = it.key();
         PartData& partData = it.value();
 
-        if (!partData.isModified) {
+        /*if (!partData.isModified) {
             continue;
-        }
+        }*/
 
         QJsonObject obj;
         obj["partName"] = partName;
@@ -698,7 +698,7 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
         oldValue = electrode.electrodeName;
         electrode.electrodeName = newValue;
 
-        if (!electrode.positionModified) {
+        if (true || !electrode.positionModified) {
             electrode.processPosition = newValue + "_ROW1";
             QTableWidgetItem* posItem = m_electrodeTable->item(row, COL_POSITION);
             if (posItem) {
@@ -706,7 +706,8 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
             }
         }
 
-        if (!electrode.parameterModified) {
+        if (true || !electrode.parameterModified)
+		{
             electrode.dischargeParameter = newValue + "_CS1";
             QTableWidgetItem* paramItem = m_electrodeTable->item(row, COL_PARAMETER);
             if (paramItem) {
@@ -791,17 +792,14 @@ void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
         return;
     }
 
-    ScanPositionConfigDialog dlg(partData.electrodes[row].scanPositions, this);
-    if (dlg.exec() == QDialog::Accepted && dlg.hasChanges()) {
-        partData.isModified = true;
-        m_hasUnsavedChanges = true;
-        updateSaveButtonState();
-        updateElectrodeTable();
-    }
+    ScanPositionConfigDialog dlg(partData.electrodes[row].scanPositions, this, this);
+    dlg.exec();
+
+    updateElectrodeTable();
 }
 
-PartElectrodeConfigDialog::ScanPositionConfigDialog::ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, QWidget* parent)
-    : QDialog(parent), m_scanPositions(scanPositions)
+PartElectrodeConfigDialog::ScanPositionConfigDialog::ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent)
+    : QDialog(parent), m_scanPositions(scanPositions), m_parentDialog(parentDialog)
 {
     setWindowTitle("配置扫描位置");
     setMinimumSize(600, 450);
@@ -1172,6 +1170,10 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCoordinateChanged()
 
 void PartElectrodeConfigDialog::ScanPositionConfigDialog::onSave()
 {
+    if (m_parentDialog) {
+        m_parentDialog->saveConfigToFiles();
+        m_parentDialog->resetSavedState();
+    }
     m_hasChanges = false;
     m_saveBtn->setEnabled(false);
 }

@@ -48,6 +48,11 @@ class PartElectrodeConfigDialog : public QDialog
 public:
     explicit PartElectrodeConfigDialog(QWidget* parent = nullptr);
     ~PartElectrodeConfigDialog() override;
+    
+    void resetSavedState() {
+        m_hasUnsavedChanges = false;
+        updateSaveButtonState();
+    }
 
 private:
     void initUI();
@@ -110,7 +115,7 @@ private:
     class ScanPositionConfigDialog : public QDialog
     {
     public:
-        explicit ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, QWidget* parent = nullptr);
+        explicit ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
         ~ScanPositionConfigDialog() override;
         
         bool hasChanges() const { return m_hasChanges; }
@@ -131,6 +136,7 @@ private:
         void onCancel();
         
         QList<ScanPositionData>& m_scanPositions;
+        PartElectrodeConfigDialog* m_parentDialog;
         QListWidget* m_scanPositionList;
         QLineEdit* m_xEdit;
         QLineEdit* m_yEdit;
