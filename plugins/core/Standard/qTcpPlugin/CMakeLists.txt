@@ -21,6 +21,8 @@ if( PLUGIN_STANDARD_QTCP )
 		AppLogger.h
 		ElectrodeInspectDialog.h
 		ElectrodeInspectDialog.cpp
+		PartElectrodeConfigDialog.h
+		PartElectrodeConfigDialog.cpp
 		CcTcpServer.h
 		CcTcpServer.cpp
 		CommandDispatcher.h
