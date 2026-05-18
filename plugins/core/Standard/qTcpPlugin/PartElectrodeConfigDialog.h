@@ -8,6 +8,16 @@
 #include <QJsonArray>
 #include <QMap>
 
+struct ScanPositionData
+{
+    QString name;
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    double b = 0.0;
+    double c = 0.0;
+};
+
 struct ElectrodeData
 {
     QString electrodeName;
@@ -19,6 +29,7 @@ struct ElectrodeData
     double startA = 0.0;
     double startB = 0.0;
     double startC = 0.0;
+    QList<ScanPositionData> scanPositions;
     bool positionModified = false;
     bool parameterModified = false;
 };
@@ -82,6 +93,7 @@ private:
         COL_ELECTRODE = 0,
         COL_POSITION,
         COL_PARAMETER,
+        COL_SCAN_POSITION,
         COL_START_X,
         COL_START_Y,
         COL_START_Z,
@@ -89,5 +101,48 @@ private:
         COL_START_B,
         COL_START_C,
         COL_COUNT
+    };
+
+private slots:
+    void onConfigureScanPosition(int row, int column);
+
+private:
+    class ScanPositionConfigDialog : public QDialog
+    {
+    public:
+        explicit ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, QWidget* parent = nullptr);
+        ~ScanPositionConfigDialog() override;
+        
+        bool hasChanges() const { return m_hasChanges; }
+        
+        void closeEvent(QCloseEvent* event) override;
+        
+    private:
+        void initUI();
+        void updateScanPositionList();
+        void updateCoordinateFields();
+        void onAddScanPosition();
+        void onDeleteScanPosition();
+        void onCopyScanPosition();
+        void onRenameScanPosition();
+        void onSelectionChanged();
+        void onCoordinateChanged();
+        void onSave();
+        void onCancel();
+        
+        QList<ScanPositionData>& m_scanPositions;
+        QListWidget* m_scanPositionList;
+        QLineEdit* m_xEdit;
+        QLineEdit* m_yEdit;
+        QLineEdit* m_zEdit;
+        QLineEdit* m_bEdit;
+        QLineEdit* m_cEdit;
+        QPushButton* m_addBtn;
+        QPushButton* m_deleteBtn;
+        QPushButton* m_copyBtn;
+        QPushButton* m_renameBtn;
+        QPushButton* m_saveBtn;
+        QPushButton* m_cancelBtn;
+        bool m_hasChanges = false;
     };
 };
