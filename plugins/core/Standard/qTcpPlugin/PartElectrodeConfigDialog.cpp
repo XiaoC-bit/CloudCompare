@@ -16,7 +16,7 @@ PartElectrodeConfigDialog::PartElectrodeConfigDialog(QWidget* parent)
 {
     setWindowTitle("工件电极配置");
     setMinimumSize(1000, 600);
-    resize(1100, 650);
+    resize(1200, 650);
     initUI();
     loadConfigFromFiles();
 }
@@ -71,13 +71,25 @@ QListWidget::item:selected:active {
 
     m_electrodeTable = new QTableWidget(this);
     m_electrodeTable->setColumnCount(COL_COUNT);
-    QStringList headers = { "电极名称", "加工位置", "放电参数" };
+    QStringList headers = { "电极名称", "加工位置", "放电参数", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
     m_electrodeTable->setHorizontalHeaderLabels(headers);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_ELECTRODE, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_POSITION, QHeaderView::Fixed);
-    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_PARAMETER, QHeaderView::Stretch);
-    m_electrodeTable->setColumnWidth(COL_ELECTRODE, 220);
-    m_electrodeTable->setColumnWidth(COL_POSITION, 260);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_PARAMETER, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_X, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_Y, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_Z, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_A, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_B, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_C, QHeaderView::Stretch);
+    m_electrodeTable->setColumnWidth(COL_ELECTRODE, 140);
+    m_electrodeTable->setColumnWidth(COL_POSITION, 120);
+    m_electrodeTable->setColumnWidth(COL_PARAMETER, 120);
+    m_electrodeTable->setColumnWidth(COL_START_X, 90);
+    m_electrodeTable->setColumnWidth(COL_START_Y, 90);
+    m_electrodeTable->setColumnWidth(COL_START_Z, 90);
+    m_electrodeTable->setColumnWidth(COL_START_A, 90);
+    m_electrodeTable->setColumnWidth(COL_START_B, 90);
     m_electrodeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_electrodeTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::SelectedClicked);
     contentLayout->addWidget(m_electrodeTable);
@@ -203,6 +215,12 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
             electrode.electrodeName = obj["electrodeName"].toString();
             electrode.processPosition = obj["processPosition"].toString();
             electrode.dischargeParameter = obj["dischargeParameter"].toString();
+            electrode.startX = obj["startX"].toDouble();
+            electrode.startY = obj["startY"].toDouble();
+            electrode.startZ = obj["startZ"].toDouble();
+            electrode.startA = obj["startA"].toDouble();
+            electrode.startB = obj["startB"].toDouble();
+            electrode.startC = obj["startC"].toDouble();
             electrode.positionModified = false;
             electrode.parameterModified = false;
             partData.electrodes.append(electrode);
@@ -247,6 +265,12 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
             electrodeObj["electrodeName"] = electrode.electrodeName;
             electrodeObj["processPosition"] = electrode.processPosition;
             electrodeObj["dischargeParameter"] = electrode.dischargeParameter;
+            electrodeObj["startX"] = electrode.startX;
+            electrodeObj["startY"] = electrode.startY;
+            electrodeObj["startZ"] = electrode.startZ;
+            electrodeObj["startA"] = electrode.startA;
+            electrodeObj["startB"] = electrode.startB;
+            electrodeObj["startC"] = electrode.startC;
             electrodesArray.append(electrodeObj);
         }
         obj["electrodes"] = electrodesArray;
@@ -302,6 +326,30 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         QTableWidgetItem* item2 = new QTableWidgetItem(electrode.dischargeParameter);
         item2->setFlags(item2->flags() | Qt::ItemIsEditable);
         m_electrodeTable->setItem(i, COL_PARAMETER, item2);
+
+        QTableWidgetItem* item3 = new QTableWidgetItem(QString::number(electrode.startX));
+        item3->setFlags(item3->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_X, item3);
+
+        QTableWidgetItem* item4 = new QTableWidgetItem(QString::number(electrode.startY));
+        item4->setFlags(item4->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_Y, item4);
+
+        QTableWidgetItem* item5 = new QTableWidgetItem(QString::number(electrode.startZ));
+        item5->setFlags(item5->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_Z, item5);
+
+        QTableWidgetItem* item6 = new QTableWidgetItem(QString::number(electrode.startA));
+        item6->setFlags(item6->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_A, item6);
+
+        QTableWidgetItem* item7 = new QTableWidgetItem(QString::number(electrode.startB));
+        item7->setFlags(item7->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_B, item7);
+
+        QTableWidgetItem* item8 = new QTableWidgetItem(QString::number(electrode.startC));
+        item8->setFlags(item8->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_C, item8);
     }
 
     m_addElectrodeBtn->setEnabled(true);
@@ -387,11 +435,10 @@ void PartElectrodeConfigDialog::showErrorMessage(const QString& message)
     QMessageBox::warning(this, "错误", message);
 }
 
-void PartElectrodeConfigDialog::checkUnsavedChanges()
+bool PartElectrodeConfigDialog::checkUnsavedChanges() 
 {
     if (!m_hasUnsavedChanges) {
-        close();
-        return;
+        return true;
     }
 
     QMessageBox::StandardButton result = QMessageBox::question(this, "确认",
@@ -402,21 +449,24 @@ void PartElectrodeConfigDialog::checkUnsavedChanges()
     case QMessageBox::Save:
         if (validateData()) {
             saveConfigToFiles();
-            close();
+            return true;
         }
-        break;
+        return false;
     case QMessageBox::Discard:
-        close();
-        break;
+        return true;
     case QMessageBox::Cancel:
-        break;
+        return false;
     }
+    return false;
 }
 
 void PartElectrodeConfigDialog::closeEvent(QCloseEvent* event)
 {
-    checkUnsavedChanges();
-    event->ignore();
+    if (checkUnsavedChanges()) {
+        event->accept();
+    } else {
+        event->ignore();
+    }
 }
 
 void PartElectrodeConfigDialog::onAddPart()
@@ -623,6 +673,30 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
         electrode.dischargeParameter = newValue;
         electrode.parameterModified = true;
         break;
+
+    case COL_START_X:
+        electrode.startX = newValue.toDouble();
+        break;
+
+    case COL_START_Y:
+        electrode.startY = newValue.toDouble();
+        break;
+
+    case COL_START_Z:
+        electrode.startZ = newValue.toDouble();
+        break;
+
+    case COL_START_A:
+        electrode.startA = newValue.toDouble();
+        break;
+
+    case COL_START_B:
+        electrode.startB = newValue.toDouble();
+        break;
+
+    case COL_START_C:
+        electrode.startC = newValue.toDouble();
+        break;
     }
 
     partData.isModified = true;
@@ -650,5 +724,7 @@ void PartElectrodeConfigDialog::onSave()
 
 void PartElectrodeConfigDialog::onCancel()
 {
-    checkUnsavedChanges();
+    if (checkUnsavedChanges()) {
+        reject();
+    }
 }

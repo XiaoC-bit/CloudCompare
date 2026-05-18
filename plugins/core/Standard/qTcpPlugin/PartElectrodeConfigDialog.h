@@ -13,6 +13,12 @@ struct ElectrodeData
     QString electrodeName;
     QString processPosition;
     QString dischargeParameter;
+    double startX = 0.0;
+    double startY = 0.0;
+    double startZ = 0.0;
+    double startA = 0.0;
+    double startB = 0.0;
+    double startC = 0.0;
     bool positionModified = false;
     bool parameterModified = false;
 };
@@ -43,7 +49,7 @@ private:
     QString getPartFilePath(const QString& partName);
     bool isValidFileName(const QString& name);
     void showErrorMessage(const QString& message);
-    void checkUnsavedChanges();
+    bool checkUnsavedChanges();
     void updateSaveButtonState();
 
     void onAddPart();
@@ -76,6 +82,12 @@ private:
         COL_ELECTRODE = 0,
         COL_POSITION,
         COL_PARAMETER,
+        COL_START_X,
+        COL_START_Y,
+        COL_START_Z,
+        COL_START_A,
+        COL_START_B,
+        COL_START_C,
         COL_COUNT
     };
 };

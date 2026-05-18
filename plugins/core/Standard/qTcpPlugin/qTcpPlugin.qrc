@@ -6,5 +6,6 @@
         <file>res/part.png</file>
         <file>res/probe.png</file>
         <file>res/log.png</file>
+        <file>res/config.png</file>
     </qresource>
 </RCC>

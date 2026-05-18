@@ -118,7 +118,7 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_partElectrodeConfigAction)
 	{
-		m_partElectrodeConfigAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/part.png"), "工件电极配置", this);
+		m_partElectrodeConfigAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/config.png"), "工件电极配置", this);
 		connect(m_partElectrodeConfigAction, &QAction::triggered, this, &qTcpPlugin::showPartElectrodeConfigDialog);
 	}
 
