@@ -36,19 +36,37 @@ void PartElectrodeConfigDialog::initUI()
 
     m_partList = new QListWidget(this);
     m_partList->setFixedWidth(240);
-    m_partList->setStyleSheet(R"(
-        QListWidget {
-            border: 1px solid #d0d0d0;
-            border-radius: 4px;
-        }
-        QListWidget::item {
-            padding: 8px 12px;
-        }
-        QListWidget::item:selected {
-            background-color: #4a90d9;
-            color: white;
-        }
-    )");
+	m_partList->setSpacing(4);
+
+	m_partList->setStyleSheet(R"(
+QListWidget {
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    background: white;
+    outline: none;
+    padding: 6px;
+}
+
+QListWidget::item {
+    height: 32px;
+    padding-left: 10px;
+    border-radius: 4px;
+    color: #303030;
+}
+
+QListWidget::item:hover {
+    background: #f2f6fc;
+}
+
+QListWidget::item:selected {
+    background: #4a90d9;
+    color: white;
+}
+
+QListWidget::item:selected:active {
+    background: #3d7fc0;
+}
+)");
     contentLayout->addWidget(m_partList);
 
     m_electrodeTable = new QTableWidget(this);
@@ -106,6 +124,7 @@ void PartElectrodeConfigDialog::initUI()
 
     m_saveBtn = new QPushButton("保存", this);
     m_saveBtn->setFixedSize(80, 32);
+    m_saveBtn->setEnabled(false);
     buttonLayout->addWidget(m_saveBtn);
 
     m_cancelBtn = new QPushButton("取消", this);
@@ -114,8 +133,10 @@ void PartElectrodeConfigDialog::initUI()
 
     mainLayout->addLayout(buttonLayout);
 
+	m_hasUnsavedChanges = false;
+	updateSaveButtonState();
+
     connect(m_partList, &QListWidget::itemSelectionChanged, this, &PartElectrodeConfigDialog::onPartSelectionChanged);
-    connect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
     connect(m_electrodeTable, &QTableWidget::itemSelectionChanged, [this]() {
         m_deleteElectrodeBtn->setEnabled(m_electrodeTable->selectedItems().size() > 0);
     });
@@ -126,6 +147,11 @@ void PartElectrodeConfigDialog::initUI()
     connect(m_deleteElectrodeBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onDeleteElectrode);
     connect(m_saveBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onSave);
     connect(m_cancelBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onCancel);
+}
+
+void PartElectrodeConfigDialog::updateSaveButtonState()
+{
+    m_saveBtn->setEnabled(m_hasUnsavedChanges);
 }
 
 void PartElectrodeConfigDialog::loadConfigFromFiles()
@@ -245,13 +271,17 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
 
 void PartElectrodeConfigDialog::updateElectrodeTable()
 {
+    disconnect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
+
     clearElectrodeTable();
 
     if (m_currentPartName.isEmpty()) {
+        connect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
         return;
     }
 
     if (!m_partDataMap.contains(m_currentPartName)) {
+        connect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
         return;
     }
 
@@ -275,6 +305,8 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
     }
 
     m_addElectrodeBtn->setEnabled(true);
+
+    connect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
 }
 
 void PartElectrodeConfigDialog::clearElectrodeTable()
@@ -363,7 +395,7 @@ void PartElectrodeConfigDialog::checkUnsavedChanges()
     }
 
     QMessageBox::StandardButton result = QMessageBox::question(this, "确认",
-        "配置已修改，是否保存？",
+        "您修改的数据尚未保存，确定要放弃更改并退出吗？",
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
 
     switch (result) {
@@ -416,6 +448,7 @@ void PartElectrodeConfigDialog::onAddPart()
     m_partList->setCurrentItem(m_partList->item(m_partList->count() - 1));
 
     m_hasUnsavedChanges = true;
+    updateSaveButtonState();
 }
 
 void PartElectrodeConfigDialog::onDeletePart()
@@ -457,6 +490,7 @@ void PartElectrodeConfigDialog::onDeletePart()
     }
 
     m_hasUnsavedChanges = true;
+    updateSaveButtonState();
 }
 
 void PartElectrodeConfigDialog::onAddElectrode()
@@ -492,6 +526,7 @@ void PartElectrodeConfigDialog::onAddElectrode()
     partData.electrodes.append(electrode);
     partData.isModified = true;
     m_hasUnsavedChanges = true;
+    updateSaveButtonState();
 
     updateElectrodeTable();
 }
@@ -519,6 +554,7 @@ void PartElectrodeConfigDialog::onDeleteElectrode()
     partData.electrodes.removeAt(currentRow);
     partData.isModified = true;
     m_hasUnsavedChanges = true;
+    updateSaveButtonState();
 
     updateElectrodeTable();
 }
@@ -591,6 +627,7 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
 
     partData.isModified = true;
     m_hasUnsavedChanges = true;
+    updateSaveButtonState();
 }
 
 void PartElectrodeConfigDialog::onSave()

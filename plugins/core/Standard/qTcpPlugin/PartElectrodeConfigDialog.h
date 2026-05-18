@@ -44,6 +44,7 @@ private:
     bool isValidFileName(const QString& name);
     void showErrorMessage(const QString& message);
     void checkUnsavedChanges();
+    void updateSaveButtonState();
 
     void onAddPart();
     void onDeletePart();
