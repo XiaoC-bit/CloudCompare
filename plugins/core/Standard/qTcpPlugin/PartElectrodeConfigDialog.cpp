@@ -827,7 +827,9 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::closeEvent(QCloseEvent
 
     switch (result) {
     case QMessageBox::Save:
-        accept();
+        m_hasChanges = false;
+        m_saveBtn->setEnabled(false);
+        event->accept();
         break;
     case QMessageBox::Discard:
         event->accept();
@@ -1170,10 +1172,31 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCoordinateChanged()
 
 void PartElectrodeConfigDialog::ScanPositionConfigDialog::onSave()
 {
-    accept();
+    m_hasChanges = false;
+    m_saveBtn->setEnabled(false);
 }
 
 void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCancel()
 {
-    reject();
+    if (!m_hasChanges) {
+        reject();
+        return;
+    }
+
+    QMessageBox::StandardButton result = QMessageBox::question(this, "确认",
+        "您修改的数据尚未保存，确定要放弃更改并退出吗？",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+
+    switch (result) {
+    case QMessageBox::Save:
+        m_hasChanges = false;
+        m_saveBtn->setEnabled(false);
+        reject();
+        break;
+    case QMessageBox::Discard:
+        reject();
+        break;
+    case QMessageBox::Cancel:
+        break;
+    }
 }
