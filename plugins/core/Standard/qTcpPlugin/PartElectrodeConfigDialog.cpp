@@ -792,8 +792,14 @@ void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
         return;
     }
 
+    QList<ScanPositionData> originalScanPositions = partData.electrodes[row].scanPositions;
+
     ScanPositionConfigDialog dlg(partData.electrodes[row].scanPositions, this, this);
-    dlg.exec();
+    int result = dlg.exec();
+
+    if (result == QDialog::Rejected && dlg.hasChanges()) {
+        partData.electrodes[row].scanPositions = originalScanPositions;
+    }
 
     updateElectrodeTable();
 }
