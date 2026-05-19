@@ -1529,6 +1529,12 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
             }
         } else if (msgBox.clickedButton() == removeOnlyBtn) {
             deleteRegionFile(regionName);
+            if (m_parentDialog) {
+                m_parentDialog->saveConfigToFiles();
+                m_parentDialog->resetSavedState();
+            }
+            m_hasChanges = false;
+            m_saveBtn->setEnabled(false);
         } else {
             return;
         }
