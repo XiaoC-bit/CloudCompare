@@ -165,7 +165,7 @@ private:
     class RegionConfigDialog : public QDialog
     {
     public:
-        explicit RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
+        explicit RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, const QString& partName, const QString& electrodeName, QWidget* parent = nullptr);
         ~RegionConfigDialog() override;
         
         bool hasChanges() const { return m_hasChanges; }
@@ -181,10 +181,13 @@ private:
         void onSelectionChanged();
         void onSave();
         void onCancel();
+        void saveRegionToFile(const QString& regionName);
         
         QList<RegionData>& m_regions;
         ccMainAppInterface* m_app;
         PartElectrodeConfigDialog* m_parentDialog;
+        QString m_partName;
+        QString m_electrodeName;
         QListWidget* m_selectedRegionsList;
         QListWidget* m_availableRegionsList;
         QPushButton* m_addBtn;

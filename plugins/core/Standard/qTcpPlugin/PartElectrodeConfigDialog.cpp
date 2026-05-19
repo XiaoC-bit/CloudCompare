@@ -14,6 +14,7 @@
 #include <qformlayout.h>
 #include <ccMainAppInterface.h>
 #include <ccHObject.h>
+#include <FileIOFilter.h>
 
 PartElectrodeConfigDialog::PartElectrodeConfigDialog(ccMainAppInterface* app, QWidget* parent)
     : QDialog(parent)
@@ -834,8 +835,9 @@ void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
         }
     } else if (column == COL_REGION) {
         QList<RegionData> originalRegions = partData.electrodes[row].regions;
+        QString electrodeName = partData.electrodes[row].electrodeName;
 
-        RegionConfigDialog dlg(partData.electrodes[row].regions, m_app, this, this);
+        RegionConfigDialog dlg(partData.electrodes[row].regions, m_app, this, m_currentPartName, electrodeName, this);
         int result = dlg.exec();
 
         if (result == QDialog::Rejected && dlg.hasChanges()) {
@@ -1251,8 +1253,8 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCancel()
     }
 }
 
-PartElectrodeConfigDialog::RegionConfigDialog::RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, QWidget* parent)
-    : QDialog(parent), m_regions(regions), m_app(app), m_parentDialog(parentDialog)
+PartElectrodeConfigDialog::RegionConfigDialog::RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, const QString& partName, const QString& electrodeName, QWidget* parent)
+    : QDialog(parent), m_regions(regions), m_app(app), m_parentDialog(parentDialog), m_partName(partName), m_electrodeName(electrodeName)
 {
     setWindowTitle("配置裁剪区域");
     setMinimumSize(600, 450);
@@ -1477,12 +1479,57 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onSelectionChanged()
 
 void PartElectrodeConfigDialog::RegionConfigDialog::onSave()
 {
+    for (const RegionData& region : m_regions) {
+        saveRegionToFile(region.name);
+    }
+
     if (m_parentDialog) {
         m_parentDialog->saveConfigToFiles();
         m_parentDialog->resetSavedState();
     }
     m_hasChanges = false;
     m_saveBtn->setEnabled(false);
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::saveRegionToFile(const QString& regionName)
+{
+    if (!m_app) {
+        return;
+    }
+
+    ccHObject* dbRoot = m_app->dbRootObject();
+    if (!dbRoot) {
+        return;
+    }
+
+    ccHObject* regionObject = nullptr;
+    for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i) {
+        ccHObject* child = dbRoot->getChild(i);
+        if (child && child->getName() == regionName) {
+            regionObject = child;
+            break;
+        }
+    }
+
+    if (!regionObject) {
+        return;
+    }
+
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString regionDir = appDir + "/RegionConfig";
+    QDir dir(regionDir);
+    if (!dir.exists()) {
+        dir.mkpath(regionDir);
+    }
+
+    QString fileName = QString("%1_%2_%3.ply").arg(m_partName).arg(m_electrodeName).arg(regionName);
+    QString filePath = regionDir + "/" + fileName;
+
+    FileIOFilter::SaveParameters parameters;
+    parameters.alwaysDisplaySaveDialog = false;
+    parameters.parentWidget = this;
+
+    FileIOFilter::SaveToFile(regionObject, filePath, parameters, "CloudCompare entities (*.bin)");
 }
 
 void PartElectrodeConfigDialog::RegionConfigDialog::onCancel()
