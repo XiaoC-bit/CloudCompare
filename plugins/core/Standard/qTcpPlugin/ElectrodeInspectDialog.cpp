@@ -247,3 +247,16 @@ void ElectrodeInspectDialog::onPartTypeChanged(int index)
 	QString partName = m_partTypeCombo->itemText(index);
 	loadElectrodesForPart(partName);
 }
+
+void ElectrodeInspectDialog::updateUIState()
+{
+	MachineStatusDialog::updateUIState();
+
+	if (m_electrodeTypeCombo && m_startButton) {
+		bool hasElectrode = m_electrodeTypeCombo->count() > 0 && 
+							m_electrodeTypeCombo->itemText(0) != "无可用电极";
+		if (!hasElectrode) {
+			m_startButton->setEnabled(false);
+		}
+	}
+}

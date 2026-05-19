@@ -21,6 +21,7 @@ protected:
 	void onOperationStarted() override;
 	bool performOperation() override;
 	void onOperationCompleted(bool success) override;
+	void updateUIState() override;
 
 private slots:
 	void onPartTypeChanged(int index);

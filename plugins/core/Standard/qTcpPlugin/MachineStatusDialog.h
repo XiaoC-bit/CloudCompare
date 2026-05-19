@@ -52,8 +52,8 @@ public slots:
 protected:
 	void closeEvent(QCloseEvent* event) override;
 
-private:
-	void updateUIState();
+protected:
+	virtual void updateUIState();
 };
 
 class MachineStatusDialogGuard
