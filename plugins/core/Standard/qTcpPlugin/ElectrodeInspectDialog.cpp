@@ -7,6 +7,13 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QMap>
 
 ElectrodeInspectDialog::ElectrodeInspectDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
 	: MachineStatusDialog(app, pointCloudService, parent)
@@ -71,18 +78,18 @@ void ElectrodeInspectDialog::setupAdditionalUI()
 	formLayout->setHorizontalSpacing(16);
 	formLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
+	QLabel* partTypeLabel = new QLabel("工件类型：");
+	partTypeLabel->setStyleSheet("border: none; background: transparent;");
+	m_partTypeCombo = new QComboBox(this);
+	loadPartTypes();
+	formLayout->addRow(partTypeLabel, m_partTypeCombo);
+
 	QLabel* typeLabel = new QLabel("电极类型：");
 	typeLabel->setStyleSheet("border: none; background: transparent;");
 	m_electrodeTypeCombo = new QComboBox(this);
-	m_electrodeTypeCombo->addItem("ElectrodeA");
-	m_electrodeTypeCombo->addItem("ElectrodeB");
-	m_electrodeTypeCombo->addItem("ElectrodeC");
-	m_electrodeTypeCombo->addItem("ElectrodeD");
-	m_electrodeTypeCombo->addItem("ElectrodeE");
-
-	
-
 	formLayout->addRow(typeLabel, m_electrodeTypeCombo);
+
+	connect(m_partTypeCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(onPartTypeChanged(int)));
 
 	QLabel* rfidLabel = new QLabel("RFID：");
 	rfidLabel->setStyleSheet("border: none; background: transparent;");
@@ -119,6 +126,10 @@ void ElectrodeInspectDialog::setupAdditionalUI()
 	m_buttonLayout->addWidget(m_startButton);
 
 	m_mainLayout->addLayout(m_buttonLayout);
+
+	if (m_partTypeCombo->count() > 0) {
+		loadElectrodesForPart(m_partTypeCombo->itemText(0));
+	}
 }
 
 void ElectrodeInspectDialog::onOperationStarted()
@@ -157,4 +168,82 @@ void ElectrodeInspectDialog::onOperationCompleted(bool success)
 		QJsonObject inspectResult = result["InspectResult"].toObject();
 		setProgressText(QString("❌ 电极检测失败：%1").arg(inspectResult["Ret_Err"].toString()));
 	}
+}
+
+void ElectrodeInspectDialog::loadPartTypes()
+{
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/PartConfig";
+	QDir dir(configDir);
+
+	m_partElectrodeMap.clear();
+
+	if (!dir.exists()) {
+		return;
+	}
+
+	QStringList filters;
+	filters << "*.json";
+	dir.setNameFilters(filters);
+
+	QStringList files = dir.entryList(filters, QDir::Files);
+	if (files.isEmpty()) {
+		return;
+	}
+
+	for (const QString& file : files) {
+		QString partName = file.left(file.lastIndexOf('.'));
+		QString filePath = dir.filePath(file);
+
+		QFile jsonFile(filePath);
+		if (!jsonFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+			continue;
+		}
+
+		QByteArray data = jsonFile.readAll();
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+
+		if (error.error != QJsonParseError::NoError) {
+			continue;
+		}
+
+		QStringList electrodes;
+		QJsonArray electrodesArray = doc["electrodes"].toArray();
+		for (const QJsonValue& val : electrodesArray) {
+			QJsonObject obj = val.toObject();
+			electrodes.append(obj["electrodeName"].toString());
+		}
+
+		m_partTypeCombo->addItem(partName);
+		m_partElectrodeMap[partName] = electrodes;
+	}
+}
+
+void ElectrodeInspectDialog::loadElectrodesForPart(const QString& partName)
+{
+	m_electrodeTypeCombo->clear();
+
+	if (m_partElectrodeMap.contains(partName)) {
+		QStringList electrodes = m_partElectrodeMap[partName];
+		if (electrodes.isEmpty()) {
+			m_electrodeTypeCombo->addItem("无可用电极");
+			m_electrodeTypeCombo->setEnabled(false);
+			m_startButton->setEnabled(false);
+		} else {
+			m_electrodeTypeCombo->addItems(electrodes);
+			m_electrodeTypeCombo->setEnabled(true);
+			m_startButton->setEnabled(true);
+		}
+	} else {
+		m_electrodeTypeCombo->addItem("无可用电极");
+		m_electrodeTypeCombo->setEnabled(false);
+		m_startButton->setEnabled(false);
+	}
+}
+
+void ElectrodeInspectDialog::onPartTypeChanged(int index)
+{
+	QString partName = m_partTypeCombo->itemText(index);
+	loadElectrodesForPart(partName);
 }

@@ -150,9 +150,6 @@ void PartInspectDialog::loadPartTypes()
 	QDir dir(configDir);
 
 	if (!dir.exists()) {
-		m_partTypeCombo->addItem("PartA");
-		m_partTypeCombo->addItem("PartB");
-		m_partTypeCombo->addItem("PartC");
 		return;
 	}
 
@@ -162,9 +159,6 @@ void PartInspectDialog::loadPartTypes()
 
 	QStringList files = dir.entryList(filters, QDir::Files);
 	if (files.isEmpty()) {
-		m_partTypeCombo->addItem("PartA");
-		m_partTypeCombo->addItem("PartB");
-		m_partTypeCombo->addItem("PartC");
 		return;
 	}
 

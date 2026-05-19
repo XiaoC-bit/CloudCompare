@@ -1,5 +1,6 @@
 #pragma once
 
+#include<qmap.h>
 #include "MachineStatusDialog.h"
 
 class QComboBox;
@@ -21,10 +22,19 @@ protected:
 	bool performOperation() override;
 	void onOperationCompleted(bool success) override;
 
+private slots:
+	void onPartTypeChanged(int index);
+
 private:
+	QComboBox* m_partTypeCombo;
 	QComboBox* m_electrodeTypeCombo;
 	QLineEdit* m_rfidEdit;
 	QPushButton* m_startButton;
 	QPushButton* m_cancelButton;
 	QHBoxLayout* m_buttonLayout;
+	
+	QMap<QString, QStringList> m_partElectrodeMap;
+	
+	void loadPartTypes();
+	void loadElectrodesForPart(const QString& partName);
 };
