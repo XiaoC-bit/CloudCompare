@@ -185,6 +185,7 @@ private:
         void onSave();
         void onCancel();
         void saveRegionToFile(const QString& regionName);
+        void saveRegionToFileWithCustomName(const QString& originalName, const QString& newName);
         void deleteRegionFile(const QString& regionName);
         bool loadRegionFromFile(const QString& regionName);
         

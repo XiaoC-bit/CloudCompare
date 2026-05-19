@@ -1489,6 +1489,16 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onAddRegion()
     m_hasChanges = true;
     m_saveBtn->setEnabled(true);
 
+    saveRegionToFileWithCustomName(originalName, regionName);
+
+	if (m_parentDialog)
+	{
+		m_parentDialog->saveConfigToFiles();
+		m_parentDialog->resetSavedState();
+	}
+	m_hasChanges = false;
+	m_saveBtn->setEnabled(false);
+
     updateRegionList();
     updateAvailableRegions();
 }
@@ -1527,6 +1537,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
                 QMessageBox::warning(this, "错误", "无法从文件加载裁剪区域: " + regionName);
                 return;
             }
+			deleteRegionFile(regionName);
         } else if (msgBox.clickedButton() == removeOnlyBtn) {
             deleteRegionFile(regionName);
             if (m_parentDialog) {
@@ -1594,6 +1605,40 @@ void PartElectrodeConfigDialog::RegionConfigDialog::saveRegionToFile(const QStri
     }
 
     QString fileName = QString("%1_%2_%3.bin").arg(m_partName).arg(m_electrodeName).arg(regionName);
+    QString filePath = regionDir + "/" + fileName;
+
+    FileIOFilter::SaveParameters parameters;
+    parameters.alwaysDisplaySaveDialog = false;
+    parameters.parentWidget = this;
+
+    FileIOFilter::SaveToFile(regionObject, filePath, parameters, "CloudCompare entities (*.bin)");
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::saveRegionToFileWithCustomName(const QString& originalName, const QString& newName)
+{
+    if (!m_app) {
+        return;
+    }
+
+    ccHObject* dbRoot = m_app->dbRootObject();
+    if (!dbRoot) {
+        return;
+    }
+
+    ccHObject* regionObject = findObjectRecursively(dbRoot, originalName);
+
+    if (!regionObject) {
+        return;
+    }
+
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString regionDir = appDir + "/RegionConfig";
+    QDir dir(regionDir);
+    if (!dir.exists()) {
+        dir.mkpath(regionDir);
+    }
+
+    QString fileName = QString("%1_%2_%3.bin").arg(m_partName).arg(m_electrodeName).arg(newName);
     QString filePath = regionDir + "/" + fileName;
 
     FileIOFilter::SaveParameters parameters;
