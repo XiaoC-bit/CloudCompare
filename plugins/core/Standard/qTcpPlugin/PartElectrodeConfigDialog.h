@@ -121,6 +121,8 @@ private:
 
 private slots:
     void onConfigureScanPosition(int row, int column);
+    void onCellClicked(int row, int column);
+    void onCellEntered(int row, int column);
 
 private:
     class ScanPositionConfigDialog : public QDialog

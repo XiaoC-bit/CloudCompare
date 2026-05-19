@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <qfont.h>
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QInputDialog>
@@ -101,7 +102,8 @@ QListWidget::item:selected:active {
     m_electrodeTable->setColumnWidth(COL_START_A, 90);
     m_electrodeTable->setColumnWidth(COL_START_B, 90);
     m_electrodeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_electrodeTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::SelectedClicked);
+    m_electrodeTable->setEditTriggers(QAbstractItemView::DoubleClicked);
+    m_electrodeTable->setMouseTracking(true);
     contentLayout->addWidget(m_electrodeTable);
 
     mainLayout->addLayout(contentLayout);
@@ -169,6 +171,8 @@ QListWidget::item:selected:active {
     connect(m_deleteElectrodeBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onDeleteElectrode);
     connect(m_saveBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onSave);
     connect(m_cancelBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onCancel);
+    connect(m_electrodeTable, &QTableWidget::cellClicked, this, &PartElectrodeConfigDialog::onCellClicked);
+    connect(m_electrodeTable, &QTableWidget::cellEntered, this, &PartElectrodeConfigDialog::onCellEntered);
 }
 
 void PartElectrodeConfigDialog::updateSaveButtonState()
@@ -349,7 +353,7 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
 
 void PartElectrodeConfigDialog::updateElectrodeTable()
 {
-    disconnect(m_electrodeTable, &QTableWidget::cellDoubleClicked, this, &PartElectrodeConfigDialog::onConfigureScanPosition);
+    disconnect(m_electrodeTable, &QTableWidget::cellClicked, this, &PartElectrodeConfigDialog::onCellClicked);
     disconnect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
 
     clearElectrodeTable();
@@ -390,6 +394,10 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         }
         QTableWidgetItem* item3 = new QTableWidgetItem(scanPosText);
         item3->setFlags(item3->flags() & ~Qt::ItemIsEditable);
+        item3->setTextColor(QColor(0, 0, 255));
+		QFont font = item3->font();
+		font.setUnderline(true);
+		item3->setFont(font);
         m_electrodeTable->setItem(i, COL_SCAN_POSITION, item3);
 
         QString regionText;
@@ -400,7 +408,11 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         }
         QTableWidgetItem* item4 = new QTableWidgetItem(regionText);
         item4->setFlags(item4->flags() & ~Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_REGION, item4);
+		item4->setTextColor(QColor(0, 0, 255));
+		font = item4->font();
+		font.setUnderline(true);
+		item4->setFont(font);
+		m_electrodeTable->setItem(i, COL_REGION, item4);
 
         QTableWidgetItem* item5 = new QTableWidgetItem(QString::number(electrode.startX));
         item5->setFlags(item5->flags() | Qt::ItemIsEditable);
@@ -429,7 +441,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 
     m_addElectrodeBtn->setEnabled(true);
 
-    connect(m_electrodeTable, &QTableWidget::cellDoubleClicked, this, &PartElectrodeConfigDialog::onConfigureScanPosition);
+    connect(m_electrodeTable, &QTableWidget::cellClicked, this, &PartElectrodeConfigDialog::onCellClicked);
     connect(m_electrodeTable, &QTableWidget::cellChanged, this, &PartElectrodeConfigDialog::onCellChanged);
 }
 
@@ -810,6 +822,22 @@ void PartElectrodeConfigDialog::onCancel()
 {
     if (checkUnsavedChanges()) {
         reject();
+    }
+}
+
+void PartElectrodeConfigDialog::onCellClicked(int row, int column)
+{
+    if (column == COL_SCAN_POSITION || column == COL_REGION) {
+        onConfigureScanPosition(row, column);
+    }
+}
+
+void PartElectrodeConfigDialog::onCellEntered(int row, int column)
+{
+    if (column == COL_SCAN_POSITION || column == COL_REGION) {
+        m_electrodeTable->setCursor(Qt::PointingHandCursor);
+    } else {
+        m_electrodeTable->setCursor(Qt::ArrowCursor);
     }
 }
 
