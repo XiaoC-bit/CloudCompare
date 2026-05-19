@@ -24,7 +24,7 @@ PartElectrodeConfigDialog::PartElectrodeConfigDialog(ccMainAppInterface* app, QW
 {
     setWindowTitle("工件电极配置");
     setMinimumSize(1000, 600);
-    resize(1200, 650);
+    resize(1200, 700);
     initUI();
     loadConfigFromFiles();
 }
@@ -38,6 +38,47 @@ void PartElectrodeConfigDialog::initUI()
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(12, 12, 12, 12);
     mainLayout->setSpacing(10);
+
+    m_partInfoWidget = new QWidget(this);
+    m_partInfoWidget->setFixedHeight(60);
+    m_partInfoWidget->setStyleSheet(R"(
+        QWidget {
+            background-color: #f5f5f5;
+            border: 1px solid #dcdcdc;
+            border-radius: 6px;
+            padding: 8px;
+        }
+    )");
+    QHBoxLayout* partInfoLayout = new QHBoxLayout(m_partInfoWidget);
+    partInfoLayout->setContentsMargins(10, 5, 10, 5);
+    
+    QLabel* nameLabel = new QLabel("工件名称:", m_partInfoWidget);
+    nameLabel->setStyleSheet("font-weight: bold; color: #333;");
+    partInfoLayout->addWidget(nameLabel);
+    
+    m_partNameLabel = new QLabel("未选择", m_partInfoWidget);
+    m_partNameLabel->setStyleSheet("color: #666;");
+    partInfoLayout->addWidget(m_partNameLabel);
+    
+    partInfoLayout->addSpacing(30);
+    
+    QLabel* modelLabel = new QLabel("模型文件:", m_partInfoWidget);
+    modelLabel->setStyleSheet("font-weight: bold; color: #333;");
+    partInfoLayout->addWidget(modelLabel);
+    
+    m_modelFileLabel = new QLabel("无", m_partInfoWidget);
+    m_modelFileLabel->setStyleSheet("color: #666;");
+    m_modelFileLabel->setMinimumWidth(200);
+    partInfoLayout->addWidget(m_modelFileLabel);
+    
+    partInfoLayout->addStretch();
+    
+    m_changeModelBtn = new QPushButton("更换工件模型", m_partInfoWidget);
+    m_changeModelBtn->setFixedSize(100, 35);
+    m_changeModelBtn->setEnabled(false);
+    partInfoLayout->addWidget(m_changeModelBtn);
+    
+    mainLayout->addWidget(m_partInfoWidget);
 
     QHBoxLayout* contentLayout = new QHBoxLayout();
     contentLayout->setSpacing(10);
@@ -174,8 +215,27 @@ QListWidget::item:selected:active {
     connect(m_deleteElectrodeBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onDeleteElectrode);
     connect(m_saveBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onSave);
     connect(m_cancelBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onCancel);
+    connect(m_changeModelBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onChangeModelFile);
     connect(m_electrodeTable, &QTableWidget::cellClicked, this, &PartElectrodeConfigDialog::onCellClicked);
     connect(m_electrodeTable, &QTableWidget::cellEntered, this, &PartElectrodeConfigDialog::onCellEntered);
+}
+
+void PartElectrodeConfigDialog::updatePartInfo()
+{
+    if (m_currentPartName.isEmpty()) {
+        m_partNameLabel->setText("未选择");
+        m_modelFileLabel->setText("无");
+        m_changeModelBtn->setEnabled(false);
+    } else {
+        m_partNameLabel->setText(m_currentPartName);
+        PartData& partData = m_partDataMap[m_currentPartName];
+        if (partData.modelFilePath.isEmpty()) {
+            m_modelFileLabel->setText("无");
+        } else {
+            m_modelFileLabel->setText(partData.modelFilePath);
+        }
+        m_changeModelBtn->setEnabled(true);
+    }
 }
 
 void PartElectrodeConfigDialog::updateSaveButtonState()
@@ -292,10 +352,6 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
     for (auto it = m_partDataMap.begin(); it != m_partDataMap.end(); ++it) {
         const QString& partName = it.key();
         PartData& partData = it.value();
-
-        /*if (!partData.isModified) {
-            continue;
-        }*/
 
         QJsonObject obj;
         obj["partName"] = partName;
@@ -578,30 +634,106 @@ void PartElectrodeConfigDialog::closeEvent(QCloseEvent* event)
     }
 }
 
+PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle("新增工件");
+    setFixedSize(500, 200);
+    setModal(true);
+
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
+    mainLayout->setSpacing(15);
+
+    QFormLayout* formLayout = new QFormLayout();
+    formLayout->setSpacing(10);
+
+    m_nameEdit = new QLineEdit(this);
+    m_nameEdit->setPlaceholderText("请输入工件名称");
+    formLayout->addRow("工件名称:", m_nameEdit);
+
+    QHBoxLayout* fileLayout = new QHBoxLayout();
+    m_filePathLabel = new QLabel("未选择文件", this);
+    m_filePathLabel->setStyleSheet("color: #999;");
+    m_filePathLabel->setMinimumWidth(280);
+    
+    QPushButton* selectFileBtn = new QPushButton("选择文件", this);
+    selectFileBtn->setFixedSize(80, 28);
+    fileLayout->addWidget(m_filePathLabel);
+    fileLayout->addWidget(selectFileBtn);
+    fileLayout->addStretch();
+    
+    formLayout->addRow("模型文件:", fileLayout);
+
+    mainLayout->addLayout(formLayout);
+    mainLayout->addStretch();
+
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+
+    QPushButton* cancelBtn = new QPushButton("取消", this);
+    cancelBtn->setFixedSize(80, 32);
+    buttonLayout->addWidget(cancelBtn);
+
+    QPushButton* okBtn = new QPushButton("确定", this);
+    okBtn->setFixedSize(80, 32);
+    okBtn->setEnabled(false);
+    buttonLayout->addWidget(okBtn);
+
+    mainLayout->addLayout(buttonLayout);
+
+    connect(m_nameEdit, &QLineEdit::textChanged, this, &AddPartDialog::onNameChanged);
+    connect(selectFileBtn, &QPushButton::clicked, this, &AddPartDialog::onSelectFile);
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(okBtn, &QPushButton::clicked, this, &AddPartDialog::onOk);
+
+    m_okBtn = okBtn;
+}
+
+void PartElectrodeConfigDialog::AddPartDialog::onNameChanged(const QString& text)
+{
+    updateOkButton();
+}
+
+void PartElectrodeConfigDialog::AddPartDialog::onSelectFile()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, "选择模型文件", "", 
+        "STL 文件 (*.stl)");
+    
+    if (!filePath.isEmpty()) {
+        m_modelFilePath = filePath;
+        QFileInfo info(filePath);
+        m_filePathLabel->setText(info.fileName());
+        m_filePathLabel->setStyleSheet("color: #333;");
+        updateOkButton();
+    }
+}
+
+void PartElectrodeConfigDialog::AddPartDialog::onOk()
+{
+    m_partName = m_nameEdit->text().trimmed();
+    m_valid = true;
+    accept();
+}
+
+void PartElectrodeConfigDialog::AddPartDialog::updateOkButton()
+{
+    bool enabled = !m_nameEdit->text().trimmed().isEmpty() && !m_modelFilePath.isEmpty();
+    m_okBtn->setEnabled(enabled);
+}
+
 void PartElectrodeConfigDialog::onAddPart()
 {
-    bool ok;
-    QString partName = QInputDialog::getText(this, "新增工件", "请输入工件名称:",
-        QLineEdit::Normal, "", &ok);
-
-    if (!ok || partName.isEmpty()) {
+    AddPartDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted || !dlg.isValid()) {
         return;
     }
 
-    if (!isValidFileName(partName)) {
-        showErrorMessage("工件名称包含非法字符: \\/:*?\"<>|");
-        return;
-    }
+    QString partName = dlg.getPartName();
+    QString modelFilePath = dlg.getModelFilePath();
 
     if (m_partDataMap.contains(partName)) {
         showErrorMessage("工件名称已存在: " + partName);
-        return;
-    }
-
-    QString modelFilePath = QFileDialog::getOpenFileName(this, "选择模型文件", "", 
-        "STL 文件 (*.stl)");
-    
-    if (modelFilePath.isEmpty()) {
         return;
     }
 
@@ -628,6 +760,47 @@ void PartElectrodeConfigDialog::onAddPart()
     updateSaveButtonState();
 }
 
+void PartElectrodeConfigDialog::onChangeModelFile()
+{
+    if (m_currentPartName.isEmpty()) {
+        return;
+    }
+
+    QString filePath = QFileDialog::getOpenFileName(this, "选择模型文件", "", 
+        "STL 文件 (*.stl)");
+    
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    PartData& partData = m_partDataMap[m_currentPartName];
+    QString oldModelFile = partData.modelFilePath;
+
+    QString configDir = getConfigDir();
+    QString destFileName = m_currentPartName + ".stl";
+    QString destFilePath = configDir + "/" + destFileName;
+
+    QFile sourceFile(filePath);
+    if (!sourceFile.copy(destFilePath)) {
+        showErrorMessage("无法复制模型文件到配置目录");
+        return;
+    }
+
+    if (!oldModelFile.isEmpty() && oldModelFile != destFileName) {
+        QString oldFilePath = configDir + "/" + oldModelFile;
+        QFile oldFile(oldFilePath);
+        if (oldFile.exists()) {
+            oldFile.remove();
+        }
+    }
+
+    partData.modelFilePath = destFileName;
+    partData.isModified = true;
+    m_hasUnsavedChanges = true;
+    updateSaveButtonState();
+    updatePartInfo();
+}
+
 void PartElectrodeConfigDialog::onDeletePart()
 {
     if (m_currentPartName.isEmpty()) {
@@ -648,6 +821,16 @@ void PartElectrodeConfigDialog::onDeletePart()
         file.remove();
     }
 
+    PartData& partData = m_partDataMap[m_currentPartName];
+    if (!partData.modelFilePath.isEmpty()) {
+        QString configDir = getConfigDir();
+        QString modelFilePath = configDir + "/" + partData.modelFilePath;
+        QFile modelFile(modelFilePath);
+        if (modelFile.exists()) {
+            modelFile.remove();
+        }
+    }
+
     m_partDataMap.remove(m_currentPartName);
 
     QListWidgetItem* currentItem = m_partList->currentItem();
@@ -656,6 +839,7 @@ void PartElectrodeConfigDialog::onDeletePart()
 
     m_currentPartName.clear();
     clearElectrodeTable();
+    updatePartInfo();
     m_deletePartBtn->setEnabled(false);
     m_addElectrodeBtn->setEnabled(false);
 
@@ -670,6 +854,7 @@ void PartElectrodeConfigDialog::onDeletePart()
             m_deletePartBtn->setEnabled(true);
             m_addElectrodeBtn->setEnabled(true);
             updateElectrodeTable();
+            updatePartInfo();
         }
     }
 
@@ -749,6 +934,7 @@ void PartElectrodeConfigDialog::onPartSelectionChanged()
     if (!item) {
         m_currentPartName.clear();
         clearElectrodeTable();
+        updatePartInfo();
         m_deletePartBtn->setEnabled(false);
         m_addElectrodeBtn->setEnabled(false);
         return;
@@ -758,6 +944,7 @@ void PartElectrodeConfigDialog::onPartSelectionChanged()
     m_deletePartBtn->setEnabled(true);
     m_addElectrodeBtn->setEnabled(true);
 
+    updatePartInfo();
     updateElectrodeTable();
 }
 
@@ -773,30 +960,25 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
     }
 
     ElectrodeData& electrode = partData.electrodes[row];
-    QString oldValue;
     QString newValue = m_electrodeTable->item(row, column)->text();
 
     switch (column) {
     case COL_ELECTRODE:
-        oldValue = electrode.electrodeName;
-        electrode.electrodeName = newValue;
-
-        if (true || !electrode.positionModified) {
-            electrode.processPosition = newValue + "_ROW1";
-            QTableWidgetItem* posItem = m_electrodeTable->item(row, COL_POSITION);
-            if (posItem) {
-                posItem->setText(electrode.processPosition);
-            }
-        }
-
-        if (true || !electrode.parameterModified)
+	{
+		electrode.electrodeName   = newValue;
+		electrode.processPosition = newValue + "_ROW1";
+		QTableWidgetItem* posItem = m_electrodeTable->item(row, COL_POSITION);
+		if (posItem)
 		{
-            electrode.dischargeParameter = newValue + "_CS1";
-            QTableWidgetItem* paramItem = m_electrodeTable->item(row, COL_PARAMETER);
-            if (paramItem) {
-                paramItem->setText(electrode.dischargeParameter);
-            }
-        }
+			posItem->setText(electrode.processPosition);
+		}
+		electrode.dischargeParameter = newValue + "_CS1";
+		QTableWidgetItem* paramItem  = m_electrodeTable->item(row, COL_PARAMETER);
+		if (paramItem)
+		{
+			paramItem->setText(electrode.dischargeParameter);
+		}
+	} 
         break;
 
     case COL_POSITION:

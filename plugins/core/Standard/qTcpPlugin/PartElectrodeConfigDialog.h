@@ -5,6 +5,8 @@
 #include <QListWidget>
 #include <QTableWidget>
 #include <QPushButton>
+#include <QLineEdit>
+#include <QLabel>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QMap>
@@ -77,8 +79,9 @@ private:
     bool isValidFileName(const QString& name);
     void showErrorMessage(const QString& message);
     bool checkUnsavedChanges();
-	void    updateSaveButtonState();
-	void    onSelectInspectionProgram(int row);
+    void updateSaveButtonState();
+    void updatePartInfo();
+    void onSelectInspectionProgram(int row);
 
     void onAddPart();
     void onDeletePart();
@@ -88,10 +91,15 @@ private:
     void onCellChanged(int row, int column);
     void onSave();
     void onCancel();
+    void onChangeModelFile();
 
 	void closeEvent(QCloseEvent* event);
 
   private:
+    QWidget* m_partInfoWidget;
+    QLabel* m_partNameLabel;
+    QLabel* m_modelFileLabel;
+    QPushButton* m_changeModelBtn;
     QListWidget* m_partList;
     QTableWidget* m_electrodeTable;
     QPushButton* m_addPartBtn;
@@ -129,6 +137,28 @@ private slots:
     void onCellEntered(int row, int column);
 
 private:
+    class AddPartDialog : public QDialog
+    {
+    public:
+        explicit AddPartDialog(QWidget* parent = nullptr);
+        QString getPartName() const { return m_partName; }
+        QString getModelFilePath() const { return m_modelFilePath; }
+        bool isValid() const { return m_valid; }
+
+    private:
+        QString m_partName;
+        QString m_modelFilePath;
+        bool m_valid = false;
+        QLineEdit* m_nameEdit;
+        QLabel* m_filePathLabel;
+		QPushButton* m_okBtn;
+
+        void onNameChanged(const QString& text);
+        void onSelectFile();
+        void onOk();
+        void updateOkButton();
+    };
+
     class ScanPositionConfigDialog : public QDialog
     {
     public:
