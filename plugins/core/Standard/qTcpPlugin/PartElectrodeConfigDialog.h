@@ -31,6 +31,7 @@ struct ElectrodeData
     QString electrodeName;
     QString processPosition;
     QString dischargeParameter;
+    QString inspectionProgramPath;
     double startX = 0.0;
     double startY = 0.0;
     double startZ = 0.0;
@@ -46,6 +47,7 @@ struct ElectrodeData
 struct PartData
 {
     QString partName;
+    QString modelFilePath;
     QList<ElectrodeData> electrodes;
     bool isModified = false;
 };
@@ -75,7 +77,8 @@ private:
     bool isValidFileName(const QString& name);
     void showErrorMessage(const QString& message);
     bool checkUnsavedChanges();
-    void updateSaveButtonState();
+	void    updateSaveButtonState();
+	void    onSelectInspectionProgram(int row);
 
     void onAddPart();
     void onDeletePart();
@@ -108,6 +111,7 @@ private:
         COL_ELECTRODE = 0,
         COL_POSITION,
         COL_PARAMETER,
+        COL_INSPECTION_PROGRAM,
         COL_SCAN_POSITION,
         COL_REGION,
         COL_START_X,
