@@ -12,9 +12,12 @@
 #include <QCloseEvent>
 #include <qlabel.h>
 #include <qformlayout.h>
+#include <ccMainAppInterface.h>
+#include <ccHObject.h>
 
-PartElectrodeConfigDialog::PartElectrodeConfigDialog(QWidget* parent)
+PartElectrodeConfigDialog::PartElectrodeConfigDialog(ccMainAppInterface* app, QWidget* parent)
     : QDialog(parent)
+    , m_app(app)
 {
     setWindowTitle("工件电极配置");
     setMinimumSize(1000, 600);
@@ -73,12 +76,13 @@ QListWidget::item:selected:active {
 
     m_electrodeTable = new QTableWidget(this);
     m_electrodeTable->setColumnCount(COL_COUNT);
-    QStringList headers = { "电极名称", "加工位置", "放电参数", "扫描位置", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
+    QStringList headers = { "电极名称", "加工位置", "放电参数", "扫描位置", "裁剪区域", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
     m_electrodeTable->setHorizontalHeaderLabels(headers);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_ELECTRODE, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_POSITION, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_PARAMETER, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_SCAN_POSITION, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_REGION, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_X, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_Y, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_Z, QHeaderView::Fixed);
@@ -89,6 +93,7 @@ QListWidget::item:selected:active {
     m_electrodeTable->setColumnWidth(COL_POSITION, 120);
     m_electrodeTable->setColumnWidth(COL_PARAMETER, 120);
     m_electrodeTable->setColumnWidth(COL_SCAN_POSITION, 120);
+    m_electrodeTable->setColumnWidth(COL_REGION, 120);
     m_electrodeTable->setColumnWidth(COL_START_X, 90);
     m_electrodeTable->setColumnWidth(COL_START_Y, 90);
     m_electrodeTable->setColumnWidth(COL_START_Z, 90);
@@ -241,6 +246,14 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
                 electrode.scanPositions.append(scanPos);
             }
 
+            QJsonArray regionsArray = obj["regions"].toArray();
+            for (const QJsonValue& regionVal : regionsArray) {
+                QJsonObject regionObj = regionVal.toObject();
+                RegionData region;
+                region.name = regionObj["name"].toString();
+                electrode.regions.append(region);
+            }
+
             partData.electrodes.append(electrode);
         }
 
@@ -302,6 +315,14 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
                 scanPositionsArray.append(scanPosObj);
             }
             electrodeObj["scanPositions"] = scanPositionsArray;
+
+            QJsonArray regionsArray;
+            for (const RegionData& region : electrode.regions) {
+                QJsonObject regionObj;
+                regionObj["name"] = region.name;
+                regionsArray.append(regionObj);
+            }
+            electrodeObj["regions"] = regionsArray;
 
             electrodesArray.append(electrodeObj);
         }
@@ -370,29 +391,39 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         item3->setFlags(item3->flags() & ~Qt::ItemIsEditable);
         m_electrodeTable->setItem(i, COL_SCAN_POSITION, item3);
 
-        QTableWidgetItem* item4 = new QTableWidgetItem(QString::number(electrode.startX));
-        item4->setFlags(item4->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_X, item4);
+        QString regionText;
+        if (electrode.regions.isEmpty()) {
+            regionText = "未配置";
+        } else {
+            regionText = QString("%1个裁剪区域").arg(electrode.regions.size());
+        }
+        QTableWidgetItem* item4 = new QTableWidgetItem(regionText);
+        item4->setFlags(item4->flags() & ~Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_REGION, item4);
 
-        QTableWidgetItem* item5 = new QTableWidgetItem(QString::number(electrode.startY));
+        QTableWidgetItem* item5 = new QTableWidgetItem(QString::number(electrode.startX));
         item5->setFlags(item5->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_Y, item5);
+        m_electrodeTable->setItem(i, COL_START_X, item5);
 
-        QTableWidgetItem* item6 = new QTableWidgetItem(QString::number(electrode.startZ));
+        QTableWidgetItem* item6 = new QTableWidgetItem(QString::number(electrode.startY));
         item6->setFlags(item6->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_Z, item6);
+        m_electrodeTable->setItem(i, COL_START_Y, item6);
 
-        QTableWidgetItem* item7 = new QTableWidgetItem(QString::number(electrode.startA));
+        QTableWidgetItem* item7 = new QTableWidgetItem(QString::number(electrode.startZ));
         item7->setFlags(item7->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_A, item7);
+        m_electrodeTable->setItem(i, COL_START_Z, item7);
 
-        QTableWidgetItem* item8 = new QTableWidgetItem(QString::number(electrode.startB));
+        QTableWidgetItem* item8 = new QTableWidgetItem(QString::number(electrode.startA));
         item8->setFlags(item8->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_B, item8);
+        m_electrodeTable->setItem(i, COL_START_A, item8);
 
-        QTableWidgetItem* item9 = new QTableWidgetItem(QString::number(electrode.startC));
+        QTableWidgetItem* item9 = new QTableWidgetItem(QString::number(electrode.startB));
         item9->setFlags(item9->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_C, item9);
+        m_electrodeTable->setItem(i, COL_START_B, item9);
+
+        QTableWidgetItem* item10 = new QTableWidgetItem(QString::number(electrode.startC));
+        item10->setFlags(item10->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_C, item10);
     }
 
     m_addElectrodeBtn->setEnabled(true);
@@ -783,7 +814,7 @@ void PartElectrodeConfigDialog::onCancel()
 
 void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
 {
-    if (column != COL_SCAN_POSITION || m_currentPartName.isEmpty()) {
+    if (m_currentPartName.isEmpty()) {
         return;
     }
 
@@ -792,13 +823,24 @@ void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
         return;
     }
 
-    QList<ScanPositionData> originalScanPositions = partData.electrodes[row].scanPositions;
+    if (column == COL_SCAN_POSITION) {
+        QList<ScanPositionData> originalScanPositions = partData.electrodes[row].scanPositions;
 
-    ScanPositionConfigDialog dlg(partData.electrodes[row].scanPositions, this, this);
-    int result = dlg.exec();
+        ScanPositionConfigDialog dlg(partData.electrodes[row].scanPositions, this, this);
+        int result = dlg.exec();
 
-    if (result == QDialog::Rejected && dlg.hasChanges()) {
-        partData.electrodes[row].scanPositions = originalScanPositions;
+        if (result == QDialog::Rejected && dlg.hasChanges()) {
+            partData.electrodes[row].scanPositions = originalScanPositions;
+        }
+    } else if (column == COL_REGION) {
+        QList<RegionData> originalRegions = partData.electrodes[row].regions;
+
+        RegionConfigDialog dlg(partData.electrodes[row].regions, m_app, this, this);
+        int result = dlg.exec();
+
+        if (result == QDialog::Rejected && dlg.hasChanges()) {
+            partData.electrodes[row].regions = originalRegions;
+        }
     }
 
     updateElectrodeTable();
@@ -1205,6 +1247,291 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCancel()
         reject();
         break;
     case QMessageBox::Cancel:
+        break;
+    }
+}
+
+PartElectrodeConfigDialog::RegionConfigDialog::RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, QWidget* parent)
+    : QDialog(parent), m_regions(regions), m_app(app), m_parentDialog(parentDialog)
+{
+    setWindowTitle("配置裁剪区域");
+    setMinimumSize(600, 450);
+    resize(650, 500);
+    initUI();
+    updateRegionList();
+    updateAvailableRegions();
+}
+
+PartElectrodeConfigDialog::RegionConfigDialog::~RegionConfigDialog()
+{
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::initUI()
+{
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
+    mainLayout->setSpacing(10);
+
+    QHBoxLayout* contentLayout = new QHBoxLayout();
+    contentLayout->setSpacing(10);
+
+    QWidget* leftWidget = new QWidget(this);
+    QVBoxLayout* leftLayout = new QVBoxLayout(leftWidget);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(8);
+
+    QLabel* availableLabel = new QLabel("CloudCompare 中的裁剪区域", this);
+    availableLabel->setStyleSheet("font-weight: bold;");
+    leftLayout->addWidget(availableLabel);
+
+    m_availableRegionsList = new QListWidget(this);
+    m_availableRegionsList->setFixedWidth(280);
+    m_availableRegionsList->setStyleSheet(R"(
+QListWidget {
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    background: white;
+    outline: none;
+    padding: 6px;
+}
+QListWidget::item {
+    height: 32px;
+    padding-left: 10px;
+    border-radius: 4px;
+    color: #303030;
+}
+QListWidget::item:hover {
+    background: #f2f6fc;
+}
+QListWidget::item:selected {
+    background: #4a90d9;
+    color: white;
+}
+)");
+    leftLayout->addWidget(m_availableRegionsList);
+
+    contentLayout->addWidget(leftWidget);
+
+    QWidget* centerWidget = new QWidget(this);
+    QVBoxLayout* centerLayout = new QVBoxLayout(centerWidget);
+    centerLayout->setContentsMargins(0, 0, 0, 0);
+    centerLayout->setSpacing(8);
+    centerLayout->setAlignment(Qt::AlignCenter);
+
+    m_addBtn = new QPushButton(">", this);
+    m_addBtn->setFixedSize(40, 32);
+    m_addBtn->setEnabled(false);
+    centerLayout->addWidget(m_addBtn);
+
+    m_removeBtn = new QPushButton("<", this);
+    m_removeBtn->setFixedSize(40, 32);
+    m_removeBtn->setEnabled(false);
+    centerLayout->addWidget(m_removeBtn);
+
+    contentLayout->addWidget(centerWidget);
+
+    QWidget* rightWidget = new QWidget(this);
+    QVBoxLayout* rightLayout = new QVBoxLayout(rightWidget);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(8);
+
+    QLabel* selectedLabel = new QLabel("已选择的裁剪区域", this);
+    selectedLabel->setStyleSheet("font-weight: bold;");
+    rightLayout->addWidget(selectedLabel);
+
+    m_selectedRegionsList = new QListWidget(this);
+    m_selectedRegionsList->setFixedWidth(280);
+    m_selectedRegionsList->setStyleSheet(R"(
+QListWidget {
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    background: white;
+    outline: none;
+    padding: 6px;
+}
+QListWidget::item {
+    height: 32px;
+    padding-left: 10px;
+    border-radius: 4px;
+    color: #303030;
+}
+QListWidget::item:hover {
+    background: #f2f6fc;
+}
+QListWidget::item:selected {
+    background: #4a90d9;
+    color: white;
+}
+)");
+    rightLayout->addWidget(m_selectedRegionsList);
+
+    contentLayout->addWidget(rightWidget);
+
+    mainLayout->addLayout(contentLayout);
+
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->setSpacing(10);
+
+    buttonLayout->addStretch();
+
+    m_saveBtn = new QPushButton("保存", this);
+    m_saveBtn->setFixedSize(80, 32);
+    m_saveBtn->setEnabled(false);
+    buttonLayout->addWidget(m_saveBtn);
+
+    m_cancelBtn = new QPushButton("取消", this);
+    m_cancelBtn->setFixedSize(80, 32);
+    buttonLayout->addWidget(m_cancelBtn);
+
+    mainLayout->addLayout(buttonLayout);
+
+    connect(m_availableRegionsList, &QListWidget::itemSelectionChanged, this, &RegionConfigDialog::onSelectionChanged);
+    connect(m_selectedRegionsList, &QListWidget::itemSelectionChanged, this, &RegionConfigDialog::onSelectionChanged);
+    connect(m_addBtn, &QPushButton::clicked, this, &RegionConfigDialog::onAddRegion);
+    connect(m_removeBtn, &QPushButton::clicked, this, &RegionConfigDialog::onRemoveRegion);
+    connect(m_saveBtn, &QPushButton::clicked, this, &RegionConfigDialog::onSave);
+    connect(m_cancelBtn, &QPushButton::clicked, this, &RegionConfigDialog::onCancel);
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::updateRegionList()
+{
+    m_selectedRegionsList->clear();
+    for (const RegionData& region : m_regions) {
+        m_selectedRegionsList->addItem(region.name);
+    }
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::updateAvailableRegions()
+{
+    m_availableRegionsList->clear();
+
+    if (!m_app) {
+        return;
+    }
+
+    ccHObject* dbRoot = m_app->dbRootObject();
+    if (!dbRoot) {
+        return;
+    }
+
+    QSet<QString> selectedNames;
+    for (const RegionData& region : m_regions) {
+        selectedNames.insert(region.name);
+    }
+
+    for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i) {
+        ccHObject* child = dbRoot->getChild(i);
+		
+        if (child && child->isKindOf(CC_TYPES::POLY_LINE))
+		{
+            QString name = child->getName();
+
+            if ( !selectedNames.contains(name)) {
+                m_availableRegionsList->addItem(name);
+            }
+        }
+    }
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::onAddRegion()
+{
+    QListWidgetItem* item = m_availableRegionsList->currentItem();
+    if (!item) {
+        return;
+    }
+
+    QString regionName = item->text();
+
+    RegionData region;
+    region.name = regionName;
+    m_regions.append(region);
+
+    m_hasChanges = true;
+    m_saveBtn->setEnabled(true);
+
+    updateRegionList();
+    updateAvailableRegions();
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
+{
+    int currentRow = m_selectedRegionsList->currentRow();
+    if (currentRow < 0) {
+        return;
+    }
+
+    m_regions.removeAt(currentRow);
+
+    m_hasChanges = true;
+    m_saveBtn->setEnabled(true);
+
+    updateRegionList();
+    updateAvailableRegions();
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::onSelectionChanged()
+{
+    m_addBtn->setEnabled(m_availableRegionsList->selectedItems().size() > 0);
+    m_removeBtn->setEnabled(m_selectedRegionsList->selectedItems().size() > 0);
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::onSave()
+{
+    if (m_parentDialog) {
+        m_parentDialog->saveConfigToFiles();
+        m_parentDialog->resetSavedState();
+    }
+    m_hasChanges = false;
+    m_saveBtn->setEnabled(false);
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::onCancel()
+{
+    if (!m_hasChanges) {
+        reject();
+        return;
+    }
+
+    QMessageBox::StandardButton result = QMessageBox::question(this, "确认",
+        "您修改的数据尚未保存，确定要放弃更改并退出吗？",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+
+    switch (result) {
+    case QMessageBox::Save:
+        m_hasChanges = false;
+        m_saveBtn->setEnabled(false);
+        reject();
+        break;
+    case QMessageBox::Discard:
+        reject();
+        break;
+    case QMessageBox::Cancel:
+        break;
+    }
+}
+
+void PartElectrodeConfigDialog::RegionConfigDialog::closeEvent(QCloseEvent* event)
+{
+    if (!m_hasChanges) {
+        event->accept();
+        return;
+    }
+
+    QMessageBox::StandardButton result = QMessageBox::question(this, "确认",
+        "您修改的数据尚未保存，确定要放弃更改并退出吗？",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+
+    switch (result) {
+    case QMessageBox::Save:
+        m_hasChanges = false;
+        m_saveBtn->setEnabled(false);
+        event->accept();
+        break;
+    case QMessageBox::Discard:
+        event->accept();
+        break;
+    case QMessageBox::Cancel:
+        event->ignore();
         break;
     }
 }

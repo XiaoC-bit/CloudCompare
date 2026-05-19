@@ -363,7 +363,7 @@ void qTcpPlugin::showElectrodeInspectDialog()
 
 void qTcpPlugin::showPartElectrodeConfigDialog()
 {
-	PartElectrodeConfigDialog dialog(nullptr);
+	PartElectrodeConfigDialog dialog(m_app, nullptr);
 	dialog.exec();
 }
 

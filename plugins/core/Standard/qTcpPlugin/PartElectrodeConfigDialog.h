@@ -8,6 +8,8 @@
 #include <QJsonArray>
 #include <QMap>
 
+class ccMainAppInterface;
+
 struct ScanPositionData
 {
     QString name;
@@ -16,6 +18,11 @@ struct ScanPositionData
     double z = 0.0;
     double b = 0.0;
     double c = 0.0;
+};
+
+struct RegionData
+{
+    QString name;
 };
 
 struct ElectrodeData
@@ -30,6 +37,7 @@ struct ElectrodeData
     double startB = 0.0;
     double startC = 0.0;
     QList<ScanPositionData> scanPositions;
+    QList<RegionData> regions;
     bool positionModified = false;
     bool parameterModified = false;
 };
@@ -46,7 +54,7 @@ class PartElectrodeConfigDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit PartElectrodeConfigDialog(QWidget* parent = nullptr);
+    explicit PartElectrodeConfigDialog(ccMainAppInterface* app, QWidget* parent = nullptr);
     ~PartElectrodeConfigDialog() override;
     
     void resetSavedState() {
@@ -92,6 +100,7 @@ private:
     QMap<QString, PartData> m_partDataMap;
     QString m_currentPartName;
     bool m_hasUnsavedChanges = false;
+    ccMainAppInterface* m_app;
 
     enum ColumnIndex
     {
@@ -99,6 +108,7 @@ private:
         COL_POSITION,
         COL_PARAMETER,
         COL_SCAN_POSITION,
+        COL_REGION,
         COL_START_X,
         COL_START_Y,
         COL_START_Z,
@@ -147,6 +157,38 @@ private:
         QPushButton* m_deleteBtn;
         QPushButton* m_copyBtn;
         QPushButton* m_renameBtn;
+        QPushButton* m_saveBtn;
+        QPushButton* m_cancelBtn;
+        bool m_hasChanges = false;
+    };
+
+    class RegionConfigDialog : public QDialog
+    {
+    public:
+        explicit RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
+        ~RegionConfigDialog() override;
+        
+        bool hasChanges() const { return m_hasChanges; }
+        
+        void closeEvent(QCloseEvent* event) override;
+        
+    private:
+        void initUI();
+        void updateRegionList();
+        void updateAvailableRegions();
+        void onAddRegion();
+        void onRemoveRegion();
+        void onSelectionChanged();
+        void onSave();
+        void onCancel();
+        
+        QList<RegionData>& m_regions;
+        ccMainAppInterface* m_app;
+        PartElectrodeConfigDialog* m_parentDialog;
+        QListWidget* m_selectedRegionsList;
+        QListWidget* m_availableRegionsList;
+        QPushButton* m_addBtn;
+        QPushButton* m_removeBtn;
         QPushButton* m_saveBtn;
         QPushButton* m_cancelBtn;
         bool m_hasChanges = false;
