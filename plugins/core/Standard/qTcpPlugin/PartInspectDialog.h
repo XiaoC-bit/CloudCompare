@@ -27,4 +27,6 @@ private:
 	QPushButton* m_startButton;
 	QPushButton* m_cancelButton;
 	QHBoxLayout* m_buttonLayout;
+	
+	void loadPartTypes();
 };

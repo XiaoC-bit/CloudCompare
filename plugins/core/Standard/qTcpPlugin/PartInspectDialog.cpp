@@ -7,6 +7,9 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 
 PartInspectDialog::PartInspectDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
 	: MachineStatusDialog(app, pointCloudService, parent)
@@ -62,9 +65,7 @@ void PartInspectDialog::setupAdditionalUI()
 	QLabel* typeLabel = new QLabel("工件类型：");
 	typeLabel->setStyleSheet("border: none; background: transparent;");
 	m_partTypeCombo = new QComboBox(this);
-	m_partTypeCombo->addItem("PartA");
-	m_partTypeCombo->addItem("PartB");
-	m_partTypeCombo->addItem("PartC");
+	loadPartTypes();
 	formLayout->addRow(typeLabel, m_partTypeCombo);
 
 	QLabel* rfidLabel = new QLabel("RFID：");
@@ -139,5 +140,36 @@ void PartInspectDialog::onOperationCompleted(bool success)
 		QJsonObject result = m_pointCloudService->getPartInspectResult();
 		QJsonObject inspectResult = result["InspectResult"].toObject();
 		setProgressText(QString("❌ 工件检测失败：%1").arg(inspectResult["Ret_Err"].toString()));
+	}
+}
+
+void PartInspectDialog::loadPartTypes()
+{
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/PartConfig";
+	QDir dir(configDir);
+
+	if (!dir.exists()) {
+		m_partTypeCombo->addItem("PartA");
+		m_partTypeCombo->addItem("PartB");
+		m_partTypeCombo->addItem("PartC");
+		return;
+	}
+
+	QStringList filters;
+	filters << "*.json";
+	dir.setNameFilters(filters);
+
+	QStringList files = dir.entryList(filters, QDir::Files);
+	if (files.isEmpty()) {
+		m_partTypeCombo->addItem("PartA");
+		m_partTypeCombo->addItem("PartB");
+		m_partTypeCombo->addItem("PartC");
+		return;
+	}
+
+	for (const QString& file : files) {
+		QString partName = file.left(file.lastIndexOf('.'));
+		m_partTypeCombo->addItem(partName);
 	}
 }
