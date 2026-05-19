@@ -185,6 +185,7 @@ private:
         void onSave();
         void onCancel();
         void saveRegionToFile(const QString& regionName);
+        void deleteRegionFile(const QString& regionName);
         bool loadRegionFromFile(const QString& regionName);
         
         QList<RegionData>& m_regions;

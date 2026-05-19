@@ -1527,9 +1527,9 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
                 QMessageBox::warning(this, "错误", "无法从文件加载裁剪区域: " + regionName);
                 return;
             }
-		}
-		else if (msgBox.clickedButton() == removeOnlyBtn)
-		{
+        } else if (msgBox.clickedButton() == removeOnlyBtn) {
+            deleteRegionFile(regionName);
+        } else {
             return;
         }
     }
@@ -1619,7 +1619,18 @@ ccHObject* PartElectrodeConfigDialog::RegionConfigDialog::findObjectRecursively(
     return nullptr;
 }
 
+void PartElectrodeConfigDialog::RegionConfigDialog::deleteRegionFile(const QString& regionName)
+{
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString regionDir = appDir + "/RegionConfig";
+    QString fileName = QString("%1_%2_%3.bin").arg(m_partName).arg(m_electrodeName).arg(regionName);
+    QString filePath = regionDir + "/" + fileName;
 
+    QFile file(filePath);
+    if (file.exists()) {
+        file.remove();
+    }
+}
 
 bool PartElectrodeConfigDialog::RegionConfigDialog::loadRegionFromFile(const QString& regionName)
 {
