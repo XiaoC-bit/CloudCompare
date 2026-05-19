@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ccHObject.h>
 #include <QDialog>
 #include <QListWidget>
 #include <QTableWidget>
@@ -165,7 +166,7 @@ private:
     class RegionConfigDialog : public QDialog
     {
     public:
-        explicit RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, const QString& partName, const QString& electrodeName, QWidget* parent = nullptr);
+        explicit RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog,const QString& partName, const QString& electrodeName, QWidget* parent = nullptr);
         ~RegionConfigDialog() override;
         
         bool hasChanges() const { return m_hasChanges; }
@@ -176,12 +177,15 @@ private:
         void initUI();
         void updateRegionList();
         void updateAvailableRegions();
+        void addRegionsRecursively(ccHObject* parent, const QSet<QString>& selectedNames);
+        ccHObject* findObjectRecursively(ccHObject* parent, const QString& name);
         void onAddRegion();
         void onRemoveRegion();
         void onSelectionChanged();
         void onSave();
         void onCancel();
         void saveRegionToFile(const QString& regionName);
+        bool loadRegionFromFile(const QString& regionName);
         
         QList<RegionData>& m_regions;
         ccMainAppInterface* m_app;

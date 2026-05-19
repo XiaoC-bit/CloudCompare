@@ -1282,7 +1282,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::initUI()
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(8);
 
-    QLabel* availableLabel = new QLabel("CloudCompare 中的裁剪区域", this);
+    QLabel* availableLabel = new QLabel("可用裁剪区域", this);
     availableLabel->setStyleSheet("font-weight: bold;");
     leftLayout->addWidget(availableLabel);
 
@@ -1407,30 +1407,35 @@ void PartElectrodeConfigDialog::RegionConfigDialog::updateAvailableRegions()
 {
     m_availableRegionsList->clear();
 
-    if (!m_app) {
-        return;
-    }
-
-    ccHObject* dbRoot = m_app->dbRootObject();
-    if (!dbRoot) {
-        return;
-    }
-
     QSet<QString> selectedNames;
     for (const RegionData& region : m_regions) {
         selectedNames.insert(region.name);
     }
 
-    for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i) {
-        ccHObject* child = dbRoot->getChild(i);
-		
-        if (child && child->isKindOf(CC_TYPES::POLY_LINE))
-		{
-            QString name = child->getName();
+    if (m_app) {
+        ccHObject* dbRoot = m_app->dbRootObject();
+        if (dbRoot) {
+            addRegionsRecursively(dbRoot, selectedNames);
+        }
+    }
+}
 
-            if ( !selectedNames.contains(name)) {
-                m_availableRegionsList->addItem(name);
+void PartElectrodeConfigDialog::RegionConfigDialog::addRegionsRecursively(ccHObject* parent, const QSet<QString>& selectedNames)
+{
+    if (!parent) {
+        return;
+    }
+
+    for (unsigned i = 0; i < parent->getChildrenNumber(); ++i) {
+        ccHObject* child = parent->getChild(i);
+        if (child) {
+            if (child->isKindOf(CC_TYPES::POLY_LINE)) {
+                QString name = child->getName();
+                if (!selectedNames.contains(name)) {
+                    m_availableRegionsList->addItem(name);
+                }
             }
+            addRegionsRecursively(child, selectedNames);
         }
     }
 }
@@ -1442,7 +1447,40 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onAddRegion()
         return;
     }
 
-    QString regionName = item->text();
+    QString originalName = item->text();
+    bool isFromFile = (item->foreground().color() == QColor(128, 128, 128));
+
+    if (isFromFile) {
+        bool ok = loadRegionFromFile(originalName);
+        if (!ok) {
+            QMessageBox::warning(this, "错误", "无法从文件加载裁剪区域: " + originalName);
+            return;
+        }
+    }
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("选择命名方式");
+    msgBox.setText("请选择裁剪区域的命名方式：");
+    
+    QPushButton* useOriginalBtn = msgBox.addButton("使用原名称", QMessageBox::AcceptRole);
+    QPushButton* customBtn = msgBox.addButton("自定义名称", QMessageBox::AcceptRole);
+    msgBox.addButton(QMessageBox::Cancel);
+    
+    msgBox.exec();
+    
+    QString regionName;
+    if (msgBox.clickedButton() == useOriginalBtn) {
+        regionName = originalName;
+    } else if (msgBox.clickedButton() == customBtn) {
+        bool ok;
+        regionName = QInputDialog::getText(this, "自定义名称", "请输入裁剪区域名称:",
+            QLineEdit::Normal, originalName, &ok);
+        if (!ok || regionName.isEmpty()) {
+            return;
+        }
+    } else {
+        return;
+    }
 
     RegionData region;
     region.name = regionName;
@@ -1460,6 +1498,40 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
     int currentRow = m_selectedRegionsList->currentRow();
     if (currentRow < 0) {
         return;
+    }
+
+    QString regionName = m_regions[currentRow].name;
+    
+    bool existsInDB = false;
+    if (m_app) {
+        ccHObject* dbRoot = m_app->dbRootObject();
+        if (dbRoot) {
+            existsInDB = (findObjectRecursively(dbRoot, regionName) != nullptr);
+        }
+    }
+
+    if (!existsInDB) {
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle("提示");
+        msgBox.setText("该裁剪区域不在项目资源中，是否需要先将其添加到项目中？");
+        
+        QPushButton* removeOnlyBtn = msgBox.addButton("仅删除", QMessageBox::AcceptRole);
+        QPushButton* addAndRemoveBtn = msgBox.addButton("添加到项目并删除", QMessageBox::AcceptRole);
+        msgBox.addButton(QMessageBox::Cancel);
+        
+        msgBox.exec();
+        
+        if (msgBox.clickedButton() == addAndRemoveBtn) {
+            bool ok = loadRegionFromFile(regionName);
+            if (!ok) {
+                QMessageBox::warning(this, "错误", "无法从文件加载裁剪区域: " + regionName);
+                return;
+            }
+		}
+		else if (msgBox.clickedButton() == removeOnlyBtn)
+		{
+            return;
+        }
     }
 
     m_regions.removeAt(currentRow);
@@ -1502,14 +1574,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::saveRegionToFile(const QStri
         return;
     }
 
-    ccHObject* regionObject = nullptr;
-    for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i) {
-        ccHObject* child = dbRoot->getChild(i);
-        if (child && child->getName() == regionName) {
-            regionObject = child;
-            break;
-        }
-    }
+    ccHObject* regionObject = findObjectRecursively(dbRoot, regionName);
 
     if (!regionObject) {
         return;
@@ -1522,7 +1587,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::saveRegionToFile(const QStri
         dir.mkpath(regionDir);
     }
 
-    QString fileName = QString("%1_%2_%3.ply").arg(m_partName).arg(m_electrodeName).arg(regionName);
+    QString fileName = QString("%1_%2_%3.bin").arg(m_partName).arg(m_electrodeName).arg(regionName);
     QString filePath = regionDir + "/" + fileName;
 
     FileIOFilter::SaveParameters parameters;
@@ -1530,6 +1595,62 @@ void PartElectrodeConfigDialog::RegionConfigDialog::saveRegionToFile(const QStri
     parameters.parentWidget = this;
 
     FileIOFilter::SaveToFile(regionObject, filePath, parameters, "CloudCompare entities (*.bin)");
+}
+
+ccHObject* PartElectrodeConfigDialog::RegionConfigDialog::findObjectRecursively(ccHObject* parent, const QString& name)
+{
+    if (!parent) {
+        return nullptr;
+    }
+
+    for (unsigned i = 0; i < parent->getChildrenNumber(); ++i) {
+        ccHObject* child = parent->getChild(i);
+        if (child) {
+            if (child->getName() == name) {
+                return child;
+            }
+            ccHObject* found = findObjectRecursively(child, name);
+            if (found) {
+                return found;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+
+
+bool PartElectrodeConfigDialog::RegionConfigDialog::loadRegionFromFile(const QString& regionName)
+{
+    if (!m_app) {
+        return false;
+    }
+
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString regionDir = appDir + "/RegionConfig";
+    QString fileName = QString("%1_%2_%3.bin").arg(m_partName).arg(m_electrodeName).arg(regionName);
+    QString filePath = regionDir + "/" + fileName;
+
+    QFile file(filePath);
+    if (!file.exists()) {
+        return false;
+    }
+
+    FileIOFilter::Shared filter = FileIOFilter::FindBestFilterForExtension(QFileInfo(filePath).suffix());
+    if (!filter) {
+        return false;
+    }
+	
+    ccHObject* container = new ccHObject();
+    if (filter->loadFile(filePath, *container, FileIOFilter::LoadParameters()) == CC_FERR_NO_ERROR) {
+        container->setName(regionName);
+        m_app->addToDB(container);
+        return true;
+    } else {
+        delete container;
+        return false;
+    }
 }
 
 void PartElectrodeConfigDialog::RegionConfigDialog::onCancel()
