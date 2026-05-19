@@ -503,7 +503,6 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         }
         QTableWidgetItem* item5 = new QTableWidgetItem(scanPosText);
         item5->setFlags(item5->flags() & ~Qt::ItemIsEditable);
-        item5->setTextColor(QColor(0, 0, 255));
 		font = item5->font();
 		font.setUnderline(true);
 		item5->setFont(font);
@@ -517,7 +516,6 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         }
         QTableWidgetItem* item6 = new QTableWidgetItem(regionText);
         item6->setFlags(item6->flags() & ~Qt::ItemIsEditable);
-		item6->setTextColor(QColor(0, 0, 255));
 		font = item6->font();
 		font.setUnderline(true);
 		item6->setFont(font);
@@ -531,7 +529,6 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         }
         QTableWidgetItem* item7 = new QTableWidgetItem(probeProgramText);
         item7->setFlags(item7->flags() & ~Qt::ItemIsEditable);
-        item7->setTextColor(QColor(0, 0, 255));
 		font = item7->font();
 		font.setUnderline(true);
 		item7->setFont(font);
@@ -564,6 +561,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         updateColumnEnabledState(i, measureMethod);
     }
 
+    m_electrodeTable->viewport()->update();
     m_addElectrodeBtn->setEnabled(true);
 
     connect(m_electrodeTable, &QTableWidget::cellClicked, this, &PartElectrodeConfigDialog::onCellClicked);
@@ -1192,7 +1190,37 @@ void PartElectrodeConfigDialog::onMeasureMethodChanged(int row)
     m_hasUnsavedChanges = true;
     updateSaveButtonState();
 
-    updateColumnEnabledState(row, newMethod);
+    bool isScanMode = (newMethod == "轮廓扫描");
+
+    QTableWidgetItem* scanPosItem = m_electrodeTable->item(row, COL_SCAN_POSITION);
+    if (scanPosItem) {
+        Qt::ItemFlags flags = scanPosItem->flags();
+        flags.setFlag(Qt::ItemIsSelectable, isScanMode);
+        flags.setFlag(Qt::ItemIsEnabled, isScanMode);
+        scanPosItem->setFlags(flags);
+        scanPosItem->setTextColor(isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+    }
+
+    QTableWidgetItem* regionItem = m_electrodeTable->item(row, COL_REGION);
+    if (regionItem) {
+        Qt::ItemFlags flags = regionItem->flags();
+        flags.setFlag(Qt::ItemIsSelectable, isScanMode);
+        flags.setFlag(Qt::ItemIsEnabled, isScanMode);
+        regionItem->setFlags(flags);
+        regionItem->setTextColor(isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+    }
+
+    QTableWidgetItem* probeItem = m_electrodeTable->item(row, COL_PROBE_PROGRAM);
+    if (probeItem) {
+        bool isProbeMode = !isScanMode;
+        Qt::ItemFlags flags = probeItem->flags();
+        flags.setFlag(Qt::ItemIsSelectable, isProbeMode);
+        flags.setFlag(Qt::ItemIsEnabled, isProbeMode);
+        probeItem->setFlags(flags);
+        probeItem->setTextColor(isProbeMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+    }
+
+    m_electrodeTable->viewport()->update();
 }
 
 void PartElectrodeConfigDialog::updateColumnEnabledState(int row, const QString& measureMethod)
@@ -1201,21 +1229,33 @@ void PartElectrodeConfigDialog::updateColumnEnabledState(int row, const QString&
 
     QTableWidgetItem* scanPosItem = m_electrodeTable->item(row, COL_SCAN_POSITION);
     if (scanPosItem) {
-        scanPosItem->setFlags(isScanMode ? (scanPosItem->flags() | Qt::ItemIsEnabled) : (scanPosItem->flags() & ~Qt::ItemIsEnabled));
+        Qt::ItemFlags flags = scanPosItem->flags();
+        flags.setFlag(Qt::ItemIsSelectable, isScanMode);
+        flags.setFlag(Qt::ItemIsEnabled, isScanMode);
+        scanPosItem->setFlags(flags);
         scanPosItem->setTextColor(isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
     }
 
     QTableWidgetItem* regionItem = m_electrodeTable->item(row, COL_REGION);
     if (regionItem) {
-        regionItem->setFlags(isScanMode ? (regionItem->flags() | Qt::ItemIsEnabled) : (regionItem->flags() & ~Qt::ItemIsEnabled));
+        Qt::ItemFlags flags = regionItem->flags();
+        flags.setFlag(Qt::ItemIsSelectable, isScanMode);
+        flags.setFlag(Qt::ItemIsEnabled, isScanMode);
+        regionItem->setFlags(flags);
         regionItem->setTextColor(isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
     }
 
     QTableWidgetItem* probeItem = m_electrodeTable->item(row, COL_PROBE_PROGRAM);
     if (probeItem) {
-        probeItem->setFlags(!isScanMode ? (probeItem->flags() | Qt::ItemIsEnabled) : (probeItem->flags() & ~Qt::ItemIsEnabled));
-        probeItem->setTextColor(!isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+        bool isProbeMode = !isScanMode;
+        Qt::ItemFlags flags = probeItem->flags();
+        flags.setFlag(Qt::ItemIsSelectable, isProbeMode);
+        flags.setFlag(Qt::ItemIsEnabled, isProbeMode);
+        probeItem->setFlags(flags);
+        probeItem->setTextColor(isProbeMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
     }
+
+    m_electrodeTable->viewport()->update();
 }
 
 void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
