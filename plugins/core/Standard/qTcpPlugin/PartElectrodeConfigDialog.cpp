@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <qcombobox.h>
 #include <QFileDialog>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -120,14 +121,16 @@ QListWidget::item:selected:active {
 
     m_electrodeTable = new QTableWidget(this);
     m_electrodeTable->setColumnCount(COL_COUNT);
-    QStringList headers = { "电极名称", "加工位置", "放电参数", "检测程序", "扫描位置", "裁剪区域", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
+    QStringList headers = { "电极名称", "加工位置", "放电参数", "电极检测程序", "加工位置测量方式", "扫描位置", "裁剪区域", "测针打点程序", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
     m_electrodeTable->setHorizontalHeaderLabels(headers);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_ELECTRODE, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_POSITION, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_PARAMETER, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_INSPECTION_PROGRAM, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_MEASURE_METHOD, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_SCAN_POSITION, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_REGION, QHeaderView::Fixed);
+    m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_PROBE_PROGRAM, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_X, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_Y, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_START_Z, QHeaderView::Fixed);
@@ -138,8 +141,10 @@ QListWidget::item:selected:active {
     m_electrodeTable->setColumnWidth(COL_POSITION, 120);
     m_electrodeTable->setColumnWidth(COL_PARAMETER, 120);
     m_electrodeTable->setColumnWidth(COL_INSPECTION_PROGRAM, 200);
+    m_electrodeTable->setColumnWidth(COL_MEASURE_METHOD, 180);
     m_electrodeTable->setColumnWidth(COL_SCAN_POSITION, 120);
     m_electrodeTable->setColumnWidth(COL_REGION, 120);
+    m_electrodeTable->setColumnWidth(COL_PROBE_PROGRAM, 200);
     m_electrodeTable->setColumnWidth(COL_START_X, 90);
     m_electrodeTable->setColumnWidth(COL_START_Y, 90);
     m_electrodeTable->setColumnWidth(COL_START_Z, 90);
@@ -294,6 +299,8 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
             electrode.processPosition = obj["processPosition"].toString();
             electrode.dischargeParameter = obj["dischargeParameter"].toString();
             electrode.inspectionProgramPath = obj["inspectionProgramPath"].toString();
+            electrode.measureMethod = obj["measureMethod"].toString();
+            electrode.probeProgramPath = obj["probeProgramPath"].toString();
             electrode.startX = obj["startX"].toDouble();
             electrode.startY = obj["startY"].toDouble();
             electrode.startZ = obj["startZ"].toDouble();
@@ -364,6 +371,8 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
             electrodeObj["processPosition"] = electrode.processPosition;
             electrodeObj["dischargeParameter"] = electrode.dischargeParameter;
             electrodeObj["inspectionProgramPath"] = electrode.inspectionProgramPath;
+            electrodeObj["measureMethod"] = electrode.measureMethod;
+            electrodeObj["probeProgramPath"] = electrode.probeProgramPath;
             electrodeObj["startX"] = electrode.startX;
             electrodeObj["startY"] = electrode.startY;
             electrodeObj["startZ"] = electrode.startZ;
@@ -435,7 +444,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
     m_electrodeTable->setRowCount(partData.electrodes.size());
 
     for (int i = 0; i < partData.electrodes.size(); ++i) {
-        const ElectrodeData& electrode = partData.electrodes[i];
+        ElectrodeData& electrode = partData.electrodes[i];
 
         QTableWidgetItem* item0 = new QTableWidgetItem(electrode.electrodeName);
         item0->setFlags(item0->flags() | Qt::ItemIsEditable);
@@ -463,19 +472,42 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 		item3->setFont(font);
         m_electrodeTable->setItem(i, COL_INSPECTION_PROGRAM, item3);
 
+        QString measureMethod = electrode.measureMethod;
+        if (measureMethod.isEmpty()) {
+            measureMethod = "轮廓扫描";
+            electrode.measureMethod = measureMethod;
+        }
+        QComboBox* measureMethodCombo = new QComboBox();
+        measureMethodCombo->addItems({ "轮廓扫描", "测针打点" });
+        measureMethodCombo->setCurrentText(measureMethod);
+        measureMethodCombo->setStyleSheet(R"(
+            QComboBox {
+                border: 1px solid #dcdcdc;
+                border-radius: 4px;
+                padding: 4px;
+                min-width: 150px;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #dcdcdc;
+            }
+        )");
+        m_electrodeTable->setCellWidget(i, COL_MEASURE_METHOD, measureMethodCombo);
+        connect(measureMethodCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+            this, [this, i](int) { onMeasureMethodChanged(i); });
+
         QString scanPosText;
         if (electrode.scanPositions.isEmpty()) {
             scanPosText = "未配置";
         } else {
             scanPosText = QString("%1组扫描点").arg(electrode.scanPositions.size());
         }
-        QTableWidgetItem* item4 = new QTableWidgetItem(scanPosText);
-        item4->setFlags(item4->flags() & ~Qt::ItemIsEditable);
-        item4->setTextColor(QColor(0, 0, 255));
-		font = item4->font();
+        QTableWidgetItem* item5 = new QTableWidgetItem(scanPosText);
+        item5->setFlags(item5->flags() & ~Qt::ItemIsEditable);
+        item5->setTextColor(QColor(0, 0, 255));
+		font = item5->font();
 		font.setUnderline(true);
-		item4->setFont(font);
-        m_electrodeTable->setItem(i, COL_SCAN_POSITION, item4);
+		item5->setFont(font);
+        m_electrodeTable->setItem(i, COL_SCAN_POSITION, item5);
 
         QString regionText;
         if (electrode.regions.isEmpty()) {
@@ -483,37 +515,53 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         } else {
             regionText = QString("%1个裁剪区域").arg(electrode.regions.size());
         }
-        QTableWidgetItem* item5 = new QTableWidgetItem(regionText);
-        item5->setFlags(item5->flags() & ~Qt::ItemIsEditable);
-		item5->setTextColor(QColor(0, 0, 255));
-		font = item5->font();
+        QTableWidgetItem* item6 = new QTableWidgetItem(regionText);
+        item6->setFlags(item6->flags() & ~Qt::ItemIsEditable);
+		item6->setTextColor(QColor(0, 0, 255));
+		font = item6->font();
 		font.setUnderline(true);
-		item5->setFont(font);
-		m_electrodeTable->setItem(i, COL_REGION, item5);
+		item6->setFont(font);
+		m_electrodeTable->setItem(i, COL_REGION, item6);
 
-        QTableWidgetItem* item6 = new QTableWidgetItem(QString::number(electrode.startX));
-        item6->setFlags(item6->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_X, item6);
+        QString probeProgramText = electrode.probeProgramPath;
+        if (probeProgramText.isEmpty()) {
+            probeProgramText = "未选择";
+        } else {
+            probeProgramText = QFileInfo(probeProgramText).fileName();
+        }
+        QTableWidgetItem* item7 = new QTableWidgetItem(probeProgramText);
+        item7->setFlags(item7->flags() & ~Qt::ItemIsEditable);
+        item7->setTextColor(QColor(0, 0, 255));
+		font = item7->font();
+		font.setUnderline(true);
+		item7->setFont(font);
+        m_electrodeTable->setItem(i, COL_PROBE_PROGRAM, item7);
 
-        QTableWidgetItem* item7 = new QTableWidgetItem(QString::number(electrode.startY));
-        item7->setFlags(item7->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_Y, item7);
-
-        QTableWidgetItem* item8 = new QTableWidgetItem(QString::number(electrode.startZ));
+        QTableWidgetItem* item8 = new QTableWidgetItem(QString::number(electrode.startX));
         item8->setFlags(item8->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_Z, item8);
+        m_electrodeTable->setItem(i, COL_START_X, item8);
 
-        QTableWidgetItem* item9 = new QTableWidgetItem(QString::number(electrode.startA));
+        QTableWidgetItem* item9 = new QTableWidgetItem(QString::number(electrode.startY));
         item9->setFlags(item9->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_A, item9);
+        m_electrodeTable->setItem(i, COL_START_Y, item9);
 
-        QTableWidgetItem* item10 = new QTableWidgetItem(QString::number(electrode.startB));
+        QTableWidgetItem* item10 = new QTableWidgetItem(QString::number(electrode.startZ));
         item10->setFlags(item10->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_B, item10);
+        m_electrodeTable->setItem(i, COL_START_Z, item10);
 
-        QTableWidgetItem* item11 = new QTableWidgetItem(QString::number(electrode.startC));
+        QTableWidgetItem* item11 = new QTableWidgetItem(QString::number(electrode.startA));
         item11->setFlags(item11->flags() | Qt::ItemIsEditable);
-        m_electrodeTable->setItem(i, COL_START_C, item11);
+        m_electrodeTable->setItem(i, COL_START_A, item11);
+
+        QTableWidgetItem* item12 = new QTableWidgetItem(QString::number(electrode.startB));
+        item12->setFlags(item12->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_B, item12);
+
+        QTableWidgetItem* item13 = new QTableWidgetItem(QString::number(electrode.startC));
+        item13->setFlags(item13->flags() | Qt::ItemIsEditable);
+        m_electrodeTable->setItem(i, COL_START_C, item13);
+
+        updateColumnEnabledState(i, measureMethod);
     }
 
     m_addElectrodeBtn->setEnabled(true);
@@ -1049,15 +1097,23 @@ void PartElectrodeConfigDialog::onCancel()
 void PartElectrodeConfigDialog::onCellClicked(int row, int column)
 {
     if (column == COL_SCAN_POSITION || column == COL_REGION) {
-        onConfigureScanPosition(row, column);
+        QComboBox* combo = qobject_cast<QComboBox*>(m_electrodeTable->cellWidget(row, COL_MEASURE_METHOD));
+        if (combo && combo->currentText() == "轮廓扫描") {
+            onConfigureScanPosition(row, column);
+        }
     } else if (column == COL_INSPECTION_PROGRAM) {
         onSelectInspectionProgram(row);
+    } else if (column == COL_PROBE_PROGRAM) {
+        QComboBox* combo = qobject_cast<QComboBox*>(m_electrodeTable->cellWidget(row, COL_MEASURE_METHOD));
+        if (combo && combo->currentText() == "测针打点") {
+            onSelectProbeProgram(row);
+        }
     }
 }
 
 void PartElectrodeConfigDialog::onCellEntered(int row, int column)
 {
-    if (column == COL_SCAN_POSITION || column == COL_REGION || column == COL_INSPECTION_PROGRAM) {
+    if (column == COL_SCAN_POSITION || column == COL_REGION || column == COL_INSPECTION_PROGRAM || column == COL_PROBE_PROGRAM) {
         m_electrodeTable->setCursor(Qt::PointingHandCursor);
     } else {
         m_electrodeTable->setCursor(Qt::ArrowCursor);
@@ -1075,7 +1131,7 @@ void PartElectrodeConfigDialog::onSelectInspectionProgram(int row)
         return;
     }
 
-    QString filePath = QFileDialog::getOpenFileName(this, "选择检测程序", "", 
+    QString filePath = QFileDialog::getOpenFileName(this, "选择电极检测程序", "", 
         "NC 文件 (*.nc)");
     
     if (filePath.isEmpty()) {
@@ -1087,6 +1143,79 @@ void PartElectrodeConfigDialog::onSelectInspectionProgram(int row)
     m_hasUnsavedChanges = true;
     updateSaveButtonState();
     updateElectrodeTable();
+}
+
+void PartElectrodeConfigDialog::onSelectProbeProgram(int row)
+{
+    if (m_currentPartName.isEmpty()) {
+        return;
+    }
+
+    PartData& partData = m_partDataMap[m_currentPartName];
+    if (row >= partData.electrodes.size()) {
+        return;
+    }
+
+    QString filePath = QFileDialog::getOpenFileName(this, "选择测针打点程序", "", 
+        "NC 文件 (*.nc)");
+    
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    partData.electrodes[row].probeProgramPath = filePath;
+    partData.isModified = true;
+    m_hasUnsavedChanges = true;
+    updateSaveButtonState();
+    updateElectrodeTable();
+}
+
+void PartElectrodeConfigDialog::onMeasureMethodChanged(int row)
+{
+    if (m_currentPartName.isEmpty()) {
+        return;
+    }
+
+    PartData& partData = m_partDataMap[m_currentPartName];
+    if (row >= partData.electrodes.size()) {
+        return;
+    }
+
+    QComboBox* combo = qobject_cast<QComboBox*>(m_electrodeTable->cellWidget(row, COL_MEASURE_METHOD));
+    if (!combo) {
+        return;
+    }
+
+    QString newMethod = combo->currentText();
+    partData.electrodes[row].measureMethod = newMethod;
+    partData.isModified = true;
+    m_hasUnsavedChanges = true;
+    updateSaveButtonState();
+
+    updateColumnEnabledState(row, newMethod);
+}
+
+void PartElectrodeConfigDialog::updateColumnEnabledState(int row, const QString& measureMethod)
+{
+    bool isScanMode = (measureMethod == "轮廓扫描");
+
+    QTableWidgetItem* scanPosItem = m_electrodeTable->item(row, COL_SCAN_POSITION);
+    if (scanPosItem) {
+        scanPosItem->setFlags(isScanMode ? (scanPosItem->flags() | Qt::ItemIsEnabled) : (scanPosItem->flags() & ~Qt::ItemIsEnabled));
+        scanPosItem->setTextColor(isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+    }
+
+    QTableWidgetItem* regionItem = m_electrodeTable->item(row, COL_REGION);
+    if (regionItem) {
+        regionItem->setFlags(isScanMode ? (regionItem->flags() | Qt::ItemIsEnabled) : (regionItem->flags() & ~Qt::ItemIsEnabled));
+        regionItem->setTextColor(isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+    }
+
+    QTableWidgetItem* probeItem = m_electrodeTable->item(row, COL_PROBE_PROGRAM);
+    if (probeItem) {
+        probeItem->setFlags(!isScanMode ? (probeItem->flags() | Qt::ItemIsEnabled) : (probeItem->flags() & ~Qt::ItemIsEnabled));
+        probeItem->setTextColor(!isScanMode ? QColor(0, 0, 255) : QColor(128, 128, 128));
+    }
 }
 
 void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)

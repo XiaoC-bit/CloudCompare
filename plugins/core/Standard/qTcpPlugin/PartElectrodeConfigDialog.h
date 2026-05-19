@@ -34,6 +34,8 @@ struct ElectrodeData
     QString processPosition;
     QString dischargeParameter;
     QString inspectionProgramPath;
+    QString measureMethod;
+    QString probeProgramPath;
     double startX = 0.0;
     double startY = 0.0;
     double startZ = 0.0;
@@ -82,6 +84,9 @@ private:
     void updateSaveButtonState();
     void updatePartInfo();
     void onSelectInspectionProgram(int row);
+    void onSelectProbeProgram(int row);
+    void onMeasureMethodChanged(int row);
+    void updateColumnEnabledState(int row, const QString& measureMethod);
 
     void onAddPart();
     void onDeletePart();
@@ -120,8 +125,10 @@ private:
         COL_POSITION,
         COL_PARAMETER,
         COL_INSPECTION_PROGRAM,
+        COL_MEASURE_METHOD,
         COL_SCAN_POSITION,
         COL_REGION,
+        COL_PROBE_PROGRAM,
         COL_START_X,
         COL_START_Y,
         COL_START_Z,
