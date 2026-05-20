@@ -6003,8 +6003,8 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 
 	// 找到对应的扫描配置JSON文件
 	QString appDir = QCoreApplication::applicationDirPath();
-	QString templateDir = appDir + "/PartInfo";
-	QString configFile = templateDir + "/" + partType + "_inspect_config.json";
+	QString templateDir = appDir + "/PartConfig";
+	QString configFile = templateDir + "/" + partType + ".json";
 
 	QFile file(configFile);
 	if (!file.exists()) {
@@ -6052,7 +6052,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 	if (config.contains("modelFile")) {
 		QString modelFile = config["modelFile"].toString();
 		QJsonObject loadParams;
-		loadParams["path"] = QString("%1/PartInfo/%2").arg(appDir).arg(modelFile);
+		loadParams["path"] = QString("%1/PartConfig/%2").arg(appDir).arg(modelFile);
 		loadParams["name"] = "Theoretical_Model";
 		QString errorMessage;
 		if (!loadInternal(loadParams, &errorMessage)) {
@@ -6080,7 +6080,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 	}
 
 	// 生成并发送NC文件
-	QString templateFile = templateDir + "/CameraPartInspect.nc";
+	QString templateFile = appDir + "/Template/CameraPartInspect.nc";
 	QFile templateNc(templateFile);
 	if (!templateNc.exists()) {
 		QJsonObject result;
@@ -6153,7 +6153,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				content.replace("{B}", QString::number(b));
 				content.replace("{C}", QString::number(c));
 
-				const QString outputFile = templateDir + QString("/Inspect_%1_%2.nc").arg(i + 1).arg(j + 1);
+				const QString outputFile = appDir + "/Temp/" +QString("/Inspect_%1_%2.nc").arg(i + 1).arg(j + 1);
 				QFile outputNc(outputFile);
 				if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text)) {
 					QJsonObject result;
