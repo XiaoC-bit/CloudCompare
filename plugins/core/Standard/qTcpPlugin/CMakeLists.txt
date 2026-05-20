@@ -49,6 +49,8 @@ if( PLUGIN_STANDARD_QTCP )
 		Handlers.cpp
 		ProbeFit6DOF_BC.h
 		ProbeFit6DOF_BC.cpp
+		AcquirePcdDialog.h
+		AcquirePcdDialog.cpp
 	)
 
 	target_compile_features( ${PROJECT_NAME} PRIVATE cxx_std_17 )

@@ -31,6 +31,7 @@ private slots:
 	void showPartInspectDialog();
 	void showElectrodeInspectDialog();
 	void showPartElectrodeConfigDialog();
+	void showAcquirePcdDialog();
 	void toggleLogDock();
 	void onLogDockVisibilityChanged(bool visible);
 
@@ -45,6 +46,7 @@ private slots:
 	QAction*           m_partInspectAction;
 	QAction*           m_electrodeInspectAction;
 	QAction*           m_partElectrodeConfigAction;
+	QAction*           m_acquirePcdAction;
 	QAction*           m_toggleLogDockAction;
 private:
     CcTcpServer*       m_server;
