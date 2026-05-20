@@ -308,7 +308,10 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
             if (electrode.dischargeParameter.isEmpty()) {
                 electrode.dischargeParameter = obj["dischargeParameter"].toString();
             }
-            electrode.inspectionProgramPath = obj["inspectionProgramPath"].toString();
+            electrode.inspectionProgramPath = obj["elecProbePath"].toString();
+            if (electrode.inspectionProgramPath.isEmpty()) {
+                electrode.inspectionProgramPath = obj["inspectionProgramPath"].toString();
+            }
             
             QString inspectType = obj["inspectType"].toString();
             if (inspectType == "camera") {
@@ -430,6 +433,7 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
             QString inspectType = (electrode.measureMethod == "轮廓扫描") ? "camera" : "probe";
             holePositionObj["inspectType"] = inspectType;
             holePositionObj["progPath"] = electrode.probeProgramPath;
+            holePositionObj["elecProbePath"] = electrode.inspectionProgramPath;
 
             QJsonObject zeroPosObj;
             zeroPosObj["X"] = electrode.startX;
