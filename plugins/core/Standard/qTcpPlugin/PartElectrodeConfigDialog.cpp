@@ -1,4 +1,5 @@
 #include "PartElectrodeConfigDialog.h"
+#include "PointCloudService.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -19,9 +20,10 @@
 #include <ccHObject.h>
 #include <FileIOFilter.h>
 
-PartElectrodeConfigDialog::PartElectrodeConfigDialog(ccMainAppInterface* app, QWidget* parent)
+PartElectrodeConfigDialog::PartElectrodeConfigDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
     : QDialog(parent)
     , m_app(app)
+    , m_pointCloudService(pointCloudService)
 {
     setWindowTitle("工件电极配置");
     setMinimumSize(1000, 600);
@@ -1520,6 +1522,10 @@ QListWidget::item:selected:active {
     m_renameBtn->setEnabled(false);
     buttonLayout->addWidget(m_renameBtn);
 
+    m_getDeviceCoorBtn = new QPushButton("从设备获取坐标", this);
+    m_getDeviceCoorBtn->setFixedSize(120, 32);
+    buttonLayout->addWidget(m_getDeviceCoorBtn);
+
     buttonLayout->addStretch();
 
     m_saveBtn = new QPushButton("保存", this);
@@ -1538,6 +1544,7 @@ QListWidget::item:selected:active {
     connect(m_deleteBtn, &QPushButton::clicked, this, &ScanPositionConfigDialog::onDeleteScanPosition);
     connect(m_copyBtn, &QPushButton::clicked, this, &ScanPositionConfigDialog::onCopyScanPosition);
     connect(m_renameBtn, &QPushButton::clicked, this, &ScanPositionConfigDialog::onRenameScanPosition);
+    connect(m_getDeviceCoorBtn, &QPushButton::clicked, this, &ScanPositionConfigDialog::onGetDeviceCoordinate);
     connect(m_saveBtn, &QPushButton::clicked, this, &ScanPositionConfigDialog::onSave);
     connect(m_cancelBtn, &QPushButton::clicked, this, &ScanPositionConfigDialog::onCancel);
 
@@ -1754,6 +1761,37 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onSave()
     }
     m_hasChanges = false;
     m_saveBtn->setEnabled(false);
+}
+
+void PartElectrodeConfigDialog::ScanPositionConfigDialog::onGetDeviceCoordinate()
+{
+    PointCloudService* service = getPointCloudService();
+    if (!service) {
+        QMessageBox::warning(this, "错误", "无法连接到点云服务");
+        return;
+    }
+
+    double x, y, z, a, b, c;
+    QString errorMessage;
+    
+    if (service->getDeviceMainAxisCoor(x, y, z, a, b, c, &errorMessage)) {
+        m_xEdit->setText(QString::number(x, 'f', 3));
+        m_yEdit->setText(QString::number(y, 'f', 3));
+        m_zEdit->setText(QString::number(z, 'f', 3));
+		//华中数控这两个值反了
+        m_bEdit->setText(QString::number(a, 'f', 3));
+        m_cEdit->setText(QString::number(b, 'f', 3));
+    } else {
+        QMessageBox::warning(this, "失败", QString("获取设备坐标失败: %1").arg(errorMessage));
+    }
+}
+
+PointCloudService* PartElectrodeConfigDialog::ScanPositionConfigDialog::getPointCloudService() const
+{
+    if (m_parentDialog) {
+        return m_parentDialog->m_pointCloudService;
+    }
+    return nullptr;
 }
 
 void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCancel()

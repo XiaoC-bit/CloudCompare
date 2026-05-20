@@ -56,12 +56,14 @@ struct PartData
     bool isModified = false;
 };
 
+class PointCloudService;
+
 class PartElectrodeConfigDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit PartElectrodeConfigDialog(ccMainAppInterface* app, QWidget* parent = nullptr);
+    explicit PartElectrodeConfigDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent = nullptr);
     ~PartElectrodeConfigDialog() override;
     
     void resetSavedState() {
@@ -118,6 +120,7 @@ private:
     QString m_currentPartName;
     bool m_hasUnsavedChanges = false;
     ccMainAppInterface* m_app;
+    PointCloudService* m_pointCloudService;
 
     enum ColumnIndex
     {
@@ -186,6 +189,7 @@ private:
         void onRenameScanPosition();
         void onSelectionChanged();
         void onCoordinateChanged();
+        void onGetDeviceCoordinate();
         void onSave();
         void onCancel();
         
@@ -201,9 +205,12 @@ private:
         QPushButton* m_deleteBtn;
         QPushButton* m_copyBtn;
         QPushButton* m_renameBtn;
+        QPushButton* m_getDeviceCoorBtn;
         QPushButton* m_saveBtn;
         QPushButton* m_cancelBtn;
         bool m_hasChanges = false;
+        
+        PointCloudService* getPointCloudService() const;
     };
 
     class RegionConfigDialog : public QDialog

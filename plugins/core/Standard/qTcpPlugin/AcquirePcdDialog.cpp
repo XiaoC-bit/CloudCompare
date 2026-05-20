@@ -126,8 +126,7 @@ void AcquirePcdDialog::onAcquisitionFinished(bool success, const QString& errorM
 
     if (success) {
         m_statusLabel->setText("点云获取成功");
-        QMessageBox::information(this, "成功", "点云获取成功！");
-        accept();
+        //accept();
     } else {
         if (m_cancelRequested) {
             m_statusLabel->setText("已取消");
