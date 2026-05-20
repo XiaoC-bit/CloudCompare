@@ -7,5 +7,6 @@
         <file>res/probe.png</file>
         <file>res/log.png</file>
         <file>res/config.png</file>
+        <file>res/calibration.png</file>
     </qresource>
 </RCC>

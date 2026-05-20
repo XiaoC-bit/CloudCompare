@@ -96,7 +96,7 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_calibrationAction)
 	{
-		m_calibrationAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/camera.png"), "激光相机标定", this);
+		m_calibrationAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/calibration.png"), "激光相机标定", this);
 		connect(m_calibrationAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationDialog);
 	}
 
@@ -126,7 +126,7 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_acquirePcdAction)
 	{
-		m_acquirePcdAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/config.png"), "获取点云", this);
+		m_acquirePcdAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/camera.png"), "获取点云", this);
 		connect(m_acquirePcdAction, &QAction::triggered, this, &qTcpPlugin::showAcquirePcdDialog);
 	}
 
