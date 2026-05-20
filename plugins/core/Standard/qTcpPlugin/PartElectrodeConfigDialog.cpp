@@ -285,49 +285,106 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
         }
 
         PartData partData;
-        partData.partName = doc["partName"].toString();
-        if (partData.partName.isEmpty()) {
-            partData.partName = partName;
-        }
-        partData.modelFilePath = doc["modelFilePath"].toString();
+        partData.partName = partName;
+        partData.modelFilePath = doc["modelFile"].toString();
 
-        QJsonArray electrodes = doc["electrodes"].toArray();
-        for (const QJsonValue& val : electrodes) {
+        QJsonArray holePositions = doc["holePositions"].toArray();
+        if (holePositions.isEmpty()) {
+            holePositions = doc["electrodes"].toArray();
+        }
+
+        for (const QJsonValue& val : holePositions) {
             QJsonObject obj = val.toObject();
             ElectrodeData electrode;
-            electrode.electrodeName = obj["electrodeName"].toString();
-            electrode.processPosition = obj["processPosition"].toString();
-            electrode.dischargeParameter = obj["dischargeParameter"].toString();
+            electrode.electrodeName = obj["id"].toString();
+            if (electrode.electrodeName.isEmpty()) {
+                electrode.electrodeName = obj["electrodeName"].toString();
+            }
+            electrode.processPosition = obj["name"].toString();
+            if (electrode.processPosition.isEmpty()) {
+                electrode.processPosition = obj["processPosition"].toString();
+            }
+            electrode.dischargeParameter = obj["dischargePara"].toString();
+            if (electrode.dischargeParameter.isEmpty()) {
+                electrode.dischargeParameter = obj["dischargeParameter"].toString();
+            }
             electrode.inspectionProgramPath = obj["inspectionProgramPath"].toString();
-            electrode.measureMethod = obj["measureMethod"].toString();
-            electrode.probeProgramPath = obj["probeProgramPath"].toString();
-            electrode.startX = obj["startX"].toDouble();
-            electrode.startY = obj["startY"].toDouble();
-            electrode.startZ = obj["startZ"].toDouble();
+            
+            QString inspectType = obj["inspectType"].toString();
+            if (inspectType == "camera") {
+                electrode.measureMethod = "轮廓扫描";
+            } else if (inspectType == "probe") {
+                electrode.measureMethod = "测针打点";
+            } else {
+                electrode.measureMethod = obj["measureMethod"].toString();
+                if (electrode.measureMethod.isEmpty()) {
+                    electrode.measureMethod = "轮廓扫描";
+                }
+            }
+            
+            electrode.probeProgramPath = obj["progPath"].toString();
+            if (electrode.probeProgramPath.isEmpty()) {
+                electrode.probeProgramPath = obj["probeProgramPath"].toString();
+            }
+
+            QJsonObject zeroPosObj = obj["ZeroPos"].toObject();
+            electrode.startX = zeroPosObj["X"].toDouble();
+            electrode.startY = zeroPosObj["Y"].toDouble();
+            electrode.startZ = zeroPosObj["Z"].toDouble();
             electrode.startA = obj["startA"].toDouble();
-            electrode.startB = obj["startB"].toDouble();
-            electrode.startC = obj["startC"].toDouble();
+            electrode.startB = zeroPosObj["B"].toDouble();
+            electrode.startC = zeroPosObj["C"].toDouble();
+
+            if (electrode.startX == 0 && electrode.startY == 0 && electrode.startZ == 0) {
+                electrode.startX = obj["startX"].toDouble();
+                electrode.startY = obj["startY"].toDouble();
+                electrode.startZ = obj["startZ"].toDouble();
+            }
+
             electrode.positionModified = false;
             electrode.parameterModified = false;
 
-            QJsonArray scanPositionsArray = obj["scanPositions"].toArray();
-            for (const QJsonValue& scanVal : scanPositionsArray) {
+            QJsonArray capturePositionsArray = obj["capturePositions"].toArray();
+            if (capturePositionsArray.isEmpty()) {
+                capturePositionsArray = obj["scanPositions"].toArray();
+            }
+            
+            for (const QJsonValue& scanVal : capturePositionsArray) {
                 QJsonObject scanObj = scanVal.toObject();
                 ScanPositionData scanPos;
                 scanPos.name = scanObj["name"].toString();
-                scanPos.x = scanObj["x"].toDouble();
-                scanPos.y = scanObj["y"].toDouble();
-                scanPos.z = scanObj["z"].toDouble();
-                scanPos.b = scanObj["b"].toDouble();
-                scanPos.c = scanObj["c"].toDouble();
+                if (scanPos.name.isEmpty()) {
+                    static int scanIndex = 0;
+                    scanPos.name = QString("扫描点%1").arg(++scanIndex);
+                }
+                scanPos.x = scanObj["X"].toDouble();
+                scanPos.y = scanObj["Y"].toDouble();
+                scanPos.z = scanObj["Z"].toDouble();
+                scanPos.b = scanObj["B"].toDouble();
+                scanPos.c = scanObj["C"].toDouble();
+                
+                if (scanPos.x == 0 && scanPos.y == 0 && scanPos.z == 0) {
+                    scanPos.x = scanObj["x"].toDouble();
+                    scanPos.y = scanObj["y"].toDouble();
+                    scanPos.z = scanObj["z"].toDouble();
+                    scanPos.b = scanObj["b"].toDouble();
+                    scanPos.c = scanObj["c"].toDouble();
+                }
                 electrode.scanPositions.append(scanPos);
             }
 
-            QJsonArray regionsArray = obj["regions"].toArray();
-            for (const QJsonValue& regionVal : regionsArray) {
+            QJsonArray cropRegionArray = obj["cropRegion"].toArray();
+            if (cropRegionArray.isEmpty()) {
+                cropRegionArray = obj["regions"].toArray();
+            }
+            
+            for (const QJsonValue& regionVal : cropRegionArray) {
                 QJsonObject regionObj = regionVal.toObject();
                 RegionData region;
-                region.name = regionObj["name"].toString();
+                region.name = regionObj["regionFile"].toString();
+                if (region.name.isEmpty()) {
+                    region.name = regionObj["name"].toString();
+                }
                 electrode.regions.append(region);
             }
 
@@ -361,49 +418,71 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
         PartData& partData = it.value();
 
         QJsonObject obj;
-        obj["partName"] = partName;
-        obj["modelFilePath"] = partData.modelFilePath;
+        obj["modelFile"] = partData.modelFilePath;
 
-        QJsonArray electrodesArray;
+        QJsonArray holePositionsArray;
         for (const ElectrodeData& electrode : partData.electrodes) {
-            QJsonObject electrodeObj;
-            electrodeObj["electrodeName"] = electrode.electrodeName;
-            electrodeObj["processPosition"] = electrode.processPosition;
-            electrodeObj["dischargeParameter"] = electrode.dischargeParameter;
-            electrodeObj["inspectionProgramPath"] = electrode.inspectionProgramPath;
-            electrodeObj["measureMethod"] = electrode.measureMethod;
-            electrodeObj["probeProgramPath"] = electrode.probeProgramPath;
-            electrodeObj["startX"] = electrode.startX;
-            electrodeObj["startY"] = electrode.startY;
-            electrodeObj["startZ"] = electrode.startZ;
-            electrodeObj["startA"] = electrode.startA;
-            electrodeObj["startB"] = electrode.startB;
-            electrodeObj["startC"] = electrode.startC;
+            QJsonObject holePositionObj;
+            holePositionObj["id"] = electrode.electrodeName;
+            holePositionObj["name"] = electrode.processPosition;
+            holePositionObj["dischargePara"] = electrode.dischargeParameter;
+            
+            QString inspectType = (electrode.measureMethod == "轮廓扫描") ? "camera" : "probe";
+            holePositionObj["inspectType"] = inspectType;
+            holePositionObj["progPath"] = electrode.probeProgramPath;
 
-            QJsonArray scanPositionsArray;
+            QJsonObject zeroPosObj;
+            zeroPosObj["X"] = electrode.startX;
+            zeroPosObj["Y"] = electrode.startY;
+            zeroPosObj["Z"] = electrode.startZ;
+            zeroPosObj["B"] = electrode.startB;
+            zeroPosObj["C"] = electrode.startC;
+            holePositionObj["ZeroPos"] = zeroPosObj;
+
+            QJsonArray capturePositionsArray;
             for (const ScanPositionData& scanPos : electrode.scanPositions) {
-                QJsonObject scanPosObj;
-                scanPosObj["name"] = scanPos.name;
-                scanPosObj["x"] = scanPos.x;
-                scanPosObj["y"] = scanPos.y;
-                scanPosObj["z"] = scanPos.z;
-                scanPosObj["b"] = scanPos.b;
-                scanPosObj["c"] = scanPos.c;
-                scanPositionsArray.append(scanPosObj);
+                QJsonObject capturePosObj;
+                capturePosObj["X"] = scanPos.x;
+                capturePosObj["Y"] = scanPos.y;
+                capturePosObj["Z"] = scanPos.z;
+                capturePosObj["B"] = scanPos.b;
+                capturePosObj["C"] = scanPos.c;
+                capturePositionsArray.append(capturePosObj);
             }
-            electrodeObj["scanPositions"] = scanPositionsArray;
+            holePositionObj["capturePositions"] = capturePositionsArray;
 
-            QJsonArray regionsArray;
+            QJsonArray cropRegionArray;
             for (const RegionData& region : electrode.regions) {
                 QJsonObject regionObj;
-                regionObj["name"] = region.name;
-                regionsArray.append(regionObj);
+                regionObj["regionFile"] = region.name;
+                cropRegionArray.append(regionObj);
             }
-            electrodeObj["regions"] = regionsArray;
+            holePositionObj["cropRegion"] = cropRegionArray;
 
-            electrodesArray.append(electrodeObj);
+            QJsonObject electrodePosObj;
+            QJsonArray beginArray;
+            beginArray.append(electrode.startX);
+            beginArray.append(electrode.startY);
+            beginArray.append(electrode.startZ);
+            beginArray.append(electrode.startA);
+            beginArray.append(electrode.startB);
+            beginArray.append(electrode.startC);
+            electrodePosObj["Begin"] = beginArray;
+
+            QJsonArray endArray;
+            endArray.append(electrode.startX);
+            endArray.append(electrode.startY);
+            endArray.append(electrode.startZ);
+            endArray.append(electrode.startA);
+            endArray.append(electrode.startB);
+            endArray.append(electrode.startC);
+            electrodePosObj["End"] = endArray;
+
+            holePositionObj["electrodePos"] = electrodePosObj;
+
+            holePositionsArray.append(holePositionObj);
         }
-        obj["electrodes"] = electrodesArray;
+        obj["holePositions"] = holePositionsArray;
 
         QJsonDocument doc(obj);
         QString filePath = getPartFilePath(partName);
