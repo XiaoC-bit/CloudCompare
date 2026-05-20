@@ -6277,101 +6277,6 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					m_Status = MachineStatus::Idle;
 					return false;
 				}
-
-				// 处理裁剪区域
-				if (capturePos.contains("cropRegion")) {
-					QJsonObject cropRegion = capturePos["cropRegion"].toObject();
-
-					// 加载选区
-					if (cropRegion.contains("regionFile")) {
-						QString regionFile = cropRegion["regionFile"].toString();
-						QJsonObject loadParams;
-						loadParams["path"] = QString("%1/PartInfo/%2").arg(appDir).arg(regionFile);
-						loadParams["name"] = QString("%1%2").arg(cloudName).arg("_Region");
-						QString errorMessage;
-						if (!loadInternal(loadParams, &errorMessage)) {
-							QJsonObject result;
-							QJsonObject obj;
-							obj["Result"] = "NG";
-							obj["Ret_Err"] = QString("Failed to load region file: %1").arg(errorMessage);
-							result["InspectResult"] = obj;
-							savePartInspectResult(rfid, result);
-							m_Status = MachineStatus::Idle;
-							return false;
-						}
-					}
-
-					// 切换视图、裁剪、删除选取（遍历所有child）
-					ccHObject* regionObject = nullptr;
-					ccHObject* dbRoot = m_app->dbRootObject();
-					if (dbRoot) {
-						for (unsigned i = 0; i < dbRoot->getChildrenNumber(); ++i) {
-							ccHObject* child = dbRoot->getChild(i);
-							if (child && child->getName() == QString("%1%2").arg(cloudName).arg("_Region")) {
-								regionObject = child;
-								break;
-							}
-						}
-					}
-
-					if (regionObject) {
-						// 遍历所有child
-						for (unsigned i = 0; i < regionObject->getChildrenNumber(); ++i) {
-							// 切换视图
-							if (cropRegion.contains("viewport")) {
-								QJsonObject viewportParams;
-								viewportParams["name"] = QString("%1%2").arg(cloudName).arg("_Region");
-								QString errorMessage;
-								if (!applyViewportInternalByIndex(viewportParams, i, &errorMessage)) {
-									QJsonObject result;
-									QJsonObject obj;
-									obj["Result"] = "NG";
-									obj["Ret_Err"] = QString("Failed to apply viewport for child %1: %2").arg(i).arg(errorMessage);
-									result["InspectResult"] = obj;
-									savePartInspectResult(rfid, result);
-									m_Status = MachineStatus::Idle;
-									return false;
-								}
-							}
-
-							// 进行裁剪
-							if (cropRegion.contains("cropParams")) {
-								QJsonObject segmentParams;
-								segmentParams["binName"] = QString("%1%2").arg(cloudName).arg("_Region");
-								segmentParams["meshName"] = cloudName;
-								segmentParams["modifySource"] = true;
-
-								QString errorMessage;
-								if (!segmentPolygonInternalByIndex(segmentParams, i, &errorMessage))
-								{
-									QJsonObject result;
-									QJsonObject obj;
-									obj["Result"] = "NG";
-									obj["Ret_Err"] = QString("Failed to segment point cloud: %1").arg(errorMessage);
-									result["InspectResult"] = obj;
-									savePartInspectResult(rfid, result);
-									m_Status = MachineStatus::Idle;
-									return false;
-								}
-							}
-
-							// 删除不感兴趣的部分
-							QJsonObject deleteParams;
-							deleteParams["name"] = QString("%1%2").arg(cloudName).arg("_segmented");
-							QString errorMessage;
-							if (!deleteObjectInternal(deleteParams, &errorMessage)) {
-								QJsonObject result;
-								QJsonObject obj;
-								obj["Result"] = "NG";
-								obj["Ret_Err"] = QString("Failed to delete object: %1").arg(errorMessage);
-								result["InspectResult"] = obj;
-								savePartInspectResult(rfid, result);
-								m_Status = MachineStatus::Idle;
-								return false;
-							}
-						}
-					}
-				}
 			}
 
 			// 合并当前打孔位置的所有点云
@@ -6394,6 +6299,105 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				}
 			} else if (cloudNames.size() == 1) {
 				mergedCloudName = cloudNames[0].toString();
+			}
+
+			// 处理裁剪区域（合并后再裁剪）
+			if (!mergedCloudName.isEmpty() && holePos.contains("cropRegion")) {
+				QJsonArray cropRegions = holePos["cropRegion"].toArray();
+				for (const QJsonValue& cropRegionVal : cropRegions) {
+					QJsonObject cropRegion = cropRegionVal.toObject();
+
+					// 加载选区
+					if (cropRegion.contains("regionFile")) {
+						QString regionFile = cropRegion["regionFile"].toString();
+						QJsonObject loadParams;
+						loadParams["path"] = QString("%1/PartConfig/%2").arg(appDir).arg(regionFile);
+						loadParams["name"] = QString("%1%2").arg(mergedCloudName).arg("_Region");
+						QString errorMessage;
+						if (!loadInternal(loadParams, &errorMessage)) {
+							QJsonObject result;
+							QJsonObject obj;
+							obj["Result"] = "NG";
+							obj["Ret_Err"] = QString("Failed to load region file: %1").arg(errorMessage);
+							result["InspectResult"] = obj;
+							savePartInspectResult(rfid, result);
+							m_Status = MachineStatus::Idle;
+							return false;
+						}
+					}
+
+					// 切换视图、裁剪、删除选取（遍历所有child）
+					ccHObject* regionObject = nullptr;
+					ccHObject* dbRoot = m_app->dbRootObject();
+					if (dbRoot) {
+						for (unsigned k = 0; k < dbRoot->getChildrenNumber(); ++k) {
+							ccHObject* child = dbRoot->getChild(k);
+							if (child && child->getName() == QString("%1%2").arg(mergedCloudName).arg("_Region")) {
+								regionObject = child;
+								break;
+							}
+						}
+					}
+
+					if (regionObject) {
+						// 遍历所有child
+						for (unsigned k = 0; k < regionObject->getChildrenNumber(); ++k) {
+							// 切换视图
+							if (true || cropRegion.contains("viewport")) {
+								QJsonObject viewportParams;
+								viewportParams["name"] = QString("%1%2").arg(mergedCloudName).arg("_Region");
+								QString errorMessage;
+								if (!applyViewportInternalByIndex(viewportParams, k, &errorMessage)) {
+									QJsonObject result;
+									QJsonObject obj;
+									obj["Result"] = "NG";
+									obj["Ret_Err"] = QString("Failed to apply viewport for child %1: %2").arg(k).arg(errorMessage);
+									result["InspectResult"] = obj;
+									savePartInspectResult(rfid, result);
+									m_Status = MachineStatus::Idle;
+									return false;
+								}
+							}
+
+							// 进行裁剪
+							if (true || cropRegion.contains("cropParams"))
+							{
+								QJsonObject segmentParams;
+								segmentParams["binName"] = QString("%1%2").arg(mergedCloudName).arg("_Region");
+								segmentParams["meshName"] = mergedCloudName;
+								segmentParams["modifySource"] = true;
+
+								QString errorMessage;
+								if (!segmentPolygonInternalByIndex(segmentParams, k, &errorMessage))
+								{
+									QJsonObject result;
+									QJsonObject obj;
+									obj["Result"] = "NG";
+									obj["Ret_Err"] = QString("Failed to segment point cloud: %1").arg(errorMessage);
+									result["InspectResult"] = obj;
+									savePartInspectResult(rfid, result);
+									m_Status = MachineStatus::Idle;
+									return false;
+								}
+							}
+
+							// 删除不感兴趣的部分
+							QJsonObject deleteParams;
+							deleteParams["name"] = QString("%1%2").arg(mergedCloudName).arg("_segmented");
+							QString errorMessage;
+							if (!deleteObjectInternal(deleteParams, &errorMessage)) {
+								QJsonObject result;
+								QJsonObject obj;
+								obj["Result"] = "NG";
+								obj["Ret_Err"] = QString("Failed to delete object: %1").arg(errorMessage);
+								result["InspectResult"] = obj;
+								savePartInspectResult(rfid, result);
+								m_Status = MachineStatus::Idle;
+								return false;
+							}
+						}
+					}
+				}
 			}
 
 			// 与理论模型进行 ICP 配准
@@ -6441,97 +6445,97 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 
 				icpResults.push_back(holeIcpReuslt);
 			}
-		} else if (inspectType == "probe") {
+		}
+		else if (inspectType == "probe")
+		{
 			// 测头检测逻辑
 			QString progPath = holePos.value("progPath").toString();
-			QJsonArray theoryPos = holePos.value("theoryPos").toArray();
 
-			if (progPath.isEmpty()) {
+			if (progPath.isEmpty())
+			{
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("ProgPath is required for probe inspection");
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("ProgPath is required for probe inspection");
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
-				return false;
-			}
-
-			if (theoryPos.isEmpty()) {
-				QJsonObject result;
-				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("TheoryPos is required for probe inspection");
-				result["InspectResult"] = obj;
-				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
 			// 构建测头检测程序路径
 			QString probeProgPath = templateDir + "/" + progPath;
-			QFile probeProgFile(probeProgPath);
-			if (!probeProgFile.exists()) {
+			QFile   probeProgFile(probeProgPath);
+			if (!probeProgFile.exists())
+			{
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Probe program file not found: %1").arg(probeProgPath);
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Probe program file not found: %1").arg(probeProgPath);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
-			// 发送文件到机床
-			if (!sendFileToMachine(probeProgPath, &errorMessage)) {
+			if (!setTempMainProgram(&errorMessage))
+			{
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Failed to send probe program: %1").arg(errorMessage);
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to set main program: %1").arg(errorMessage);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
+				return false;
+			}
+			// 发送文件到机床
+			if (!sendFileToMachine(probeProgPath, &errorMessage))
+			{
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to send probe program: %1").arg(errorMessage);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
 				return false;
 			}
 
 			// 设置主程序
-			if (!setMainProgram(&errorMessage)) {
+			if (!setMainProgram(&errorMessage))
+			{
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Failed to set main program: %1").arg(errorMessage);
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to set main program: %1").arg(errorMessage);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
 			// 启动机床
-			if (!startMachine(&errorMessage)) {
+			if (!startMachine(&errorMessage))
+			{
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Failed to start machine: %1").arg(errorMessage);
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to start machine: %1").arg(errorMessage);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
 			// 等待机床完成
-			if (!waitForMachineIdle(-1, &errorMessage)) {
+			if (!waitForMachineIdle(-1, &errorMessage))
+			{
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Machine did not become idle: %1").arg(errorMessage);
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Machine did not become idle: %1").arg(errorMessage);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
-			QString cncPath = "/h/lnc8/prog/";
-			QString cncFile = PART_INSPECT_RESULT_FILE_NAME;
+			QString cncPath   = "/h/lnc8/prog/";
+			QString cncFile   = PART_INSPECT_RESULT_FILE_NAME;
 			QString localFile = "D:\\Result\\Part\\" + rfid + ".res";
 
 			if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
@@ -6539,100 +6543,184 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				m_Status = MachineStatus::Idle;
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Failed to download file from machine: %1").arg(errorMessage);
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to download file from machine: %1").arg(errorMessage);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
-			//解析文件
+			ProbeFit6DOF_BC::G54Config measureG54;
+			measureG54.xyz   = Eigen::Vector3d(-51.837, -82.130, -93.148);
+			measureG54.B_deg = 0.0;
+			measureG54.C_deg = 0.0;
+
+			Eigen::Vector3d measureBcenter(-51.828, -82.531, -173.454);
+			Eigen::Vector3d measureCcenter(-51.798, -82.531, -173.454);
+
+			// ── 拟合器 ──
+			ProbeFit6DOF_BC fitter(measureG54, measureBcenter, measureCcenter);
+
+			// 解析文件
 			QFile file(localFile);
-			if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+			if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+			{
 				m_Status = MachineStatus::Idle;
 				QJsonObject result;
 				QJsonObject obj;
-				obj["Result"] = "NG";
-				obj["Ret_Err"] = QString("Failed to open inspection result file: %1").arg(file.errorString());
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
-				m_Status = MachineStatus::Idle;
 				return false;
 			}
 
-			// 读取宏变量获取测点数据
-			Eigen::MatrixXd measuredPoints(theoryPos.size(), 3);
-			Eigen::MatrixXd theoreticalPoints(theoryPos.size(), 3);
+			// ── 解析数据并添加测点 ──
+			QTextStream in(&file);
+			QString     content = in.readAll();
+			file.close();
 
-			for (int j = 0; j < theoryPos.size(); ++j) {
-				QJsonObject pos = theoryPos[j].toObject();
-				theoreticalPoints(j, 0) = pos.value("x").toDouble();
-				theoreticalPoints(j, 1) = pos.value("y").toDouble();
-				theoreticalPoints(j, 2) = pos.value("z").toDouble();
+			// 正则：匹配一组数据（支持任意空白分隔）
+			// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
+			QRegularExpression regex(
+			    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
+			    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
+			    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
+			    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
+			);
 
-				// 读取宏变量获取实际测量值
-				double x, y, z;
-				int baseAddr = 1000 + j * 3;
+			QRegularExpressionMatchIterator it         = regex.globalMatch(content);
+			int                             pointCount = 0;
 
-				if (!readMacro(baseAddr, x, &errorMessage)) {
-					QJsonObject result;
-					QJsonObject obj;
-					obj["Result"] = "NG";
-					obj["Ret_Err"] = QString("Failed to read X coordinate for point %1: %2").arg(j + 1).arg(errorMessage);
-					result["InspectResult"] = obj;
-					savePartInspectResult(rfid, result);
-					m_Status = MachineStatus::Idle;
-					return false;
-				}
+			bool ok = false;
+			while (it.hasNext())
+			{
+				QRegularExpressionMatch match = it.next();
 
-				if (!readMacro(baseAddr + 1, y, &errorMessage)) {
-					QJsonObject result;
-					QJsonObject obj;
-					obj["Result"] = "NG";
-					obj["Ret_Err"] = QString("Failed to read Y coordinate for point %1: %2").arg(j + 1).arg(errorMessage);
-					result["InspectResult"] = obj;
-					savePartInspectResult(rfid, result);
-					m_Status = MachineStatus::Idle;
-					return false;
-				}
+				double B = match.captured(1).toDouble(&ok);
+				if (!ok)
+					break;
+				double C = match.captured(2).toDouble(&ok);
+				if (!ok)
+					break;
 
-				if (!readMacro(baseAddr + 2, z, &errorMessage)) {
-					QJsonObject result;
-					QJsonObject obj;
-					obj["Result"] = "NG";
-					obj["Ret_Err"] = QString("Failed to read Z coordinate for point %1: %2").arg(j + 1).arg(errorMessage);
-					result["InspectResult"] = obj;
-					savePartInspectResult(rfid, result);
-					m_Status = MachineStatus::Idle;
-					return false;
-				}
+				double I = match.captured(3).toDouble(&ok);
+				if (!ok)
+					break;
+				double J = match.captured(4).toDouble(&ok);
+				if (!ok)
+					break;
+				double K = match.captured(5).toDouble(&ok);
+				if (!ok)
+					break;
 
-				measuredPoints(j, 0) = x;
-				measuredPoints(j, 1) = y;
-				measuredPoints(j, 2) = z;
+				double theoX = match.captured(6).toDouble(&ok);
+				if (!ok)
+					break;
+				double theoY = match.captured(7).toDouble(&ok);
+				if (!ok)
+					break;
+				double theoZ = match.captured(8).toDouble(&ok);
+				if (!ok)
+					break;
+
+				double actualX = match.captured(9).toDouble(&ok);
+				if (!ok)
+					break;
+				double actualY = match.captured(10).toDouble(&ok);
+				if (!ok)
+					break;
+				double actualZ = match.captured(11).toDouble(&ok);
+				if (!ok)
+					break;
+
+				fitter.addPoint({theoX, theoY, theoZ},
+				                {actualX, actualY, actualZ},
+				                {I, J, K},
+				                B,
+				                C);
+				pointCount++;
 			}
 
-			// 使用SVD算法计算变换矩阵
-			Eigen::Matrix4d transformMatrix = computeSVDTransform(measuredPoints, theoreticalPoints);
+			// 如果有任何解析失败，直接报异常
+			if (!ok)
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
+			}
 
-			// 存储变换矩阵结果
-			QJsonArray matrixArray;
-			for (int i = 0; i < 4; ++i) {
-				QJsonArray rowArray;
-				for (int j = 0; j < 4; ++j) {
-					rowArray.append(transformMatrix(i, j));
-				}
-				matrixArray.append(rowArray);
+			ProbeFit6DOF_BC::Result probeResult;
+			if (!fitter.solve(probeResult))
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
 			}
 
 			QJsonObject holeIcpReuslt;
 			holeIcpReuslt["holdId"] = holdId;
+
+			// 构建 4x4 变换矩阵
+			Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
+			transformMatrix.block<3, 3>(0, 0) = probeResult.R;
+			transformMatrix.block<3, 1>(0, 3) = probeResult.t;
+
+			// 存储变换矩阵
+			QJsonArray matrixArray;
+			for (int i = 0; i < 4; ++i)
+			{
+				QJsonArray rowArray;
+				for (int j = 0; j < 4; ++j)
+				{
+					rowArray.append(transformMatrix(i, j));
+				}
+				matrixArray.append(rowArray);
+			}
 			holeIcpReuslt["icpMatrix"] = matrixArray;
 
+			// 存储质心
+			QJsonArray centroidArray;
+			centroidArray.append(probeResult.centroid.x());
+			centroidArray.append(probeResult.centroid.y());
+			centroidArray.append(probeResult.centroid.z());
+			holeIcpReuslt["centroid"] = centroidArray;
+
+			// 存储旋转向量
+			QJsonArray omegaArray;
+			omegaArray.append(probeResult.omega.x());
+			omegaArray.append(probeResult.omega.y());
+			omegaArray.append(probeResult.omega.z());
+			holeIcpReuslt["omega"] = omegaArray;
+
+			// 存储拟合精度指标
+			holeIcpReuslt["rms"]              = probeResult.rms;
+			holeIcpReuslt["maxResidual"]      = probeResult.maxResidual;
+			holeIcpReuslt["maxResidualIndex"] = probeResult.maxResidualIndex;
+			holeIcpReuslt["dof"]              = probeResult.dof;
+
+			// 存储残差列表
+			QJsonArray residualsArray;
+			for (double residual : probeResult.residuals)
+			{
+				residualsArray.append(residual);
+			}
+			holeIcpReuslt["residuals"] = residualsArray;
+
 			// 存储电极放电位置信息
-			if (holePos.contains("electrodePos")) {
-				QJsonObject electrodePos = holePos["electrodePos"].toObject();
+			if (holePos.contains("electrodePos"))
+			{
+				QJsonObject electrodePos      = holePos["electrodePos"].toObject();
 				holeIcpReuslt["electrodePos"] = electrodePos;
 			}
 
