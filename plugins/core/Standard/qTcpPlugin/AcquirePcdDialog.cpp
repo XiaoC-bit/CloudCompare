@@ -111,9 +111,16 @@ void AcquirePcdDialog::onAcquisitionProgress()
     }
 
     int currentValue = m_progressBar->value();
-    if (currentValue < 90) {
-        m_progressBar->setValue(currentValue + 2);
+	if (currentValue < 30)
+	{
+		m_statusLabel->setText("正在初始化设备...");
+        m_progressBar->setValue(currentValue + 5);
     }
+	else if (currentValue < 90)
+	{
+		m_statusLabel->setText("正在扫描轮廓...");
+		m_progressBar->setValue(currentValue + 1);
+	}
 }
 
 void AcquirePcdDialog::onAcquisitionFinished(bool success, const QString& errorMessage)

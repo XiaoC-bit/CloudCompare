@@ -16,6 +16,7 @@
 #include <QCloseEvent>
 #include <qlabel.h>
 #include <qformlayout.h>
+#include <QIcon>
 #include <ccMainAppInterface.h>
 #include <ccHObject.h>
 #include <FileIOFilter.h>
@@ -1382,8 +1383,8 @@ PartElectrodeConfigDialog::ScanPositionConfigDialog::ScanPositionConfigDialog(QL
     : QDialog(parent), m_scanPositions(scanPositions), m_parentDialog(parentDialog)
 {
     setWindowTitle("配置扫描位置");
-    setMinimumSize(600, 450);
-    resize(650, 500);
+    setMinimumSize(700, 500);
+    resize(750, 550);
     initUI();
     updateScanPositionList();
 }
@@ -1501,41 +1502,53 @@ QListWidget::item:selected:active {
     mainLayout->addLayout(contentLayout);
 
     QHBoxLayout* buttonLayout = new QHBoxLayout();
-    buttonLayout->setSpacing(10);
+    buttonLayout->setSpacing(8);
 
-    m_addBtn = new QPushButton("添加扫描点", this);
-    m_addBtn->setFixedSize(100, 32);
-    buttonLayout->addWidget(m_addBtn);
+    QWidget* leftButtonGroup = new QWidget(this);
+    QHBoxLayout* leftLayout = new QHBoxLayout(leftButtonGroup);
+    leftLayout->setSpacing(6);
 
-    m_deleteBtn = new QPushButton("删除扫描点", this);
-    m_deleteBtn->setFixedSize(100, 32);
+    m_addBtn = new QPushButton(QIcon(":/CC/icons/plus.svg"), "添加", this);
+    m_addBtn->setFixedSize(90, 32);
+    leftLayout->addWidget(m_addBtn);
+
+    m_deleteBtn = new QPushButton(QIcon(":/CC/icons/minus.svg"), "删除", this);
+    m_deleteBtn->setFixedSize(90, 32);
     m_deleteBtn->setEnabled(false);
-    buttonLayout->addWidget(m_deleteBtn);
+    leftLayout->addWidget(m_deleteBtn);
 
-    m_copyBtn = new QPushButton("复制扫描点", this);
-    m_copyBtn->setFixedSize(100, 32);
+    m_copyBtn = new QPushButton(QIcon(":/CC/icons/copy.svg"), "复制", this);
+    m_copyBtn->setFixedSize(90, 32);
     m_copyBtn->setEnabled(false);
-    buttonLayout->addWidget(m_copyBtn);
+    leftLayout->addWidget(m_copyBtn);
 
-    m_renameBtn = new QPushButton("重命名", this);
-    m_renameBtn->setFixedSize(80, 32);
+    m_renameBtn = new QPushButton(QIcon(":/CC/icons/edit.svg"), "重命名", this);
+    m_renameBtn->setFixedSize(90, 32);
     m_renameBtn->setEnabled(false);
-    buttonLayout->addWidget(m_renameBtn);
+    leftLayout->addWidget(m_renameBtn);
 
-    m_getDeviceCoorBtn = new QPushButton("从设备获取坐标", this);
-    m_getDeviceCoorBtn->setFixedSize(120, 32);
+    buttonLayout->addWidget(leftButtonGroup);
+    buttonLayout->addStretch(1);
+
+    m_getDeviceCoorBtn = new QPushButton(QIcon(":/CC/icons/connect.svg"), "从设备获取坐标", this);
+    m_getDeviceCoorBtn->setFixedSize(140, 32);
     buttonLayout->addWidget(m_getDeviceCoorBtn);
+    buttonLayout->addStretch(1);
 
-    buttonLayout->addStretch();
+    QWidget* rightButtonGroup = new QWidget(this);
+    QHBoxLayout* rightLayout = new QHBoxLayout(rightButtonGroup);
+    rightLayout->setSpacing(8);
 
-    m_saveBtn = new QPushButton("保存", this);
+    m_saveBtn = new QPushButton(QIcon(":/CC/icons/save.svg"), "保存", this);
     m_saveBtn->setFixedSize(80, 32);
     m_saveBtn->setEnabled(false);
-    buttonLayout->addWidget(m_saveBtn);
+    rightLayout->addWidget(m_saveBtn);
 
-    m_cancelBtn = new QPushButton("取消", this);
+    m_cancelBtn = new QPushButton(QIcon(":/CC/icons/cancel.svg"), "取消", this);
     m_cancelBtn->setFixedSize(80, 32);
-    buttonLayout->addWidget(m_cancelBtn);
+    rightLayout->addWidget(m_cancelBtn);
+
+    buttonLayout->addWidget(rightButtonGroup);
 
     mainLayout->addLayout(buttonLayout);
 
