@@ -3155,6 +3155,8 @@ bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
 		if (errCode == LJS8IF_RC_OK)
 		{
 			const DWORD start = timeGetTime();
+			const int waitInterval = 50;
+
 			while (true)
 			{
 				if (timeGetTime() - start > static_cast<DWORD>(cfg.timeout_ms))
@@ -3166,6 +3168,10 @@ bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
 				{
 					break;
 				}
+
+				QEventLoop loop;
+				QTimer::singleShot(waitInterval, &loop, &QEventLoop::quit);
+				loop.exec();
 			}
 		}
 	}
