@@ -30,7 +30,6 @@ public:
 	explicit CalibrationDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent = nullptr);
 	~CalibrationDialog() override;
 
-	static QVector<QVector3D> getDefaultPositions();
 	QVector<QVector3D> getPositions() const;
 
 private slots:
@@ -38,6 +37,7 @@ private slots:
 	void onReset();
 	void onDeleteRow();
 	void onReadFromDevice();
+	void onSavePositions();
 
 protected:
 	void setupAdditionalUI() override;
@@ -48,15 +48,18 @@ protected:
 
 private:
 	void populateTable();
+	static QVector<Position> loadDefaultPositions();
+	static QVector<Position> defaultHardcodedPositions();
 
 	QTableWidget* m_tableWidget;
 	QPushButton* m_addButton;
 	QPushButton* m_resetButton;
+	QPushButton* m_saveButton;
 	QPushButton* m_startButton;
 	QPushButton* m_cancelButton;
 	QHBoxLayout* m_buttonLayout;
 
 	QVector<Position> m_positions;
-	static const QVector<Position> DEFAULT_POSITIONS;
-	static const int MAX_POSITIONS = 30;
+	int m_defaultPositionCount;
+	static const int MAX_POSITIONS;
 };

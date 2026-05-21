@@ -13,21 +13,97 @@
 #include <qevent.h>
 #include <QLabel>
 #include <QFrame>
+#include <QFile>
+#include <QDir>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonParseError>
 
-const QVector<CalibrationDialog::Position> CalibrationDialog::DEFAULT_POSITIONS = {
-    {0, 0, 0},
-    {5, 0, 0},
-    {5, 5, 0},
-    {5, 10, 0},
-    {10, 10, 0},
-    {0, 0, -2.5},
-    {0, 0, -5}
-};
+QVector<CalibrationDialog::Position> CalibrationDialog::loadDefaultPositions()
+{
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString calibrationPosFile = appDir + "/Template/CalibrationPos.json";
+
+    QFile file(calibrationPosFile);
+    if (!file.exists()) {
+        return defaultHardcodedPositions();
+    }
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return defaultHardcodedPositions();
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return defaultHardcodedPositions();
+    }
+
+    QJsonObject obj = doc.object();
+    if (!obj.contains("positions") || !obj["positions"].isArray()) {
+        return defaultHardcodedPositions();
+    }
+
+    QJsonArray positionsArray = obj["positions"].toArray();
+    if (positionsArray.isEmpty()) {
+        return defaultHardcodedPositions();
+    }
+
+    QVector<Position> positions;
+    positions.reserve(positionsArray.size());
+
+    for (int i = 0; i < positionsArray.size(); ++i) {
+        const QJsonValue entry = positionsArray.at(i);
+        if (entry.isObject()) {
+            const QJsonObject posObj = entry.toObject();
+            if (!posObj.contains("x") || !posObj.contains("y") || !posObj.contains("z")) {
+                return defaultHardcodedPositions();
+            }
+            positions.push_back(Position(
+                posObj["x"].toDouble(),
+                posObj["y"].toDouble(),
+                posObj["z"].toDouble()
+            ));
+        } else if (entry.isArray()) {
+            const QJsonArray posArray = entry.toArray();
+            if (posArray.size() != 3) {
+                return defaultHardcodedPositions();
+            }
+            positions.push_back(Position(
+                posArray[0].toDouble(),
+                posArray[1].toDouble(),
+                posArray[2].toDouble()
+            ));
+        } else {
+            return defaultHardcodedPositions();
+        }
+    }
+
+    return positions;
+}
+
+QVector<CalibrationDialog::Position> CalibrationDialog::defaultHardcodedPositions()
+{
+    QVector<Position> positions;
+    positions.push_back(Position(0, 0, 0));
+    positions.push_back(Position(5, 0, 0));
+    positions.push_back(Position(5, 5, 0));
+    positions.push_back(Position(5, 10, 0));
+    positions.push_back(Position(10, 10, 0));
+    positions.push_back(Position(0, 0, -2.5));
+    positions.push_back(Position(0, 0, -5));
+    return positions;
+}
 
 CalibrationDialog::CalibrationDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
     : MachineStatusDialog(app, pointCloudService, parent)
-    , m_positions(DEFAULT_POSITIONS)
+    , m_positions(loadDefaultPositions())
 {
+	m_defaultPositionCount = m_positions.size();
 	setWindowTitle("激光相机标定");
 	setFixedSize(450, 600);
 	init();
@@ -114,6 +190,11 @@ void CalibrationDialog::setupAdditionalUI()
 	separator->setFrameShadow(QFrame::Sunken);
 	m_mainLayout->addWidget(separator);
 
+	// --- 保存提示 ---
+	QLabel* saveTipLabel = new QLabel("💡 保存后，自动化流程将使用当前标定位置", this);
+	saveTipLabel->setStyleSheet("color: #666666; font-size: 12px;");
+	m_mainLayout->addWidget(saveTipLabel);
+
 	// --- 底部按钮 ---
 	m_buttonLayout = new QHBoxLayout();
 	m_buttonLayout->setSpacing(8);
@@ -123,6 +204,12 @@ void CalibrationDialog::setupAdditionalUI()
 	m_resetButton->setFixedHeight(32);
 	connect(m_resetButton, &QPushButton::clicked, this, &CalibrationDialog::onReset);
 	m_buttonLayout->addWidget(m_resetButton);
+
+	m_saveButton = new QPushButton("保存", this);
+	m_saveButton->setFixedWidth(80);
+	m_saveButton->setFixedHeight(32);
+	connect(m_saveButton, &QPushButton::clicked, this, &CalibrationDialog::onSavePositions);
+	m_buttonLayout->addWidget(m_saveButton);
 
 	m_buttonLayout->addStretch();
 
@@ -225,7 +312,7 @@ void CalibrationDialog::populateTable()
 
 void CalibrationDialog::onAddPosition()
 {
-	if (m_positions.size() >= MAX_POSITIONS) {
+	if (m_positions.size() >= 30) {
 		QMessageBox::warning(this, "警告", "最多只能添加30组数据");
 		return;
 	}
@@ -236,8 +323,58 @@ void CalibrationDialog::onAddPosition()
 
 void CalibrationDialog::onReset()
 {
-	m_positions = DEFAULT_POSITIONS;
+	m_positions = loadDefaultPositions();
 	populateTable();
+}
+
+void CalibrationDialog::onSavePositions()
+{
+	QMessageBox::StandardButton reply = QMessageBox::question(this, "确认保存",
+		"确定要保存当前标定位置吗？\n\n保存后，自动化流程将使用当前标定位置。",
+		QMessageBox::Yes | QMessageBox::No);
+
+	if (reply != QMessageBox::Yes) {
+		return;
+	}
+
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString calibrationPosFile = appDir + "/Template/CalibrationPos.json";
+
+	QDir dir(appDir + "/Template");
+	if (!dir.exists()) {
+		if (!dir.mkpath(appDir + "/Template")) {
+			QMessageBox::warning(this, "失败", "无法创建目录: " + appDir + "/Template");
+			return;
+		}
+	}
+
+	QJsonObject obj;
+	QJsonArray positionsArray;
+
+	for (const Position& pos : m_positions) {
+		QJsonObject posObj;
+		posObj["x"] = pos.x;
+		posObj["y"] = pos.y;
+		posObj["z"] = pos.z;
+		positionsArray.append(posObj);
+	}
+
+	obj["positions"] = positionsArray;
+
+	QJsonDocument doc(obj);
+
+	QFile file(calibrationPosFile);
+	if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		QMessageBox::warning(this, "失败", QString("无法打开文件: %1").arg(file.errorString()));
+		return;
+	}
+
+	file.write(doc.toJson(QJsonDocument::Indented));
+	file.close();
+
+	m_defaultPositionCount = m_positions.size();
+
+	QMessageBox::information(this, "成功", "标定位置已保存！\n\n自动化流程将使用当前标定位置。");
 }
 
 void CalibrationDialog::onReadFromDevice()
@@ -272,7 +409,7 @@ void CalibrationDialog::onDeleteRow()
 
 	int row = button->property("row").toInt();
 
-	if (m_positions.size() <= DEFAULT_POSITIONS.size()) {
+	if (m_positions.size() <= m_defaultPositionCount) {
 		QMessageBox::warning(this, "警告", "数据组数不能少于默认值数量");
 		return;
 	}
@@ -334,6 +471,9 @@ void CalibrationDialog::updateUIState()
 	if (m_resetButton) {
 		m_resetButton->setEnabled(!m_operationRunning);
 	}
+	if (m_saveButton) {
+		m_saveButton->setEnabled(!m_operationRunning);
+	}
 	if (m_startButton) {
 		m_startButton->setEnabled(operationEnabled);
 	}
@@ -355,14 +495,7 @@ void CalibrationDialog::updateUIState()
 	m_progressBar->setVisible(m_operationRunning);
 }
 
-QVector<QVector3D> CalibrationDialog::getDefaultPositions()
-{
-	QVector<QVector3D> positions;
-	for (const Position& pos : DEFAULT_POSITIONS) {
-		positions.append(QVector3D(pos.x, pos.y, pos.z));
-	}
-	return positions;
-}
+
 
 QVector<QVector3D> CalibrationDialog::getPositions() const
 {
