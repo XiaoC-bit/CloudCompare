@@ -64,11 +64,13 @@ void CalibrationDialog::setupAdditionalUI()
 
 	// --- 表格 ---
 	m_tableWidget = new QTableWidget(this);
-	m_tableWidget->setColumnCount(4);
-	m_tableWidget->setHorizontalHeaderLabels({"X (mm)", "Y (mm)", "Z (mm)", "操作"});
+	m_tableWidget->setColumnCount(5);
+	m_tableWidget->setHorizontalHeaderLabels({"X (mm)", "Y (mm)", "Z (mm)", "读取", "操作"});
 	m_tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
-	m_tableWidget->setColumnWidth(3, 64);
+	m_tableWidget->setColumnWidth(3, 72);
+	m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Fixed);
+	m_tableWidget->setColumnWidth(4, 64);
 	m_tableWidget->setShowGrid(false);
 	m_tableWidget->setAlternatingRowColors(true);
 	m_tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -169,6 +171,30 @@ void CalibrationDialog::populateTable()
 		m_tableWidget->setCellWidget(i, 1, makeSpinBox(pos.y));
 		m_tableWidget->setCellWidget(i, 2, makeSpinBox(pos.z));
 
+		QPushButton* readButton = new QPushButton("读取");
+		readButton->setFixedHeight(24);
+		readButton->setProperty("row", i);
+		readButton->setStyleSheet(R"(
+            QPushButton {
+                color: #3366cc;
+                border: 1px solid #3366cc;
+                border-radius: 3px;
+                background: transparent;
+                font-size: 12px;
+                padding: 0 6px;
+            }
+            QPushButton:hover {
+                background-color: #f0f5ff;
+            }
+        )");
+		connect(readButton, &QPushButton::clicked, this, &CalibrationDialog::onReadFromDevice);
+
+		QWidget*     readCellWidget = new QWidget();
+		QHBoxLayout* readCellLayout = new QHBoxLayout(readCellWidget);
+		readCellLayout->setContentsMargins(4, 2, 4, 2);
+		readCellLayout->addWidget(readButton);
+		m_tableWidget->setCellWidget(i, 3, readCellWidget);
+
 		QPushButton* deleteButton = new QPushButton("删除");
 		deleteButton->setFixedHeight(24);
 		deleteButton->setProperty("row", i);
@@ -187,12 +213,11 @@ void CalibrationDialog::populateTable()
         )");
 		connect(deleteButton, &QPushButton::clicked, this, &CalibrationDialog::onDeleteRow);
 
-		// 让删除按钮在单元格里垂直居中
 		QWidget*     cellWidget = new QWidget();
 		QHBoxLayout* cellLayout = new QHBoxLayout(cellWidget);
 		cellLayout->setContentsMargins(4, 2, 4, 2);
 		cellLayout->addWidget(deleteButton);
-		m_tableWidget->setCellWidget(i, 3, cellWidget);
+		m_tableWidget->setCellWidget(i, 4, cellWidget);
 	}
 
 	m_tableWidget->setUpdatesEnabled(true);
@@ -213,6 +238,31 @@ void CalibrationDialog::onReset()
 {
 	m_positions = DEFAULT_POSITIONS;
 	populateTable();
+}
+
+void CalibrationDialog::onReadFromDevice()
+{
+	QPushButton* button = qobject_cast<QPushButton*>(sender());
+	if (!button) return;
+
+	int row = button->property("row").toInt();
+
+	double x, y, z, a, b, c;
+	QString errorMessage;
+
+	if (m_pointCloudService->getDeviceMainAxisCoor(x, y, z, a, b, c, &errorMessage)) {
+		QDoubleSpinBox* xSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(row, 0));
+		QDoubleSpinBox* ySpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(row, 1));
+		QDoubleSpinBox* zSpinBox = static_cast<QDoubleSpinBox*>(m_tableWidget->cellWidget(row, 2));
+
+		if (xSpinBox && ySpinBox && zSpinBox) {
+			xSpinBox->setValue(x);
+			ySpinBox->setValue(y);
+			zSpinBox->setValue(z);
+		}
+	} else {
+		QMessageBox::warning(this, "失败", QString("获取设备坐标失败: %1").arg(errorMessage));
+	}
 }
 
 void CalibrationDialog::onDeleteRow()

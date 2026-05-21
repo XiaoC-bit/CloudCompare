@@ -37,6 +37,7 @@ private slots:
 	void onAddPosition();
 	void onReset();
 	void onDeleteRow();
+	void onReadFromDevice();
 
 protected:
 	void setupAdditionalUI() override;
