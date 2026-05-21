@@ -136,6 +136,12 @@ void CalibrationDialog::setupAdditionalUI()
 	connect(m_addButton, &QPushButton::clicked, this, &CalibrationDialog::onAddPosition);
 	headerLayout->addWidget(m_addButton);
 
+	m_generateButton = new QPushButton("生成位置", this);
+	m_generateButton->setFixedHeight(28);
+	m_generateButton->setFixedWidth(80);
+	connect(m_generateButton, &QPushButton::clicked, this, &CalibrationDialog::onGeneratePositions);
+	headerLayout->addWidget(m_generateButton);
+
 	m_mainLayout->addLayout(headerLayout);
 
 	// --- 表格 ---
@@ -328,6 +334,87 @@ void CalibrationDialog::onAddPosition()
 	populateTable();
 }
 
+void CalibrationDialog::onGeneratePositions()
+{
+	if (m_positions.isEmpty()) {
+		QMessageBox::warning(this, "警告", "请先添加或设置第一个标定位置");
+		return;
+	}
+
+	QDialog dialog(this);
+	dialog.setWindowTitle("生成标定位置");
+	dialog.setFixedSize(320, 180);
+
+	QVBoxLayout* layout = new QVBoxLayout(&dialog);
+	layout->setContentsMargins(20, 20, 20, 20);
+	layout->setSpacing(15);
+
+	QHBoxLayout* stepLayout = new QHBoxLayout();
+	QLabel* stepLabel = new QLabel("步长 (mm):");
+	QDoubleSpinBox* stepSpinBox = new QDoubleSpinBox();
+	stepSpinBox->setMinimum(0.1);
+	stepSpinBox->setMaximum(50);
+	stepSpinBox->setDecimals(1);
+	stepSpinBox->setValue(5);
+	stepLayout->addWidget(stepLabel);
+	stepLayout->addWidget(stepSpinBox);
+	layout->addLayout(stepLayout);
+
+	QHBoxLayout* countLayout = new QHBoxLayout();
+	QLabel* countLabel = new QLabel("位置个数:");
+	QSpinBox* countSpinBox = new QSpinBox();
+	countSpinBox->setMinimum(2);
+	countSpinBox->setMaximum(30);
+	countSpinBox->setValue(7);
+	countLayout->addWidget(countLabel);
+	countLayout->addWidget(countSpinBox);
+	layout->addLayout(countLayout);
+
+	QHBoxLayout* buttonLayout = new QHBoxLayout();
+	QPushButton* okButton = new QPushButton("确定");
+	QPushButton* cancelButton = new QPushButton("取消");
+	okButton->setDefault(true);
+	buttonLayout->addStretch();
+	buttonLayout->addWidget(okButton);
+	buttonLayout->addWidget(cancelButton);
+	layout->addLayout(buttonLayout);
+
+	connect(okButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+	connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+	if (dialog.exec() != QDialog::Accepted) {
+		return;
+	}
+
+	double step = stepSpinBox->value();
+	int count = countSpinBox->value();
+
+	const Position& firstPos = m_positions[0];
+
+	QVector<Position> newPositions;
+	newPositions.reserve(count);
+	newPositions.append(firstPos);
+
+	if (count >= 2) newPositions.append(Position(firstPos.x + step, firstPos.y, firstPos.z));
+	if (count >= 3) newPositions.append(Position(firstPos.x + step, firstPos.y + step, firstPos.z));
+	if (count >= 4) newPositions.append(Position(firstPos.x + step, firstPos.y + step * 2, firstPos.z));
+	if (count >= 5) newPositions.append(Position(firstPos.x + step * 2, firstPos.y + step * 2, firstPos.z));
+	if (count >= 6) newPositions.append(Position(firstPos.x, firstPos.y, firstPos.z - step / 2));
+	if (count >= 7) newPositions.append(Position(firstPos.x, firstPos.y, firstPos.z - step));
+
+	for (int i = 7; i < count; ++i) {
+		double offset = (i - 6) * step;
+		newPositions.append(Position(firstPos.x + offset, firstPos.y, firstPos.z));
+	}
+
+	m_positions = newPositions;
+	populateTable();
+
+	m_defaultPositionCount = m_positions.size();
+
+	QMessageBox::information(this, "成功", QString("已生成 %1 个标定位置").arg(count));
+}
+
 void CalibrationDialog::onReset()
 {
 	m_positions = loadDefaultPositions();
@@ -478,6 +565,9 @@ void CalibrationDialog::updateUIState()
 
 	if (m_addButton) {
 		m_addButton->setEnabled(!m_operationRunning);
+	}
+	if (m_generateButton) {
+		m_generateButton->setEnabled(!m_operationRunning);
 	}
 	if (m_resetButton) {
 		m_resetButton->setEnabled(!m_operationRunning);

@@ -38,6 +38,7 @@ private slots:
 	void onDeleteRow();
 	void onReadFromDevice();
 	void onSavePositions();
+	void onGeneratePositions();
 
 protected:
 	void setupAdditionalUI() override;
@@ -53,6 +54,7 @@ private:
 
 	QTableWidget* m_tableWidget;
 	QPushButton* m_addButton;
+	QPushButton* m_generateButton;
 	QPushButton* m_resetButton;
 	QPushButton* m_saveButton;
 	QPushButton* m_startButton;
