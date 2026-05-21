@@ -18,11 +18,11 @@
 CalibrationResultDialog::CalibrationResultDialog(QWidget* parent)
     : QDialog(parent)
 {
-	setWindowTitle("相机手眼标定结果");
-	setMinimumWidth(900);
-	setMinimumHeight(700);
-	initUI();
-	loadCalibrationResult();
+    setWindowTitle("相机手眼标定结果");
+    setMinimumWidth(900);
+    setMinimumHeight(700);
+    initUI();
+    loadCalibrationResult();
 }
 
 CalibrationResultDialog::~CalibrationResultDialog()
@@ -31,313 +31,427 @@ CalibrationResultDialog::~CalibrationResultDialog()
 
 void CalibrationResultDialog::initUI()
 {
-	QVBoxLayout* mainLayout = new QVBoxLayout(this);
-	mainLayout->setContentsMargins(16, 16, 16, 16);
-	mainLayout->setSpacing(16);
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(20, 16, 20, 16);
+    mainLayout->setSpacing(10);
 
-	QFrame* overviewFrame = new QFrame();
-	overviewFrame->setFrameShape(QFrame::Box);
-	overviewFrame->setStyleSheet("QFrame { border: 1px solid #d0d0d0; border-radius: 4px; }");
-	QVBoxLayout* overviewLayout = new QVBoxLayout(overviewFrame);
-	overviewLayout->setContentsMargins(12, 12, 12, 12);
-	overviewLayout->setSpacing(8);
+    // ── 1. 结果概览 ──────────────────────────────────────────────────────────
+    {
+        QFrame* card = new QFrame();
+        card->setFrameShape(QFrame::NoFrame);
+        card->setStyleSheet(R"(
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+            }
+        )");
 
-	QLabel* overviewTitle = new QLabel("结果概览");
-	QFont titleFont = overviewTitle->font();
-	titleFont.setBold(true);
-	titleFont.setPointSize(titleFont.pointSize() + 1);
-	overviewTitle->setFont(titleFont);
-	overviewLayout->addWidget(overviewTitle);
+        QVBoxLayout* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(14, 12, 14, 12);
+        cardLayout->setSpacing(10);
 
-	QGridLayout* gridLayout = new QGridLayout();
-	gridLayout->setSpacing(12);
+        QLabel* titleLabel = new QLabel("结果概览");
+        QFont titleFont = titleLabel->font();
+        titleFont.setBold(true);
+        titleFont.setPointSize(titleFont.pointSize() + 1);
+        titleLabel->setFont(titleFont);
+        titleLabel->setStyleSheet("border: none; background: transparent;");
+        cardLayout->addWidget(titleLabel);
 
-	gridLayout->addWidget(new QLabel("标定结果:"), 0, 0);
-	m_resultLabel = new QLabel("--");
-	gridLayout->addWidget(m_resultLabel, 0, 1);
+        QFrame* sep = new QFrame();
+        sep->setFrameShape(QFrame::HLine);
+        sep->setStyleSheet("border: none; background-color: #e0e0e0; max-height: 1px;");
+        cardLayout->addWidget(sep);
 
-	gridLayout->addWidget(new QLabel("任务状态:"), 0, 2);
-	m_statusLabel = new QLabel("--");
-	gridLayout->addWidget(m_statusLabel, 0, 3);
+        QGridLayout* grid = new QGridLayout();
+        grid->setHorizontalSpacing(12);
+        grid->setVerticalSpacing(8);
+        grid->setColumnMinimumWidth(1, 110);
+        grid->setColumnMinimumWidth(3, 110);
 
-	gridLayout->addWidget(new QLabel("有效点数:"), 1, 0);
-	m_positionCountLabel = new QLabel("--");
-	gridLayout->addWidget(m_positionCountLabel, 1, 1);
+        auto addRow = [&](int row, int col, const QString& key, QLabel*& valueLabel) {
+            QLabel* keyLbl = new QLabel(key);
+            keyLbl->setStyleSheet("color: #444444; background: transparent; border: none;");
+            grid->addWidget(keyLbl, row, col * 2);
+            valueLabel = new QLabel("--");
+            valueLabel->setStyleSheet("color: #111111; font-weight: 600; background: transparent; border: none;");
+            grid->addWidget(valueLabel, row, col * 2 + 1);
+        };
 
-	gridLayout->addWidget(new QLabel("残差是否合格:"), 1, 2);
-	m_residualOkLabel = new QLabel("--");
-	gridLayout->addWidget(m_residualOkLabel, 1, 3);
+        addRow(0, 0, "标定结果:",     m_resultLabel);
+        addRow(0, 1, "任务状态:",     m_statusLabel);
+        addRow(1, 0, "有效点数:",     m_positionCountLabel);
+        addRow(1, 1, "残差是否合格:", m_residualOkLabel);
+        addRow(2, 0, "残差阈值:",     m_residualThresholdLabel);
 
-	gridLayout->addWidget(new QLabel("残差阈值:"), 2, 0);
-	m_residualThresholdLabel = new QLabel("--");
-	gridLayout->addWidget(m_residualThresholdLabel, 2, 1);
+        cardLayout->addLayout(grid);
 
-	overviewLayout->addLayout(gridLayout);
+        QFrame* sep2 = new QFrame();
+        sep2->setFrameShape(QFrame::HLine);
+        sep2->setStyleSheet("border: none; background-color: #e0e0e0; max-height: 1px;");
+        cardLayout->addWidget(sep2);
 
-	QLabel* messageLabel = new QLabel("过程消息:");
-	overviewLayout->addWidget(messageLabel);
+        QLabel* msgKeyLabel = new QLabel("过程消息:");
+        msgKeyLabel->setStyleSheet("color: #444444; background: transparent; border: none;");
+        cardLayout->addWidget(msgKeyLabel);
 
-	m_messageTextEdit = new QTextEdit();
-	m_messageTextEdit->setReadOnly(true);
-	m_messageTextEdit->setMaximumHeight(60);
-	m_messageTextEdit->setStyleSheet("QTextEdit { border: 1px solid #d0d0d0; border-radius: 3px; }");
-	overviewLayout->addWidget(m_messageTextEdit);
+        m_messageTextEdit = new QTextEdit();
+        m_messageTextEdit->setReadOnly(true);
+        m_messageTextEdit->setFixedHeight(52);
+        m_messageTextEdit->setStyleSheet(R"(
+            QTextEdit {
+                border: 1px solid #d0d0d0;
+                border-radius: 3px;
+                background-color: #f7f7f9;
+                color: #555555;
+                font-size: 12px;
+            }
+        )");
+        cardLayout->addWidget(m_messageTextEdit);
 
-	mainLayout->addWidget(overviewFrame);
+        mainLayout->addWidget(card);
+    }
 
-	QLabel* fitResultsTitle = new QLabel("采样点明细");
-	fitResultsTitle->setFont(titleFont);
-	mainLayout->addWidget(fitResultsTitle);
+    // ── 2. 采样点明细 ─────────────────────────────────────────────────────────
+    {
+        QLabel* sectionLabel = new QLabel("采样点明细");
+        QFont f = sectionLabel->font();
+        f.setBold(true);
+        f.setPointSize(f.pointSize() + 1);
+        sectionLabel->setFont(f);
+        mainLayout->addWidget(sectionLabel);
 
-	m_fitResultsTable = new QTableWidget();
-	m_fitResultsTable->setColumnCount(9);
-	m_fitResultsTable->setHorizontalHeaderLabels({
-		"点号", "Machine X", "Machine Y", "Machine Z",
-		"Scanner X", "Scanner Y", "Scanner Z", "RMS", "Residual"
-	});
-	m_fitResultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-	m_fitResultsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-	m_fitResultsTable->setAlternatingRowColors(true);
-	mainLayout->addWidget(m_fitResultsTable, 1);
+        m_fitResultsTable = new QTableWidget();
+        m_fitResultsTable->setColumnCount(9);
+        m_fitResultsTable->setHorizontalHeaderLabels({
+            "#", "Machine X", "Machine Y", "Machine Z",
+            "Scanner X", "Scanner Y", "Scanner Z", "RMS", "Residual"
+        });
+        m_fitResultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        m_fitResultsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
+        m_fitResultsTable->setColumnWidth(0, 40);
+        m_fitResultsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_fitResultsTable->setAlternatingRowColors(true);
+        m_fitResultsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+        m_fitResultsTable->setShowGrid(false);
+        m_fitResultsTable->verticalHeader()->setVisible(false);
+        m_fitResultsTable->horizontalHeader()->setHighlightSections(false);
+        m_fitResultsTable->verticalHeader()->setDefaultSectionSize(36);
+        m_fitResultsTable->setStyleSheet(R"(
+            QTableWidget {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background-color: #ffffff;
+                alternate-background-color: #f7f7f9;
+                outline: none;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f2;
+                color: #444444;
+                font-weight: bold;
+                padding: 4px 8px;
+                border: none;
+                border-bottom: 1px solid #d0d0d0;
+            }
+            QTableWidget::item {
+                padding: 0px 4px;
+            }
+            QTableWidget::item:selected {
+                background-color: #dce8ff;
+                color: #000000;
+            }
+        )");
 
-	QLabel* matrixTitle = new QLabel("Scanner → Machine 变换矩阵");
-	matrixTitle->setFont(titleFont);
-	mainLayout->addWidget(matrixTitle);
+        mainLayout->addWidget(m_fitResultsTable, 1);
+    }
 
-	m_matrixTable = new QTableWidget();
-	m_matrixTable->setColumnCount(4);
-	m_matrixTable->setRowCount(4);
-	m_matrixTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-	m_matrixTable->horizontalHeader()->setVisible(false);
-	m_matrixTable->verticalHeader()->setVisible(false);
-	m_matrixTable->setMaximumHeight(180);
-	m_matrixTable->setStyleSheet(R"(
-		QTableWidget { border: 1px solid #d0d0d0; border-radius: 4px; }
-		QTableWidget::item { 
-			text-align: center; 
-			font-family: monospace;
-			padding: 4px;
-		}
-	)");
-	mainLayout->addWidget(m_matrixTable);
+    // ── 3. 变换矩阵 ───────────────────────────────────────────────────────────
+    {
+        QLabel* sectionLabel = new QLabel("Scanner → Machine 变换矩阵");
+        QFont f = sectionLabel->font();
+        f.setBold(true);
+        f.setPointSize(f.pointSize() + 1);
+        sectionLabel->setFont(f);
+        mainLayout->addWidget(sectionLabel);
 
-	QFrame* statsFrame = new QFrame();
-	statsFrame->setFrameShape(QFrame::Box);
-	statsFrame->setStyleSheet("QFrame { border: 1px solid #d0d0d0; border-radius: 4px; }");
-	QVBoxLayout* statsLayout = new QVBoxLayout(statsFrame);
-	statsLayout->setContentsMargins(12, 12, 12, 12);
+        m_matrixTable = new QTableWidget();
+        m_matrixTable->setColumnCount(4);
+        m_matrixTable->setRowCount(4);
+        m_matrixTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_matrixTable->horizontalHeader()->setVisible(false);
+        m_matrixTable->verticalHeader()->setVisible(false);
+        m_matrixTable->setFixedHeight(148);
+        m_matrixTable->setAlternatingRowColors(true);
+        m_matrixTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        m_matrixTable->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        m_matrixTable->setStyleSheet(R"(
+            QTableWidget {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background-color: #ffffff;
+                alternate-background-color: #f7f7f9;
+                font-family: "Consolas", "Courier New", monospace;
+                font-size: 12px;
+                outline: none;
+            }
+            QTableWidget::item {
+                padding: 4px 10px;
+            }
+            QTableWidget::item:selected {
+                background-color: #dce8ff;
+                color: #000000;
+            }
+        )");
 
-	QLabel* statsTitle = new QLabel("统计信息");
-	statsTitle->setFont(titleFont);
-	statsLayout->addWidget(statsTitle);
+        mainLayout->addWidget(m_matrixTable);
+    }
 
-	QGridLayout* statsGrid = new QGridLayout();
-	statsGrid->setSpacing(12);
+    // ── 4. 统计信息 ───────────────────────────────────────────────────────────
+    {
+        QFrame* card = new QFrame();
+        card->setFrameShape(QFrame::NoFrame);
+        card->setStyleSheet(R"(
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+            }
+        )");
 
-	statsGrid->addWidget(new QLabel("最大 Residual:"), 0, 0);
-	m_maxResidualLabel = new QLabel("--");
-	statsGrid->addWidget(m_maxResidualLabel, 0, 1);
+        QVBoxLayout* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(14, 12, 14, 12);
+        cardLayout->setSpacing(10);
 
-	statsGrid->addWidget(new QLabel("最小 Residual:"), 0, 2);
-	m_minResidualLabel = new QLabel("--");
-	statsGrid->addWidget(m_minResidualLabel, 0, 3);
+        QLabel* titleLabel = new QLabel("统计信息");
+        QFont f = titleLabel->font();
+        f.setBold(true);
+        f.setPointSize(f.pointSize() + 1);
+        titleLabel->setFont(f);
+        titleLabel->setStyleSheet("border: none; background: transparent;");
+        cardLayout->addWidget(titleLabel);
 
-	statsGrid->addWidget(new QLabel("平均 Residual:"), 1, 0);
-	m_avgResidualLabel = new QLabel("--");
-	statsGrid->addWidget(m_avgResidualLabel, 1, 1);
+        QFrame* sep = new QFrame();
+        sep->setFrameShape(QFrame::HLine);
+        sep->setStyleSheet("border: none; background-color: #e0e0e0; max-height: 1px;");
+        cardLayout->addWidget(sep);
 
-	statsGrid->addWidget(new QLabel("最大 RMS:"), 1, 2);
-	m_maxRmsLabel = new QLabel("--");
-	statsGrid->addWidget(m_maxRmsLabel, 1, 3);
+        QGridLayout* grid = new QGridLayout();
+        grid->setHorizontalSpacing(12);
+        grid->setVerticalSpacing(8);
+        grid->setColumnMinimumWidth(1, 110);
+        grid->setColumnMinimumWidth(3, 110);
 
-	statsGrid->addWidget(new QLabel("平均 RMS:"), 2, 0);
-	m_avgRmsLabel = new QLabel("--");
-	statsGrid->addWidget(m_avgRmsLabel, 2, 1);
+        auto addStat = [&](int row, int col, const QString& key, QLabel*& lbl) {
+            QLabel* k = new QLabel(key);
+            k->setStyleSheet("color: #444444; background: transparent; border: none;");
+            grid->addWidget(k, row, col * 2);
+            lbl = new QLabel("--");
+            lbl->setStyleSheet("color: #111111; font-weight: 600; background: transparent; border: none;");
+            grid->addWidget(lbl, row, col * 2 + 1);
+        };
 
-	statsLayout->addLayout(statsGrid);
-	mainLayout->addWidget(statsFrame);
+        addStat(0, 0, "最大 Residual:", m_maxResidualLabel);
+        addStat(0, 1, "最小 Residual:", m_minResidualLabel);
+        addStat(1, 0, "平均 Residual:", m_avgResidualLabel);
+        addStat(1, 1, "最大 RMS:",      m_maxRmsLabel);
+        addStat(2, 0, "平均 RMS:",      m_avgRmsLabel);
+
+        cardLayout->addLayout(grid);
+        mainLayout->addWidget(card);
+    }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  逻辑部分与原版完全相同，仅调整高亮色以匹配浅色主题
+// ─────────────────────────────────────────────────────────────────────────────
 
 void CalibrationResultDialog::loadCalibrationResult()
 {
-	QString appDir = QCoreApplication::applicationDirPath();
-	QString filePath = appDir + "/Template/camera_calibration_status.json";
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString filePath = appDir + "/Template/camera_calibration_status.json";
 
-	QFile file(filePath);
-	if (!file.exists()) {
-		m_messageTextEdit->setText("标定结果文件不存在: " + filePath);
-		return;
-	}
+    QFile file(filePath);
+    if (!file.exists()) {
+        m_messageTextEdit->setText("标定结果文件不存在: " + filePath);
+        return;
+    }
 
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-		m_messageTextEdit->setText("无法打开标定结果文件");
-		return;
-	}
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        m_messageTextEdit->setText("无法打开标定结果文件");
+        return;
+    }
 
-	QByteArray data = file.readAll();
-	file.close();
+    QByteArray data = file.readAll();
+    file.close();
 
-	QJsonParseError parseError;
-	QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-	if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-		m_messageTextEdit->setText("无效的JSON格式: " + parseError.errorString());
-		return;
-	}
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        m_messageTextEdit->setText("无效的JSON格式: " + parseError.errorString());
+        return;
+    }
 
-	QJsonObject root = doc.object();
+    QJsonObject root = doc.object();
 
-	if (root.contains("Message")) {
-		m_messageTextEdit->setText(root["Message"].toString());
-	}
+    if (root.contains("Message")) {
+        m_messageTextEdit->setText(root["Message"].toString());
+    }
 
-	if (root.contains("Result")) {
-		QString result = root["Result"].toString();
-		m_resultLabel->setText(result);
-		m_resultLabel->setStyleSheet(result == "OK" ? "color: #2ecc71;" : "color: #e74c3c;");
-	}
+    if (root.contains("Result")) {
+        QString result = root["Result"].toString();
+        m_resultLabel->setText(result);
+        m_resultLabel->setStyleSheet(result == "OK"
+            ? "color: #2e8b57; font-weight: 700; background: transparent; border: none;"
+            : "color: #cc3333; font-weight: 700; background: transparent; border: none;");
+    }
 
-	if (root.contains("Status")) {
-		m_statusLabel->setText(root["Status"].toString());
-	}
+    if (root.contains("Status")) {
+        m_statusLabel->setText(root["Status"].toString());
+    }
 
-	if (root.contains("CalibrationResult")) {
-		QJsonObject calibrationResult = root["CalibrationResult"].toObject();
-		updateResultOverview(calibrationResult);
+    if (root.contains("CalibrationResult")) {
+        QJsonObject calibrationResult = root["CalibrationResult"].toObject();
+        updateResultOverview(calibrationResult);
 
-		if (calibrationResult.contains("FitResults")) {
-			QJsonArray fitResults = calibrationResult["FitResults"].toArray();
-			QJsonArray residuals = calibrationResult.contains("Residuals") 
-				? calibrationResult["Residuals"].toArray() 
-				: QJsonArray();
-			double threshold = calibrationResult.contains("ResidualThreshold") 
-				? calibrationResult["ResidualThreshold"].toDouble() 
-				: 0.12;
-			updateFitResultsTable(fitResults, residuals, threshold);
-		}
+        if (calibrationResult.contains("FitResults")) {
+            QJsonArray fitResults = calibrationResult["FitResults"].toArray();
+            QJsonArray residuals = calibrationResult.contains("Residuals")
+                ? calibrationResult["Residuals"].toArray()
+                : QJsonArray();
+            double threshold = calibrationResult.contains("ResidualThreshold")
+                ? calibrationResult["ResidualThreshold"].toDouble()
+                : 0.12;
+            updateFitResultsTable(fitResults, residuals, threshold);
+        }
 
-		if (calibrationResult.contains("Matrix")) {
-			updateMatrix(calibrationResult["Matrix"].toArray());
-		}
+        if (calibrationResult.contains("Matrix")) {
+            updateMatrix(calibrationResult["Matrix"].toArray());
+        }
 
-		if (calibrationResult.contains("FitResults") && calibrationResult.contains("Residuals")) {
-			updateStatistics(calibrationResult["FitResults"].toArray(), 
-							calibrationResult["Residuals"].toArray());
-		}
-	}
+        if (calibrationResult.contains("FitResults") && calibrationResult.contains("Residuals")) {
+            updateStatistics(calibrationResult["FitResults"].toArray(),
+                             calibrationResult["Residuals"].toArray());
+        }
+    }
 }
 
 void CalibrationResultDialog::updateResultOverview(const QJsonObject& result)
 {
-	if (result.contains("Result")) {
-		QString res = result["Result"].toString();
-		m_resultLabel->setText(res);
-		m_resultLabel->setStyleSheet(res == "OK" ? "color: #2ecc71;" : "color: #e74c3c;");
-	}
+    if (result.contains("Result")) {
+        QString res = result["Result"].toString();
+        m_resultLabel->setText(res);
+        m_resultLabel->setStyleSheet(res == "OK"
+            ? "color: #2e8b57; font-weight: 700; background: transparent; border: none;"
+            : "color: #cc3333; font-weight: 700; background: transparent; border: none;");
+    }
 
-	if (result.contains("PositionCount")) {
-		m_positionCountLabel->setText(QString::number(result["PositionCount"].toInt()));
-	}
+    if (result.contains("PositionCount")) {
+        m_positionCountLabel->setText(QString::number(result["PositionCount"].toInt()));
+    }
 
-	if (result.contains("ResidualOk")) {
-		bool ok = result["ResidualOk"].toBool();
-		m_residualOkLabel->setText(ok ? "合格" : "不合格");
-		m_residualOkLabel->setStyleSheet(ok ? "color: #2ecc71;" : "color: #e74c3c;");
-	}
+    if (result.contains("ResidualOk")) {
+        bool ok = result["ResidualOk"].toBool();
+        m_residualOkLabel->setText(ok ? "合格" : "不合格");
+        m_residualOkLabel->setStyleSheet(ok
+            ? "color: #2e8b57; font-weight: 700; background: transparent; border: none;"
+            : "color: #cc3333; font-weight: 700; background: transparent; border: none;");
+    }
 
-	if (result.contains("ResidualThreshold")) {
-		m_residualThresholdLabel->setText(QString::number(result["ResidualThreshold"].toDouble(), 'f', 4));
-	}
+    if (result.contains("ResidualThreshold")) {
+        m_residualThresholdLabel->setText(
+            QString::number(result["ResidualThreshold"].toDouble(), 'f', 4));
+    }
 }
 
-void CalibrationResultDialog::updateFitResultsTable(const QJsonArray& fitResults, 
-													const QJsonArray& residuals, 
-													double threshold)
+void CalibrationResultDialog::updateFitResultsTable(const QJsonArray& fitResults,
+                                                     const QJsonArray& residuals,
+                                                     double threshold)
 {
-	m_fitResultsTable->setRowCount(fitResults.size());
+    m_fitResultsTable->setRowCount(fitResults.size());
 
-	for (int i = 0; i < fitResults.size(); ++i) {
-		QJsonObject fitResult = fitResults[i].toObject();
+    for (int i = 0; i < fitResults.size(); ++i) {
+        QJsonObject fitResult = fitResults[i].toObject();
 
-		QTableWidgetItem* indexItem = new QTableWidgetItem(QString::number(fitResult["index"].toInt()));
-		m_fitResultsTable->setItem(i, 0, indexItem);
+        auto setItem = [&](int col, const QString& text, bool warn = false) {
+            QTableWidgetItem* item = new QTableWidgetItem(text);
+            item->setTextAlignment(Qt::AlignCenter);
+            if (warn) {
+                item->setBackground(QColor(255, 220, 220));
+                item->setForeground(QColor(180, 0, 0));
+            }
+            m_fitResultsTable->setItem(i, col, item);
+        };
 
-		QJsonArray machine = fitResult["machine"].toArray();
-		for (int j = 0; j < 3 && j < machine.size(); ++j) {
-			QTableWidgetItem* item = new QTableWidgetItem(QString::number(machine[j].toDouble(), 'f', 6));
-			m_fitResultsTable->setItem(i, j + 1, item);
-		}
+        setItem(0, QString::number(fitResult["index"].toInt()));
 
-		QJsonArray scanner = fitResult["scanner"].toArray();
-		for (int j = 0; j < 3 && j < scanner.size(); ++j) {
-			QTableWidgetItem* item = new QTableWidgetItem(QString::number(scanner[j].toDouble(), 'f', 6));
-			m_fitResultsTable->setItem(i, j + 4, item);
-		}
+        QJsonArray machine = fitResult["machine"].toArray();
+        for (int j = 0; j < 3 && j < machine.size(); ++j)
+            setItem(j + 1, QString::number(machine[j].toDouble(), 'f', 6));
 
-		double rms = fitResult["rms"].toDouble();
-		QTableWidgetItem* rmsItem = new QTableWidgetItem(QString::number(rms, 'f', 6));
-		if (rms > threshold) {
-			rmsItem->setBackground(QColor(255, 220, 220));
-		}
-		m_fitResultsTable->setItem(i, 7, rmsItem);
+        QJsonArray scanner = fitResult["scanner"].toArray();
+        for (int j = 0; j < 3 && j < scanner.size(); ++j)
+            setItem(j + 4, QString::number(scanner[j].toDouble(), 'f', 6));
 
-		double residual = (i < residuals.size()) ? residuals[i].toDouble() : 0;
-		QTableWidgetItem* residualItem = new QTableWidgetItem(QString::number(residual, 'f', 6));
-		if (residual > threshold) {
-			residualItem->setBackground(QColor(255, 220, 220));
-		}
-		m_fitResultsTable->setItem(i, 8, residualItem);
-	}
+        double rms = fitResult["rms"].toDouble();
+        setItem(7, QString::number(rms, 'f', 6), rms > threshold);
+
+        double residual = (i < residuals.size()) ? residuals[i].toDouble() : 0.0;
+        setItem(8, QString::number(residual, 'f', 6), residual > threshold);
+    }
 }
 
 void CalibrationResultDialog::updateMatrix(const QJsonArray& matrix)
 {
-	for (int i = 0; i < 4 && i < matrix.size(); ++i) {
-		QJsonArray row = matrix[i].toArray();
-		for (int j = 0; j < 4 && j < row.size(); ++j) {
-			QTableWidgetItem* item = new QTableWidgetItem(QString::number(row[j].toDouble(), 'f', 6));
-			m_matrixTable->setItem(i, j, item);
-		}
-	}
-	m_matrixTable->resizeColumnsToContents();
+    for (int i = 0; i < 4 && i < matrix.size(); ++i) {
+        QJsonArray row = matrix[i].toArray();
+        for (int j = 0; j < 4 && j < row.size(); ++j) {
+            QTableWidgetItem* item = new QTableWidgetItem(
+                QString::number(row[j].toDouble(), 'f', 6));
+            item->setTextAlignment(Qt::AlignCenter);
+            // 最后一列（平移）用蓝色区分旋转部分
+            item->setForeground(j == 3 ? QColor(0x33, 0x66, 0xcc) : QColor(0x22, 0x22, 0x22));
+            m_matrixTable->setItem(i, j, item);
+        }
+    }
+    m_matrixTable->resizeColumnsToContents();
 }
 
-void CalibrationResultDialog::updateStatistics(const QJsonArray& fitResults, const QJsonArray& residuals)
+void CalibrationResultDialog::updateStatistics(const QJsonArray& fitResults,
+                                               const QJsonArray& residuals)
 {
-	if (residuals.isEmpty()) {
-		return;
-	}
+    if (residuals.isEmpty()) return;
 
-	double maxResidual = residuals[0].toDouble();
-	double minResidual = residuals[0].toDouble();
-	double sumResidual = 0;
+    double maxResidual = residuals[0].toDouble();
+    double minResidual = residuals[0].toDouble();
+    double sumResidual = 0;
 
-	for (int i = 0; i < residuals.size(); ++i) {
-		double val = residuals[i].toDouble();
-		maxResidual = qMax(maxResidual, val);
-		minResidual = qMin(minResidual, val);
-		sumResidual += val;
-	}
+    for (int i = 0; i < residuals.size(); ++i) {
+        double val = residuals[i].toDouble();
+        maxResidual = qMax(maxResidual, val);
+        minResidual = qMin(minResidual, val);
+        sumResidual += val;
+    }
 
-	m_maxResidualLabel->setText(QString::number(maxResidual, 'f', 6));
-	m_minResidualLabel->setText(QString::number(minResidual, 'f', 6));
-	m_avgResidualLabel->setText(QString::number(sumResidual / residuals.size(), 'f', 6));
+    m_maxResidualLabel->setText(QString::number(maxResidual, 'f', 6));
+    m_minResidualLabel->setText(QString::number(minResidual, 'f', 6));
+    m_avgResidualLabel->setText(QString::number(sumResidual / residuals.size(), 'f', 6));
 
-	double maxRms = 0;
-	double sumRms = 0;
-	int rmsCount = 0;
+    double maxRms = 0, sumRms = 0;
+    int rmsCount = 0;
 
-	for (int i = 0; i < fitResults.size(); ++i) {
-		QJsonObject fitResult = fitResults[i].toObject();
-		if (fitResult.contains("rms")) {
-			double rms = fitResult["rms"].toDouble();
-			maxRms = qMax(maxRms, rms);
-			sumRms += rms;
-			rmsCount++;
-		}
-	}
+    for (int i = 0; i < fitResults.size(); ++i) {
+        QJsonObject fitResult = fitResults[i].toObject();
+        if (fitResult.contains("rms")) {
+            double rms = fitResult["rms"].toDouble();
+            maxRms  = qMax(maxRms, rms);
+            sumRms += rms;
+            rmsCount++;
+        }
+    }
 
-	if (rmsCount > 0) {
-		m_maxRmsLabel->setText(QString::number(maxRms, 'f', 6));
-		m_avgRmsLabel->setText(QString::number(sumRms / rmsCount, 'f', 6));
-	}
+    if (rmsCount > 0) {
+        m_maxRmsLabel->setText(QString::number(maxRms, 'f', 6));
+        m_avgRmsLabel->setText(QString::number(sumRms / rmsCount, 'f', 6));
+    }
 }
