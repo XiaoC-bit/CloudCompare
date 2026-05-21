@@ -2,10 +2,11 @@
 
 #include <QDialog>
 #include <QJsonObject>
+#include <QJsonArray>
 
 class QLabel;
 class QTableWidget;
-class QTextEdit;
+class QPushButton;
 
 class CalibrationResultDialog : public QDialog
 {
@@ -14,6 +15,9 @@ class CalibrationResultDialog : public QDialog
 public:
 	explicit CalibrationResultDialog(QWidget* parent = nullptr);
 	~CalibrationResultDialog() override;
+
+private slots:
+	void onCopyMatrix();
 
 private:
 	void initUI();
@@ -24,14 +28,14 @@ private:
 	void updateStatistics(const QJsonArray& fitResults, const QJsonArray& residuals);
 
 	QLabel* m_resultLabel;
-	QLabel* m_statusLabel;
 	QLabel* m_positionCountLabel;
 	QLabel* m_residualOkLabel;
 	QLabel* m_residualThresholdLabel;
-	QTextEdit* m_messageTextEdit;
 
 	QTableWidget* m_fitResultsTable;
 	QTableWidget* m_matrixTable;
+	QPushButton* m_copyMatrixButton;
+	QJsonArray m_currentMatrix;
 
 	QLabel* m_maxResidualLabel;
 	QLabel* m_minResidualLabel;

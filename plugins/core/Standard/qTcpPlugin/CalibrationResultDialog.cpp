@@ -5,7 +5,6 @@
 #include <QLabel>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <QTextEdit>
 #include <QHeaderView>
 #include <QFile>
 #include <QJsonDocument>
@@ -14,6 +13,9 @@
 #include <QJsonParseError>
 #include <QCoreApplication>
 #include <QFrame>
+#include <QPushButton>
+#include <QClipboard>
+#include <QApplication>
 
 CalibrationResultDialog::CalibrationResultDialog(QWidget* parent)
     : QDialog(parent)
@@ -80,35 +82,11 @@ void CalibrationResultDialog::initUI()
         };
 
         addRow(0, 0, "标定结果:",     m_resultLabel);
-        addRow(0, 1, "任务状态:",     m_statusLabel);
-        addRow(1, 0, "有效点数:",     m_positionCountLabel);
-        addRow(1, 1, "残差是否合格:", m_residualOkLabel);
-        addRow(2, 0, "残差阈值:",     m_residualThresholdLabel);
+        addRow(0, 1, "有效点数:",     m_positionCountLabel);
+        addRow(1, 0, "残差是否合格:", m_residualOkLabel);
+        addRow(1, 1, "残差阈值:",     m_residualThresholdLabel);
 
         cardLayout->addLayout(grid);
-
-        QFrame* sep2 = new QFrame();
-        sep2->setFrameShape(QFrame::HLine);
-        sep2->setStyleSheet("border: none; background-color: #e0e0e0; max-height: 1px;");
-        cardLayout->addWidget(sep2);
-
-        QLabel* msgKeyLabel = new QLabel("过程消息:");
-        msgKeyLabel->setStyleSheet("color: #444444; background: transparent; border: none;");
-        cardLayout->addWidget(msgKeyLabel);
-
-        m_messageTextEdit = new QTextEdit();
-        m_messageTextEdit->setReadOnly(true);
-        m_messageTextEdit->setFixedHeight(52);
-        m_messageTextEdit->setStyleSheet(R"(
-            QTextEdit {
-                border: 1px solid #d0d0d0;
-                border-radius: 3px;
-                background-color: #f7f7f9;
-                color: #555555;
-                font-size: 12px;
-            }
-        )");
-        cardLayout->addWidget(m_messageTextEdit);
 
         mainLayout->addWidget(card);
     }
@@ -168,12 +146,37 @@ void CalibrationResultDialog::initUI()
 
     // ── 3. 变换矩阵 ───────────────────────────────────────────────────────────
     {
+        QHBoxLayout* headerLayout = new QHBoxLayout();
+
         QLabel* sectionLabel = new QLabel("Scanner → Machine 变换矩阵");
         QFont f = sectionLabel->font();
         f.setBold(true);
         f.setPointSize(f.pointSize() + 1);
         sectionLabel->setFont(f);
-        mainLayout->addWidget(sectionLabel);
+        headerLayout->addWidget(sectionLabel);
+
+        headerLayout->addStretch();
+
+        m_copyMatrixButton = new QPushButton("复制矩阵");
+        m_copyMatrixButton->setFixedHeight(28);
+        m_copyMatrixButton->setFixedWidth(80);
+        m_copyMatrixButton->setStyleSheet(R"(
+            QPushButton {
+                color: #3366cc;
+                border: 1px solid #3366cc;
+                border-radius: 3px;
+                background: transparent;
+                font-size: 12px;
+                padding: 0 6px;
+            }
+            QPushButton:hover {
+                background-color: #f0f5ff;
+            }
+        )");
+        connect(m_copyMatrixButton, &QPushButton::clicked, this, &CalibrationResultDialog::onCopyMatrix);
+        headerLayout->addWidget(m_copyMatrixButton);
+
+        mainLayout->addLayout(headerLayout);
 
         m_matrixTable = new QTableWidget();
         m_matrixTable->setColumnCount(4);
@@ -273,12 +276,10 @@ void CalibrationResultDialog::loadCalibrationResult()
 
     QFile file(filePath);
     if (!file.exists()) {
-        m_messageTextEdit->setText("标定结果文件不存在: " + filePath);
         return;
     }
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        m_messageTextEdit->setText("无法打开标定结果文件");
         return;
     }
 
@@ -288,15 +289,10 @@ void CalibrationResultDialog::loadCalibrationResult()
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        m_messageTextEdit->setText("无效的JSON格式: " + parseError.errorString());
         return;
     }
 
     QJsonObject root = doc.object();
-
-    if (root.contains("Message")) {
-        m_messageTextEdit->setText(root["Message"].toString());
-    }
 
     if (root.contains("Result")) {
         QString result = root["Result"].toString();
@@ -304,10 +300,6 @@ void CalibrationResultDialog::loadCalibrationResult()
         m_resultLabel->setStyleSheet(result == "OK"
             ? "color: #2e8b57; font-weight: 700; background: transparent; border: none;"
             : "color: #cc3333; font-weight: 700; background: transparent; border: none;");
-    }
-
-    if (root.contains("Status")) {
-        m_statusLabel->setText(root["Status"].toString());
     }
 
     if (root.contains("CalibrationResult")) {
@@ -326,7 +318,8 @@ void CalibrationResultDialog::loadCalibrationResult()
         }
 
         if (calibrationResult.contains("Matrix")) {
-            updateMatrix(calibrationResult["Matrix"].toArray());
+            m_currentMatrix = calibrationResult["Matrix"].toArray();
+            updateMatrix(m_currentMatrix);
         }
 
         if (calibrationResult.contains("FitResults") && calibrationResult.contains("Residuals")) {
@@ -454,4 +447,25 @@ void CalibrationResultDialog::updateStatistics(const QJsonArray& fitResults,
         m_maxRmsLabel->setText(QString::number(maxRms, 'f', 6));
         m_avgRmsLabel->setText(QString::number(sumRms / rmsCount, 'f', 6));
     }
+}
+
+void CalibrationResultDialog::onCopyMatrix()
+{
+    QString matrixText;
+
+    for (int i = 0; i < 4 && i < m_currentMatrix.size(); ++i) {
+        QJsonArray row = m_currentMatrix[i].toArray();
+        for (int j = 0; j < 4 && j < row.size(); ++j) {
+            if (j > 0) {
+                matrixText += " ";
+            }
+            matrixText += QString("%1").arg(row[j].toDouble(), 0, 'f', 8);
+        }
+        if (i < 3) {
+            matrixText += "\n";
+        }
+    }
+
+    QClipboard* clipboard = QApplication::clipboard();
+    clipboard->setText(matrixText);
 }
