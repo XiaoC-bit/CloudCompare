@@ -44,6 +44,7 @@ protected:
 	void onOperationStarted() override;
 	bool performOperation() override;
 	void onOperationCompleted(bool success) override;
+	void updateUIState() override;
 
 private:
 	void populateTable();

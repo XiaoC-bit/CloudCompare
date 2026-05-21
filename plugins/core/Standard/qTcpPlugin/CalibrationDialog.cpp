@@ -324,6 +324,37 @@ void CalibrationDialog::onOperationCompleted(bool success)
 	}
 }
 
+void CalibrationDialog::updateUIState()
+{
+	bool operationEnabled = !m_operationRunning && m_machineReady;
+
+	if (m_addButton) {
+		m_addButton->setEnabled(!m_operationRunning);
+	}
+	if (m_resetButton) {
+		m_resetButton->setEnabled(!m_operationRunning);
+	}
+	if (m_startButton) {
+		m_startButton->setEnabled(operationEnabled);
+	}
+	if (m_cancelButton) {
+		m_cancelButton->setEnabled(!m_operationRunning);
+	}
+
+	QList<QWidget*> cellWidgets = m_tableWidget->findChildren<QWidget*>();
+	for (QWidget* widget : cellWidgets) {
+		QPushButton* button = qobject_cast<QPushButton*>(widget);
+		if (button) {
+			QString text = button->text();
+			if (text == "读取" || text == "删除") {
+				button->setEnabled(!m_operationRunning);
+			}
+		}
+	}
+
+	m_progressBar->setVisible(m_operationRunning);
+}
+
 QVector<QVector3D> CalibrationDialog::getDefaultPositions()
 {
 	QVector<QVector3D> positions;
