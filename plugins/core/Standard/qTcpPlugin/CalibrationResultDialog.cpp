@@ -5,6 +5,8 @@
 #include <QLabel>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <qfileinfo.h>
+#include <qdatetime.h>
 #include <QHeaderView>
 #include <QFile>
 #include <QJsonDocument>
@@ -85,6 +87,7 @@ void CalibrationResultDialog::initUI()
         addRow(0, 1, "有效点数:",     m_positionCountLabel);
         addRow(1, 0, "残差是否合格:", m_residualOkLabel);
         addRow(1, 1, "残差阈值:",     m_residualThresholdLabel);
+        addRow(2, 0, "标定时间:",     m_calibrationTimeLabel);
 
         cardLayout->addLayout(grid);
 
@@ -278,6 +281,10 @@ void CalibrationResultDialog::loadCalibrationResult()
     if (!file.exists()) {
         return;
     }
+
+    QFileInfo fileInfo(file);
+    QString modificationTime = fileInfo.lastModified().toString("yyyy-MM-dd HH:mm:ss");
+    m_calibrationTimeLabel->setText(modificationTime);
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return;

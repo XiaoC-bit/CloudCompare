@@ -31,6 +31,7 @@ private:
 	QLabel* m_positionCountLabel;
 	QLabel* m_residualOkLabel;
 	QLabel* m_residualThresholdLabel;
+	QLabel* m_calibrationTimeLabel;
 
 	QTableWidget* m_fitResultsTable;
 	QTableWidget* m_matrixTable;
