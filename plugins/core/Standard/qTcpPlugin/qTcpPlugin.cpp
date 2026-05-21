@@ -14,6 +14,7 @@
 #include "ElectrodeInspectDialog.h"
 #include "PartElectrodeConfigDialog.h"
 #include "AcquirePcdDialog.h"
+#include "CalibrationResultDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -34,6 +35,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_electrodeInspectAction(nullptr)
     , m_partElectrodeConfigAction(nullptr)
     , m_acquirePcdAction(nullptr)
+    , m_calibrationResultAction(nullptr)
     , m_toggleLogDockAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
@@ -130,6 +132,12 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_acquirePcdAction, &QAction::triggered, this, &qTcpPlugin::showAcquirePcdDialog);
 	}
 
+	if (!m_calibrationResultAction)
+	{
+		m_calibrationResultAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/result.png"), "标定结果", this);
+		connect(m_calibrationResultAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationResultDialog);
+	}
+
 	if (!m_toggleLogDockAction)
 	{
 		m_toggleLogDockAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/log.png") ,"显示日志窗口", this);
@@ -139,7 +147,7 @@ QList<QAction*> qTcpPlugin::getActions()
 	}
 
 	updateActions();
-	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_toggleLogDockAction};
+	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_toggleLogDockAction};
 }
 
 void qTcpPlugin::startServer()
@@ -378,6 +386,12 @@ void qTcpPlugin::showPartElectrodeConfigDialog()
 void qTcpPlugin::showAcquirePcdDialog()
 {
 	AcquirePcdDialog dialog(m_app, nullptr);
+	dialog.exec();
+}
+
+void qTcpPlugin::showCalibrationResultDialog()
+{
+	CalibrationResultDialog dialog(nullptr);
 	dialog.exec();
 }
 
