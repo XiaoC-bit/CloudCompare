@@ -543,7 +543,17 @@ bool CalibrationDialog::performOperation()
 		positions.append(QVector3D(pos.x, pos.y, pos.z));
 	}
 
-	return m_pointCloudService->executeCalibration(positions);
+	CalibrationProgressCallback progressCallback = [this](int current, int total, const QString& status) {
+		setProgressText(QString("%1 (%2/%3)").arg(status).arg(current).arg(total));
+		if (total > 0) {
+			setProgressValue(static_cast<int>(current * 100.0 / total));
+		}
+	};
+
+	bool    ret = m_pointCloudService->executeCalibration(positions, progressCallback);
+	QString errMsg;
+	m_pointCloudService->machineBackHome(errMsg);
+	return ret;
 }
 
 void CalibrationDialog::onOperationCompleted(bool success)
@@ -551,7 +561,6 @@ void CalibrationDialog::onOperationCompleted(bool success)
 	if (success)
 	{
 		setProgressText("✅ 标定完成");
-		accept();
 	}
 	else
 	{

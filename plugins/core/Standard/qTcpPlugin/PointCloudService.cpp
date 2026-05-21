@@ -3335,7 +3335,7 @@ void PointCloudService::partInspectFunc(const QJsonObject& params)
     executePartInspect(partType, rfid);
 }
 
-bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
+bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, CalibrationProgressCallback progressCallback)
 {
 	if (positions.isEmpty())
 	{
@@ -3443,6 +3443,10 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 		const QVector3D& pos = positions[i];
 		machinePoints.emplace_back(pos.x(), pos.y(), pos.z());
 
+		if (progressCallback) {
+			progressCallback(i + 1, positions.size(), QString("移动到第%1个位置...").arg(i + 1));
+		}
+
 		QString content = templateContent;
 		content.replace("{X}", QString::number(pos.x()));
 		content.replace("{Y}", QString::number(pos.y()));
@@ -3513,6 +3517,10 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 
 		for (int retry = 0; retry < CALIBRATION_MAX_FIT_RETRIES && !fitSuccess; ++retry)
 		{
+			if (progressCallback) {
+				progressCallback(i + 1, positions.size(), QString("拍摄第%1个位置（第%2次尝试）...").arg(i + 1).arg(retry + 1));
+			}
+
 			const QString cloudName = QString::number(i + 1);
 			QJsonObject   acquireParams;
 			acquireParams["async"]      = true;
@@ -3520,6 +3528,10 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 			if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr))
 			{
 				continue;
+			}
+
+			if (progressCallback) {
+				progressCallback(i + 1, positions.size(), QString("拟合第%1个位置的球体...").arg(i + 1));
 			}
 
 			QJsonObject fitParams;
@@ -3564,6 +3576,10 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 		fitItem["scanner"] = QJsonArray{centerX, centerY, centerZ};
 		fitItem["rms"]     = rms;
 		fitResults.append(fitItem);
+	}
+
+	if (progressCallback) {
+		progressCallback(positions.size(), positions.size(), QString("计算变换矩阵..."));
 	}
 
 	CalibrationRigidTransform transform;
@@ -3635,6 +3651,11 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions)
 		obj["Ret_Err"] = QString("Calibration completed but residuals exceed threshold");
 	}
 	m_cameraCalibrationResult["CalibrationResult"] = obj;
+
+	if (progressCallback) {
+		progressCallback(positions.size(), positions.size(), QString("保存标定结果..."));
+	}
+
 	saveCalibrationStatus();
 	m_Status = MachineStatus::Idle;
 	return residualOk;

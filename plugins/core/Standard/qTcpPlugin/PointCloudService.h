@@ -10,6 +10,9 @@
 #include <QVector3D>
 #include <vector>
 #include <ccGLMatrix.h>
+#include <functional>
+
+using CalibrationProgressCallback = std::function<void(int current, int total, const QString& status)>;
 
 // G54偏置（从机床坐标系到G54）
 struct G54Config {
@@ -64,7 +67,8 @@ class PointCloudService : public QObject
 	// 执行相机标定（供CalibrationDialog直接调用）
 	// 返回值：true表示标定成功，false表示失败
 	// 标定结果通过m_cameraCalibrationMatrix和m_cameraCalibrationResult获取
-	bool executeCalibration(const QVector<QVector3D>& positions);
+	// progressCallback可选，用于在CalibrationDialog中显示进度信息
+	bool executeCalibration(const QVector<QVector3D>& positions, CalibrationProgressCallback progressCallback = nullptr);
 
 	// 执行测头标定（供ProbeCalibrationDialog直接调用）
 	// 返回值：true表示标定成功，false表示失败
