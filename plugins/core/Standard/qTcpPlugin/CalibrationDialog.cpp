@@ -240,23 +240,30 @@ void CalibrationDialog::populateTable()
 	{
 		const Position& pos = m_positions[i];
 
-		auto makeSpinBox = [](double value) -> QDoubleSpinBox*
+		auto makeSpinBox = [this, i](double value, int col) -> QDoubleSpinBox*
 		{
 			QDoubleSpinBox* sb = new QDoubleSpinBox();
 			sb->setMinimum(-1000);
 			sb->setMaximum(1000);
 			sb->setDecimals(3);
 			sb->setValue(value);
-			sb->setButtonSymbols(QAbstractSpinBox::NoButtons); // 去掉上下箭头，更整洁
+			sb->setButtonSymbols(QAbstractSpinBox::NoButtons);
 			sb->setFrame(false);
 			sb->setAlignment(Qt::AlignCenter);
 			sb->setStyleSheet("background: transparent; padding: 0 4px;");
+			connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), [this, i, col](double val) {
+				switch (col) {
+				case 0: m_positions[i].x = val; break;
+				case 1: m_positions[i].y = val; break;
+				case 2: m_positions[i].z = val; break;
+				}
+			});
 			return sb;
 		};
 
-		m_tableWidget->setCellWidget(i, 0, makeSpinBox(pos.x));
-		m_tableWidget->setCellWidget(i, 1, makeSpinBox(pos.y));
-		m_tableWidget->setCellWidget(i, 2, makeSpinBox(pos.z));
+		m_tableWidget->setCellWidget(i, 0, makeSpinBox(pos.x, 0));
+		m_tableWidget->setCellWidget(i, 1, makeSpinBox(pos.y, 1));
+		m_tableWidget->setCellWidget(i, 2, makeSpinBox(pos.z, 2));
 
 		QPushButton* readButton = new QPushButton("读取");
 		readButton->setFixedHeight(24);
@@ -396,6 +403,10 @@ void CalibrationDialog::onReadFromDevice()
 			xSpinBox->setValue(x);
 			ySpinBox->setValue(y);
 			zSpinBox->setValue(z);
+
+			m_positions[row].x = x;
+			m_positions[row].y = y;
+			m_positions[row].z = z;
 		}
 	} else {
 		QMessageBox::warning(this, "失败", QString("获取设备坐标失败: %1").arg(errorMessage));
@@ -409,8 +420,8 @@ void CalibrationDialog::onDeleteRow()
 
 	int row = button->property("row").toInt();
 
-	if (m_positions.size() <= m_defaultPositionCount) {
-		QMessageBox::warning(this, "警告", "数据组数不能少于默认值数量");
+	if (m_positions.size() < 6) {
+		QMessageBox::warning(this, "警告", "标定位置不能少于6组");
 		return;
 	}
 
