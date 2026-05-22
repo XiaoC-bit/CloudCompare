@@ -64,6 +64,8 @@ class PointCloudService : public QObject
 	//
 	bool handleFitSphere(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, double& centerX, double& centerY, double& centerZ, double& rms);
 
+	static bool fitSphere(const std::vector<Eigen::Vector3d>& pts, Eigen::Vector3d& center, double& radius);
+
 	// 执行相机标定（供CalibrationDialog直接调用）
 	// 返回值：true表示标定成功，false表示失败
 	// 标定结果通过m_cameraCalibrationMatrix和m_cameraCalibrationResult获取

@@ -213,6 +213,33 @@ PointCloudService::~PointCloudService()
 	}
 }
 
+bool PointCloudService::fitSphere(const std::vector<Eigen::Vector3d>& pts, Eigen::Vector3d& center, double& radius)
+{
+	if (pts.size() < 4) return false;
+
+	int n = static_cast<int>(pts.size());
+
+	Eigen::MatrixXd A(n, 4);
+	Eigen::VectorXd b(n);
+
+	for (int i = 0; i < n; ++i) {
+		double x = pts[i].x(), y = pts[i].y(), z = pts[i].z();
+		A(i, 0) = x;
+		A(i, 1) = y;
+		A(i, 2) = z;
+		A(i, 3) = 1.0;
+		b(i) = x * x + y * y + z * z;
+	}
+
+	Eigen::Vector4d sol = A.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
+	center.x() = sol(0) / 2.0;
+	center.y() = sol(1) / 2.0;
+	center.z() = sol(2) / 2.0;
+	radius = std::sqrt(sol(3) + center.squaredNorm());
+
+	return true;
+}
+
 // 保存标定状态到文件
 void PointCloudService::saveCalibrationStatus() {
     
@@ -3403,6 +3430,7 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	QString appDir       = QCoreApplication::applicationDirPath();
 	QString templateDir  = appDir + "/Template";
 	QString templateFile = templateDir + "/Calibration.nc";
+	QString probeBallInspectFile = templateDir + "/ProbeBallInspect.nc";
 
 	QDir dir(templateDir);
 	if (!dir.exists())
@@ -3438,10 +3466,146 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	const QString templateContent = QTextStream(&templateNc).readAll();
 	templateNc.close();
 
+	Eigen::Vector3d sphereCenter_M(10, 10, 10);
+	double sphereRadius = 0.0;
+
+	QFile probeNc(probeBallInspectFile);
+	if (probeNc.exists())
+	{
+		if (progressCallback) {
+			progressCallback(0, positions.size(), QString("执行测头打点..."));
+		}
+
+		if (!sendFileToMachine(probeBallInspectFile, &errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to send probe inspection file: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		if (!setMainProgram(&errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to set main program for probe inspection: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		if (!startMachine(&errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		if (!waitForMachineIdle(-1, &errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Machine did not become idle during probe inspection: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		QString cncPath = "/h/lnc8/prog/";
+		QString cncFile = "ProbeBall.res";
+		QString localFile = appDir + "/Template/ProbeBall.res";
+
+		if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to download probe result file: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		QFile resultFile(localFile);
+		if (!resultFile.open(QIODevice::ReadOnly | QIODevice::Text))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Failed to open probe result file: %1").arg(resultFile.errorString());
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		QTextStream in(&resultFile);
+		QString content = in.readAll();
+		resultFile.close();
+
+		std::vector<Eigen::Vector3d> probePoints;
+		QRegularExpression regex(R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
+		QRegularExpressionMatchIterator it = regex.globalMatch(content);
+		while (it.hasNext())
+		{
+			QRegularExpressionMatch match = it.next();
+			double x = match.captured(1).toDouble();
+			double y = match.captured(2).toDouble();
+			double z = match.captured(3).toDouble();
+			probePoints.emplace_back(x, y, z);
+		}
+
+		if (probePoints.size() >= 4)
+		{
+			if (fitSphere(probePoints, sphereCenter_M, sphereRadius))
+			{
+				if (progressCallback) {
+					progressCallback(0, positions.size(), QString("球心拟合完成: (%1, %2, %3), 半径: %4").arg(sphereCenter_M.x()).arg(sphereCenter_M.y()).arg(sphereCenter_M.z()).arg(sphereRadius));
+				}
+			}
+			else
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject obj;
+				obj["Result"] = "NG";
+				obj["Ret_Err"] = "Failed to fit sphere from probe points";
+				m_cameraCalibrationResult["CalibrationResult"] = obj;
+				saveCalibrationStatus();
+				return false;
+			}
+		}
+		else
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = QString("Insufficient probe points: %1 (need at least 4)").arg(probePoints.size());
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+	}
+	else
+	{
+		if (progressCallback) {
+			progressCallback(0, positions.size(), QString("未找到测头打点程序，使用默认球心"));
+		}
+	}
+
 	for (int i = 0; i < positions.size(); ++i)
 	{
 		const QVector3D& pos = positions[i];
-		machinePoints.emplace_back(pos.x(), pos.y(), pos.z());
+
+		Eigen::Vector3d b = sphereCenter_M - Eigen::Vector3d(pos.x(), pos.y(), pos.z());
+		machinePoints.emplace_back(b);
 
 		if (progressCallback) {
 			progressCallback(i + 1, positions.size(), QString("移动到第%1个位置...").arg(i + 1));
