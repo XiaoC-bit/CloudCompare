@@ -355,7 +355,7 @@ void CalibrationDialog::onGeneratePositions()
 	stepSpinBox->setMinimum(0.1);
 	stepSpinBox->setMaximum(50);
 	stepSpinBox->setDecimals(1);
-	stepSpinBox->setValue(5);
+	stepSpinBox->setValue(2.5);
 	stepLayout->addWidget(stepLabel);
 	stepLayout->addWidget(stepSpinBox);
 	layout->addLayout(stepLayout);

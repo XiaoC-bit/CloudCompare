@@ -3484,7 +3484,7 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	}
 
 	
-if (progressCallback)
+	if (progressCallback)
 	{
 		progressCallback(0, positions.size(), QString("执行测头打点..."));
 	}
