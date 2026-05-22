@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <qframe.h>
 #include <QJsonObject>
 #include <QJsonArray>
 
@@ -32,6 +33,8 @@ private:
 	QLabel* m_residualOkLabel;
 	QLabel* m_residualThresholdLabel;
 	QLabel* m_calibrationTimeLabel;
+	QLabel* m_errorMessageLabel;
+	QFrame* m_errorFrame;
 
 	QTableWidget* m_fitResultsTable;
 	QTableWidget* m_matrixTable;

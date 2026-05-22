@@ -3613,9 +3613,37 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	for (int i = 0; i < positions.size(); ++i)
 	{
 		const QVector3D& pos = positions[i];
-
-		Eigen::Vector3d b = sphereCenter_M - Eigen::Vector3d(pos.x(), pos.y(), pos.z());
+		Eigen::Vector3d  a   = Eigen::Vector3d(pos.x(), pos.y(), pos.z());
+		Eigen::Vector3d  b   = Eigen::Vector3d(pos.x(), pos.y(), pos.z()) - sphereCenter_M;
 		machinePoints.emplace_back(b);
+
+
+		QString matrixText;
+		for (int row = 0; row < 3; ++row)
+		{
+			matrixText += QString("%1 %2 %3")
+			                  .arg(a(row, 0))
+			                  .arg(a(row, 1))
+			                  .arg(a(row, 2));
+			if (row != 2)
+			{
+				matrixText += "\n";
+			}
+		}
+		m_app->dispToConsole(QString("[TcpPlugin]a[Point %1]\n%2").arg(i+1).arg(matrixText));
+		matrixText = "";
+		for (int row = 0; row < 3; ++row)
+		{
+			matrixText += QString("%1 %2 %3")
+			                  .arg(b(row, 0))
+			                  .arg(b(row, 1))
+			                  .arg(b(row, 2));
+			if (row != 2)
+			{
+				matrixText += "\n";
+			}
+		}
+		m_app->dispToConsole(QString("[TcpPlugin]b[Point %1]\n%2").arg(i + 1).arg(matrixText));
 
 		if (progressCallback) {
 			progressCallback(i + 1, positions.size(), QString("移动到第%1个位置...").arg(i + 1));

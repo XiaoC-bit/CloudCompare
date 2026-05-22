@@ -94,7 +94,40 @@ void CalibrationResultDialog::initUI()
         mainLayout->addWidget(card);
     }
 
-    // ── 2. 采样点明细 ─────────────────────────────────────────────────────────
+    // ── 2. 错误信息 ───────────────────────────────────────────────────────────
+    {
+        QFrame* errorCard = new QFrame();
+        errorCard->setFrameShape(QFrame::NoFrame);
+        errorCard->setStyleSheet(R"(
+            QFrame {
+                background-color: #fff5f5;
+                border: 1px solid #ffcccc;
+                border-radius: 4px;
+            }
+        )");
+        errorCard->setVisible(false);
+        m_errorFrame = errorCard;
+
+        QVBoxLayout* errorLayout = new QVBoxLayout(errorCard);
+        errorLayout->setContentsMargins(14, 12, 14, 12);
+        errorLayout->setSpacing(8);
+
+        QLabel* errorTitle = new QLabel("错误信息");
+        QFont errorFont = errorTitle->font();
+        errorFont.setBold(true);
+        errorTitle->setFont(errorFont);
+        errorTitle->setStyleSheet("color: #cc3333; background: transparent; border: none;");
+        errorLayout->addWidget(errorTitle);
+
+        m_errorMessageLabel = new QLabel("");
+        m_errorMessageLabel->setStyleSheet("color: #cc3333; background: transparent; border: none;");
+        m_errorMessageLabel->setWordWrap(true);
+        errorLayout->addWidget(m_errorMessageLabel);
+
+        mainLayout->addWidget(errorCard);
+    }
+
+    // ── 3. 采样点明细 ─────────────────────────────────────────────────────────
     {
         QLabel* sectionLabel = new QLabel("采样点明细");
         QFont f = sectionLabel->font();
@@ -301,37 +334,60 @@ void CalibrationResultDialog::loadCalibrationResult()
 
     QJsonObject root = doc.object();
 
-    if (root.contains("Result")) {
-        QString result = root["Result"].toString();
+    if (root.contains("CalibrationResult")) {
+        QJsonObject calibrationResult = root["CalibrationResult"].toObject();
+
+        QString result = calibrationResult.contains("Result") ? calibrationResult["Result"].toString() : "";
+        
         m_resultLabel->setText(result);
         m_resultLabel->setStyleSheet(result == "OK"
             ? "color: #2e8b57; font-weight: 700; background: transparent; border: none;"
             : "color: #cc3333; font-weight: 700; background: transparent; border: none;");
-    }
 
-    if (root.contains("CalibrationResult")) {
-        QJsonObject calibrationResult = root["CalibrationResult"].toObject();
-        updateResultOverview(calibrationResult);
+        if (result == "NG") {
+            QString errorMessage = "";
+            if (calibrationResult.contains("Ret_Err")) {
+                errorMessage = calibrationResult["Ret_Err"].toString();
+            }
+            if (root.contains("Message")) {
+                if (!errorMessage.isEmpty()) {
+                    errorMessage += "\n";
+                }
+                errorMessage += root["Message"].toString();
+            }
+            m_errorMessageLabel->setText(errorMessage);
+            m_errorFrame->setVisible(true);
+            m_fitResultsTable->setVisible(false);
+            m_matrixTable->setVisible(false);
+            m_copyMatrixButton->setVisible(false);
+        } else {
+            m_errorFrame->setVisible(false);
+            m_fitResultsTable->setVisible(true);
+            m_matrixTable->setVisible(true);
+            m_copyMatrixButton->setVisible(true);
 
-        if (calibrationResult.contains("FitResults")) {
-            QJsonArray fitResults = calibrationResult["FitResults"].toArray();
-            QJsonArray residuals = calibrationResult.contains("Residuals")
-                ? calibrationResult["Residuals"].toArray()
-                : QJsonArray();
-            double threshold = calibrationResult.contains("ResidualThreshold")
-                ? calibrationResult["ResidualThreshold"].toDouble()
-                : 0.12;
-            updateFitResultsTable(fitResults, residuals, threshold);
-        }
+            updateResultOverview(calibrationResult);
 
-        if (calibrationResult.contains("Matrix")) {
-            m_currentMatrix = calibrationResult["Matrix"].toArray();
-            updateMatrix(m_currentMatrix);
-        }
+            if (calibrationResult.contains("FitResults")) {
+                QJsonArray fitResults = calibrationResult["FitResults"].toArray();
+                QJsonArray residuals = calibrationResult.contains("Residuals")
+                    ? calibrationResult["Residuals"].toArray()
+                    : QJsonArray();
+                double threshold = calibrationResult.contains("ResidualThreshold")
+                    ? calibrationResult["ResidualThreshold"].toDouble()
+                    : 0.12;
+                updateFitResultsTable(fitResults, residuals, threshold);
+            }
 
-        if (calibrationResult.contains("FitResults") && calibrationResult.contains("Residuals")) {
-            updateStatistics(calibrationResult["FitResults"].toArray(),
-                             calibrationResult["Residuals"].toArray());
+            if (calibrationResult.contains("Matrix")) {
+                m_currentMatrix = calibrationResult["Matrix"].toArray();
+                updateMatrix(m_currentMatrix);
+            }
+
+            if (calibrationResult.contains("FitResults") && calibrationResult.contains("Residuals")) {
+                updateStatistics(calibrationResult["FitResults"].toArray(),
+                                 calibrationResult["Residuals"].toArray());
+            }
         }
     }
 }
