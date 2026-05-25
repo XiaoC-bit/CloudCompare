@@ -1677,8 +1677,20 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCopyScanPosition()
 
     ScanPositionData source = m_scanPositions[index];
     QString baseName = source.name;
-    QString newName = baseName + "_副本";
-    int counter = 1;
+    
+    QRegularExpression regex(R"(^(.*?)(\d+)$)");
+    QRegularExpressionMatch match = regex.match(baseName);
+    
+    QString prefix = "扫描点";
+    int startNumber = 1;
+    
+    if (match.hasMatch()) {
+        prefix = match.captured(1);
+        startNumber = match.captured(2).toInt() + 1;
+    }
+
+    QString newName = QString("%1%2").arg(prefix).arg(startNumber);
+    int counter = startNumber;
 
     while (true) {
         bool exists = false;
@@ -1691,7 +1703,7 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCopyScanPosition()
         if (!exists) {
             break;
         }
-        newName = QString("%1_副本%2").arg(baseName).arg(counter++);
+        newName = QString("%1%2").arg(prefix).arg(++counter);
     }
 
     ScanPositionData copy = source;
