@@ -139,8 +139,8 @@ void CalibrationResultDialog::initUI()
         m_fitResultsTable = new QTableWidget();
         m_fitResultsTable->setColumnCount(9);
         m_fitResultsTable->setHorizontalHeaderLabels({
-            "#", "Machine X", "Machine Y", "Machine Z",
-            "Scanner X", "Scanner Y", "Scanner Z", "RMS", "Residual"
+            "#", "机械 X", "机械 Y", "机械 Z",
+            "点云 X", "点云 Y", "点云 Z", "拟合误差", "校验误差"
         });
         m_fitResultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
         m_fitResultsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
@@ -184,7 +184,7 @@ void CalibrationResultDialog::initUI()
     {
         QHBoxLayout* headerLayout = new QHBoxLayout();
 
-        QLabel* sectionLabel = new QLabel("Scanner → Machine 变换矩阵");
+        QLabel* sectionLabel = new QLabel("点云 → 机械 变换矩阵");
         QFont f = sectionLabel->font();
         f.setBold(true);
         f.setPointSize(f.pointSize() + 1);
