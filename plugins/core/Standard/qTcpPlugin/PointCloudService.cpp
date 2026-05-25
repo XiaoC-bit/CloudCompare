@@ -1059,6 +1059,17 @@ bool PointCloudService::waitForMachineIdle(int timeoutSeconds, QString* errorMes
 			{
 				return true;
 			}
+			else if (value == "1")
+			{
+				//遇过值为1的
+				//{"DeviceName":"CNC_1","DeviceType":"Cnc","GetDeviceRun_Ret":"0","IDCode":"da77c096-d069-4213-8b42-f1ae7f2b8375","Msg":"Stop","Value":"1"}
+				break;
+			}
+			else if (value == "3")
+			{
+				//报警了
+				return false;
+			}
 			else if (value != "2")
 			{
 				// 2为运行中
@@ -6085,24 +6096,7 @@ bool PointCloudService::executeProbeCalibration()
 	}
 
 	// 查找probe前缀的测头检测程序文件
-	QString probeFile;
-	QStringList filters;
-	filters << "probe*.nc"
-	        << "probe*.txt";
-	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
-	if (fileList.isEmpty())
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = "No probe calibration file found in Template directory";
-		m_probeCalibrationResult["CalibrationResult"] = obj;
-		saveCalibrationStatus();
-		return false;
-	}
-
-	// 使用第一个找到的probe文件
-	probeFile = fileList.first().absoluteFilePath();
+	QString     probeFile = templateDir + "/ProbeBlockInspect.nc";
 
 	// 发送文件到机床
 	if (!sendFileToMachine(probeFile, &errorMessage))
@@ -6153,10 +6147,10 @@ bool PointCloudService::executeProbeCalibration()
 	}
 
 	// 读取机床的宏变量，获取BC旋转中心的测量值
-	double centerX, centerY, centerZ;
+	double centerX1, centerX2, centerY, centerZ;
 
 	// 读取X值
-	if (!readMacro(560, centerX, &errorMessage))
+	if (!readMacro(500, centerX1, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
@@ -6168,7 +6162,7 @@ bool PointCloudService::executeProbeCalibration()
 	}
 
 	// 读取Y值
-	if (!readMacro(561, centerY, &errorMessage))
+	if (!readMacro(501, centerX2, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
@@ -6180,12 +6174,24 @@ bool PointCloudService::executeProbeCalibration()
 	}
 
 	// 读取Z值
-	if (!readMacro(562, centerZ, &errorMessage))
+	if (!readMacro(502, centerY, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to read rotation center Z: %1").arg(errorMessage);
+		obj["Result"]                                 = "NG";
+		obj["Ret_Err"]                                = QString("Failed to read rotation center Z: %1").arg(errorMessage);
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	
+	if (!readMacro(503, centerZ, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"]                                 = "NG";
+		obj["Ret_Err"]                                = QString("Failed to read rotation center Z: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return false;
@@ -6195,7 +6201,7 @@ bool PointCloudService::executeProbeCalibration()
 	QJsonObject obj;
 	obj["Result"] = "OK";
 	obj["Ret_Err"] = "Probe calibration completed successfully";
-	obj["RotationCenter"] = QJsonObject{{"X", centerX}, {"Y", centerY}, {"Z", centerZ}};
+	obj["RotationCenter"] = QJsonObject{{"X1", centerX1}, {"X2", centerX2}, {"Y", centerY}, {"Z", centerZ}};
 	m_probeCalibrationResult["CalibrationResult"] = obj;
 
 	// 保存状态
