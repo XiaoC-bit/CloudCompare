@@ -6146,52 +6146,55 @@ bool PointCloudService::executeProbeCalibration()
 		return false;
 	}
 
-	// 读取机床的宏变量，获取BC旋转中心的测量值
-	double centerX1, centerX2, centerY, centerZ;
+	// 从机床下载旋转中心测量结果文件
+	QString cncPath   = "/h/lnc8/prog/";
+	QString cncFile   = "O1836";
+	QString localFile = appDir + "/Temp/O1836.res";
 
-	// 读取X值
-	if (!readMacro(500, centerX1, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to read rotation center X: %1").arg(errorMessage);
-		m_probeCalibrationResult["CalibrationResult"] = obj;
-		saveCalibrationStatus();
-		return false;
-	}
-
-	// 读取Y值
-	if (!readMacro(501, centerX2, &errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to read rotation center Y: %1").arg(errorMessage);
-		m_probeCalibrationResult["CalibrationResult"] = obj;
-		saveCalibrationStatus();
-		return false;
-	}
-
-	// 读取Z值
-	if (!readMacro(502, centerY, &errorMessage))
+	if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
 		obj["Result"]                                 = "NG";
-		obj["Ret_Err"]                                = QString("Failed to read rotation center Z: %1").arg(errorMessage);
+		obj["Ret_Err"]                                = QString("Failed to download probe calibration result file: %1").arg(errorMessage);
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return false;
 	}
 
-	
-	if (!readMacro(503, centerZ, &errorMessage))
+	QFile resultFile(localFile);
+	if (!resultFile.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
 		obj["Result"]                                 = "NG";
-		obj["Ret_Err"]                                = QString("Failed to read rotation center Z: %1").arg(errorMessage);
+		obj["Ret_Err"]                                = QString("Failed to open probe calibration result file: %1").arg(resultFile.errorString());
+		m_probeCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	QTextStream in(&resultFile);
+	QString     content = in.readAll();
+	resultFile.close();
+
+	// 解析文件内容：B-0.029 X-52.059 Y-82.687 Z-173.462
+	double centerX1 = 0.0, centerX2 = 0.0, centerY = 0.0, centerZ = 0.0;
+	QRegularExpression regex(R"(B([-\d.]+)\s+X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
+	QRegularExpressionMatch match = regex.match(content);
+	if (match.hasMatch())
+	{
+		centerX1 = match.captured(1).toDouble(); // B值
+		centerX2 = match.captured(2).toDouble(); // X值
+		centerY  = match.captured(3).toDouble(); // Y值
+		centerZ  = match.captured(4).toDouble(); // Z值
+	}
+	else
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"]                                 = "NG";
+		obj["Ret_Err"]                                = "Failed to parse probe calibration result file";
 		m_probeCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return false;
