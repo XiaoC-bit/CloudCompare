@@ -299,6 +299,60 @@ void CalibrationResultDialog::initUI()
         cardLayout->addLayout(grid);
         mainLayout->addWidget(card);
     }
+
+    // ── 5. 测头标定结果 ────────────────────────────────────────────────────────
+    {
+        QFrame* card = new QFrame();
+        card->setFrameShape(QFrame::NoFrame);
+        card->setStyleSheet(R"(
+            QFrame {
+                background-color: #faf5ff;
+                border: 1px solid #d0b8e6;
+                border-radius: 4px;
+            }
+        )");
+
+        QVBoxLayout* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(14, 12, 14, 12);
+        cardLayout->setSpacing(10);
+
+        QLabel* titleLabel = new QLabel("测头标定结果");
+        QFont f = titleLabel->font();
+        f.setBold(true);
+        f.setPointSize(f.pointSize() + 1);
+        titleLabel->setFont(f);
+        titleLabel->setStyleSheet("border: none; background: transparent;");
+        cardLayout->addWidget(titleLabel);
+
+        QFrame* sep = new QFrame();
+        sep->setFrameShape(QFrame::HLine);
+        sep->setStyleSheet("border: none; background-color: #e0e0e0; max-height: 1px;");
+        cardLayout->addWidget(sep);
+
+        QGridLayout* grid = new QGridLayout();
+        grid->setHorizontalSpacing(12);
+        grid->setVerticalSpacing(8);
+        grid->setColumnMinimumWidth(1, 110);
+        grid->setColumnMinimumWidth(3, 110);
+
+        auto addProbeStat = [&](int row, int col, const QString& key, QLabel*& lbl) {
+            QLabel* k = new QLabel(key);
+            k->setStyleSheet("color: #444444; background: transparent; border: none;");
+            grid->addWidget(k, row, col * 2);
+            lbl = new QLabel("--");
+            lbl->setStyleSheet("color: #5a2d80; font-weight: 600; background: transparent; border: none;");
+            grid->addWidget(lbl, row, col * 2 + 1);
+        };
+
+        addProbeStat(0, 0, "标定结果:",   m_probeResultLabel);
+        addProbeStat(0, 1, "Offset:",     m_probeOffsetLabel);
+        addProbeStat(1, 0, "X:",          m_probeXLabel);
+        addProbeStat(1, 1, "Y:",          m_probeYLabel);
+        addProbeStat(2, 0, "Z:",          m_probeZLabel);
+
+        cardLayout->addLayout(grid);
+        mainLayout->addWidget(card);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -387,6 +441,61 @@ void CalibrationResultDialog::loadCalibrationResult()
             if (calibrationResult.contains("FitResults") && calibrationResult.contains("Residuals")) {
                 updateStatistics(calibrationResult["FitResults"].toArray(),
                                  calibrationResult["Residuals"].toArray());
+            }
+        }
+    }
+
+    loadProbeCalibrationResult();
+}
+
+void CalibrationResultDialog::loadProbeCalibrationResult()
+{
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString filePath = appDir + "/Template/probe_calibration_status.json";
+
+    QFile file(filePath);
+    if (!file.exists()) {
+        return;
+    }
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return;
+    }
+
+    QJsonObject root = doc.object();
+    if (root.contains("CalibrationResult")) {
+        QJsonObject probeResult = root["CalibrationResult"].toObject();
+
+        if (probeResult.contains("Result")) {
+            QString result = probeResult["Result"].toString();
+            m_probeResultLabel->setText(result);
+            m_probeResultLabel->setStyleSheet(result == "OK"
+                ? "color: #2e8b57; font-weight: 700; background: transparent; border: none;"
+                : "color: #cc3333; font-weight: 700; background: transparent; border: none;");
+        }
+
+        if (probeResult.contains("RotationCenter")) {
+            QJsonObject rotationCenter = probeResult["RotationCenter"].toObject();
+            if (rotationCenter.contains("Offset")) {
+                m_probeOffsetLabel->setText(QString::number(rotationCenter["Offset"].toDouble(), 'f', 6));
+            }
+            if (rotationCenter.contains("X")) {
+                m_probeXLabel->setText(QString::number(rotationCenter["X"].toDouble(), 'f', 6));
+            }
+            if (rotationCenter.contains("Y")) {
+                m_probeYLabel->setText(QString::number(rotationCenter["Y"].toDouble(), 'f', 6));
+            }
+            if (rotationCenter.contains("Z")) {
+                m_probeZLabel->setText(QString::number(rotationCenter["Z"].toDouble(), 'f', 6));
             }
         }
     }

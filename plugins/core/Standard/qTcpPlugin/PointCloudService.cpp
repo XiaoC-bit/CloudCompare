@@ -6204,7 +6204,7 @@ bool PointCloudService::executeProbeCalibration()
 	QJsonObject obj;
 	obj["Result"] = "OK";
 	obj["Ret_Err"] = "Probe calibration completed successfully";
-	obj["RotationCenter"] = QJsonObject{{"X1", centerX1}, {"X2", centerX2}, {"Y", centerY}, {"Z", centerZ}};
+	obj["RotationCenter"] = QJsonObject{{"Offset", centerX1}, {"X", centerX2}, {"Y", centerY}, {"Z", centerZ}};
 	m_probeCalibrationResult["CalibrationResult"] = obj;
 
 	// 保存状态
@@ -6474,22 +6474,15 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 
 				// 应用变换
 				// 应用 T1 矩阵
-				Eigen::Matrix4d T1;
-				T1 << -1.000000, 0.000000, 0.000000, 0.000000,
-					0.000000, 1.000000, 0.000000, 0.000000,
-					0.000000, 0.000000, 1.000000, 0.000000,
-					0.000000, 0.000000, 0.000000, 1.000000;
 
 				// 应用基于 x, y, z, B, C 的变换
-				Eigen::Matrix4d T_cam_motion = computeCameraMotion(
+				Eigen::Matrix4d finalTransform = computeCameraMotion(
 					m_cameraCalibrationMatrix,
-					-(x - ZeroX),
-					-(y - ZeroY),
-					-(z - ZeroZ),
+					(x - ZeroX),
+					(y - ZeroY),
+					(z - ZeroZ),
 					b,
 					c);
-
-				Eigen::Matrix4d finalTransform = (T_cam_motion * T1);
 
 				ccGLMatrixd t1GlMatrix(finalTransform.data());
 
@@ -6633,8 +6626,10 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				icpParams["source"] = mergedCloudName;
 				icpParams["target"] = "Theoretical_Model";
 				icpParams["maxIterations"] = 100;
-				icpParams["tolerance"] = 0.001;
-				icpParams["minRMSDecrease"] = 1e-7;
+				icpParams["tolerance"]     = 0.001;
+				// icpParams["minRMSDecrease"] = 1e-7;
+				//临时改变精度，测试过程中为了更快出结果
+				icpParams["minRMSDecrease"] = 1e-5;
 				icpParams["maxThreadCount"] = 14;
 
 				QString errorMessage;

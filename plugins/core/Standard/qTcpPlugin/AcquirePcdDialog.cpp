@@ -82,7 +82,18 @@ void AcquirePcdDialog::onAcquireClicked()
 
     m_progressTimer->start(100);
 
-    QThread::create([this]() {
+
+	 bool    success = acquirePointCloud("AcquiredCloud");
+	QString errorMessage;
+
+	if (!success && !m_cancelRequested)
+	{
+		errorMessage = "点云获取失败";
+	}
+
+	onAcquisitionFinished(success, errorMessage);
+
+    /*QThread::create([this]() {
         bool success = acquirePointCloud("AcquiredCloud");
         QString errorMessage;
 
@@ -94,7 +105,7 @@ void AcquirePcdDialog::onAcquireClicked()
             Qt::QueuedConnection,
             Q_ARG(bool, success),
             Q_ARG(QString, errorMessage));
-    })->start();
+    })->start();*/
 }
 
 void AcquirePcdDialog::onCancelClicked()
@@ -160,6 +171,7 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 
 	const int totalPixels = cfg.xImageSize * cfg.maxLineSize;
 
+	const bool                  flipX = true; // 控制X方向是否翻转
 	std::vector<unsigned short> heightBuf(totalPixels, 0);
 	std::vector<unsigned char>  luminanceBuf(totalPixels, 0);
 
@@ -248,10 +260,12 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 		for (int x = 0; x < xNum; ++x)
 		{
 			const int idx = y * xNum + x;
+
+			const float fx = flipX ? (-x * xPitch) : (x * xPitch);
 			if (heightBuf[idx] != 0)
 			{
 				CCVector3 P(
-                     static_cast<PointCoordinateType>(x * xPitch),
+				    static_cast<PointCoordinateType>(fx),
 			    static_cast<PointCoordinateType>(y * yPitch),
 			    static_cast<PointCoordinateType>((heightBuf[idx] - 32768) * zPitch));
 				cloud->addPoint(P);
