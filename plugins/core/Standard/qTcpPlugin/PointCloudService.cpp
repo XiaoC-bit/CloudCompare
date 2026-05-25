@@ -3813,6 +3813,13 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 
 	QJsonObject obj;
 	obj["Result"] = residualOk ? "OK" : "NG";
+	
+	QJsonArray sphereCenterArray;
+	sphereCenterArray.append(sphereCenter_M.x());
+	sphereCenterArray.append(sphereCenter_M.y());
+	sphereCenterArray.append(sphereCenter_M.z());
+	obj["ProbeSphereCenter"] = sphereCenterArray;
+
 	if (residualOk)
 	{
 		obj["Matrix"]            = matrixRows;
