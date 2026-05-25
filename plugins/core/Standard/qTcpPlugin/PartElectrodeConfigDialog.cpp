@@ -1357,11 +1357,37 @@ void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
 
     if (column == COL_SCAN_POSITION) {
         QList<ScanPositionData> originalScanPositions = partData.electrodes[row].scanPositions;
+        double originalStartX = partData.electrodes[row].startX;
+        double originalStartY = partData.electrodes[row].startY;
+        double originalStartZ = partData.electrodes[row].startZ;
+        double originalStartB = partData.electrodes[row].startB;
+        double originalStartC = partData.electrodes[row].startC;
 
-        ScanPositionConfigDialog dlg(partData.electrodes[row].scanPositions, this, this);
+        ScanPositionData zeroPos;
+        zeroPos.name = "原点";
+        zeroPos.x = partData.electrodes[row].startX;
+        zeroPos.y = partData.electrodes[row].startY;
+        zeroPos.z = partData.electrodes[row].startZ;
+        zeroPos.b = partData.electrodes[row].startB;
+        zeroPos.c = partData.electrodes[row].startC;
+
+        ScanPositionConfigDialog dlg(zeroPos, partData.electrodes[row].scanPositions, this, this);
         int result = dlg.exec();
 
+        if (result == QDialog::Accepted || (result == QDialog::Rejected && dlg.hasChanges())) {
+            partData.electrodes[row].startX = zeroPos.x;
+            partData.electrodes[row].startY = zeroPos.y;
+            partData.electrodes[row].startZ = zeroPos.z;
+            partData.electrodes[row].startB = zeroPos.b;
+            partData.electrodes[row].startC = zeroPos.c;
+        }
+
         if (result == QDialog::Rejected && dlg.hasChanges()) {
+            partData.electrodes[row].startX = originalStartX;
+            partData.electrodes[row].startY = originalStartY;
+            partData.electrodes[row].startZ = originalStartZ;
+            partData.electrodes[row].startB = originalStartB;
+            partData.electrodes[row].startC = originalStartC;
             partData.electrodes[row].scanPositions = originalScanPositions;
         }
     } else if (column == COL_REGION) {
@@ -1379,12 +1405,15 @@ void PartElectrodeConfigDialog::onConfigureScanPosition(int row, int column)
     updateElectrodeTable();
 }
 
-PartElectrodeConfigDialog::ScanPositionConfigDialog::ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent)
-    : QDialog(parent), m_scanPositions(scanPositions), m_parentDialog(parentDialog)
+PartElectrodeConfigDialog::ScanPositionConfigDialog::ScanPositionConfigDialog(ScanPositionData& zeroPosition, QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent)
+    : QDialog(parent), m_zeroPosition(zeroPosition), m_scanPositions(scanPositions), m_parentDialog(parentDialog)
 {
     setWindowTitle("配置扫描位置");
     setMinimumSize(700, 500);
     resize(750, 550);
+    if (m_zeroPosition.name.isEmpty()) {
+        m_zeroPosition.name = "原点";
+    }
     initUI();
     updateScanPositionList();
 }
@@ -1572,6 +1601,11 @@ QListWidget::item:selected:active {
 void PartElectrodeConfigDialog::ScanPositionConfigDialog::updateScanPositionList()
 {
     m_scanPositionList->clear();
+    QListWidgetItem* zeroItem = new QListWidgetItem(m_zeroPosition.name);
+    zeroItem->setForeground(QColor("#2e8b57"));
+    zeroItem->setFont(QFont(zeroItem->font().family(), zeroItem->font().pointSize(), QFont::Bold));
+    m_scanPositionList->addItem(zeroItem);
+    
     for (const ScanPositionData& pos : m_scanPositions) {
         m_scanPositionList->addItem(pos.name);
     }
@@ -1592,12 +1626,21 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::updateCoordinateFields
         m_zEdit->clear();
         m_bEdit->clear();
         m_cEdit->clear();
+        m_isZeroPositionSelected = false;
         return;
     }
 
     int index = m_scanPositionList->row(item);
-    if (index >= 0 && index < m_scanPositions.size()) {
-        const ScanPositionData& pos = m_scanPositions[index];
+    if (index == 0) {
+        m_isZeroPositionSelected = true;
+        m_xEdit->setText(QString::number(m_zeroPosition.x));
+        m_yEdit->setText(QString::number(m_zeroPosition.y));
+        m_zEdit->setText(QString::number(m_zeroPosition.z));
+        m_bEdit->setText(QString::number(m_zeroPosition.b));
+        m_cEdit->setText(QString::number(m_zeroPosition.c));
+    } else if (index > 0 && index <= m_scanPositions.size()) {
+        m_isZeroPositionSelected = false;
+        const ScanPositionData& pos = m_scanPositions[index - 1];
         m_xEdit->setText(QString::number(pos.x));
         m_yEdit->setText(QString::number(pos.y));
         m_zEdit->setText(QString::number(pos.z));
@@ -1640,6 +1683,12 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onDeleteScanPosition()
         return;
     }
 
+    int index = m_scanPositionList->row(item);
+    if (index == 0) {
+        QMessageBox::warning(this, "提示", "原点不能删除");
+        return;
+    }
+
     QMessageBox::StandardButton result = QMessageBox::question(this, "确认删除",
         "确定要删除选中的扫描点吗？",
         QMessageBox::Yes | QMessageBox::No);
@@ -1648,15 +1697,17 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onDeleteScanPosition()
         return;
     }
 
-    int index = m_scanPositionList->row(item);
-    m_scanPositions.removeAt(index);
+    m_scanPositions.removeAt(index - 1);
     updateScanPositionList();
 
     if (m_scanPositions.size() > 0) {
-        if (index >= m_scanPositions.size()) {
-            index = m_scanPositions.size() - 1;
+        int newIndex = index - 1;
+        if (newIndex >= m_scanPositions.size()) {
+            newIndex = m_scanPositions.size();
         }
-        m_scanPositionList->setCurrentRow(index);
+        m_scanPositionList->setCurrentRow(newIndex);
+    } else {
+        m_scanPositionList->setCurrentRow(0);
     }
 
     m_hasChanges = true;
@@ -1671,11 +1722,16 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCopyScanPosition()
     }
 
     int index = m_scanPositionList->row(item);
-    if (index < 0 || index >= m_scanPositions.size()) {
+    if (index == 0) {
+        QMessageBox::warning(this, "提示", "原点不能复制");
         return;
     }
 
-    ScanPositionData source = m_scanPositions[index];
+    if (index < 0 || index > m_scanPositions.size()) {
+        return;
+    }
+
+    ScanPositionData source = m_scanPositions[index - 1];
     QString baseName = source.name;
     
     QRegularExpression regex(R"(^(.*?)(\d+)$)");
@@ -1708,9 +1764,9 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCopyScanPosition()
 
     ScanPositionData copy = source;
     copy.name = newName;
-    m_scanPositions.insert(index + 1, copy);
+    m_scanPositions.insert(index, copy);
     updateScanPositionList();
-    m_scanPositionList->setCurrentRow(index + 1);
+    m_scanPositionList->setCurrentRow(index);
 
     m_hasChanges = true;
     m_saveBtn->setEnabled(true);
@@ -1720,6 +1776,12 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onRenameScanPosition()
 {
     QListWidgetItem* item = m_scanPositionList->currentItem();
     if (!item) {
+        return;
+    }
+
+    int index = m_scanPositionList->row(item);
+    if (index == 0) {
+        QMessageBox::warning(this, "提示", "原点不能重命名");
         return;
     }
 
@@ -1738,9 +1800,8 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onRenameScanPosition()
         }
     }
 
-    int index = m_scanPositionList->row(item);
-    if (index >= 0 && index < m_scanPositions.size()) {
-        m_scanPositions[index].name = newName;
+    if (index > 0 && index <= m_scanPositions.size()) {
+        m_scanPositions[index - 1].name = newName;
         updateScanPositionList();
         m_scanPositionList->setCurrentRow(index);
 
@@ -1766,8 +1827,17 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCoordinateChanged()
     }
 
     int index = m_scanPositionList->row(item);
-    if (index >= 0 && index < m_scanPositions.size()) {
-        ScanPositionData& pos = m_scanPositions[index];
+    if (index == 0) {
+        m_zeroPosition.x = m_xEdit->text().toDouble();
+        m_zeroPosition.y = m_yEdit->text().toDouble();
+        m_zeroPosition.z = m_zEdit->text().toDouble();
+        m_zeroPosition.b = m_bEdit->text().toDouble();
+        m_zeroPosition.c = m_cEdit->text().toDouble();
+
+        m_hasChanges = true;
+        m_saveBtn->setEnabled(true);
+    } else if (index > 0 && index <= m_scanPositions.size()) {
+        ScanPositionData& pos = m_scanPositions[index - 1];
         pos.x = m_xEdit->text().toDouble();
         pos.y = m_yEdit->text().toDouble();
         pos.z = m_zEdit->text().toDouble();
@@ -1787,6 +1857,7 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onSave()
     }
     m_hasChanges = false;
     m_saveBtn->setEnabled(false);
+    accept();
 }
 
 void PartElectrodeConfigDialog::ScanPositionConfigDialog::onGetDeviceCoordinate()

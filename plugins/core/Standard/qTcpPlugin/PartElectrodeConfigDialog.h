@@ -172,7 +172,7 @@ private:
     class ScanPositionConfigDialog : public QDialog
     {
     public:
-        explicit ScanPositionConfigDialog(QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
+        explicit ScanPositionConfigDialog(ScanPositionData& zeroPosition, QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
         ~ScanPositionConfigDialog() override;
         
         bool hasChanges() const { return m_hasChanges; }
@@ -193,6 +193,7 @@ private:
         void onSave();
         void onCancel();
         
+        ScanPositionData& m_zeroPosition;
         QList<ScanPositionData>& m_scanPositions;
         PartElectrodeConfigDialog* m_parentDialog;
         QListWidget* m_scanPositionList;
@@ -209,6 +210,7 @@ private:
         QPushButton* m_saveBtn;
         QPushButton* m_cancelBtn;
         bool m_hasChanges = false;
+        bool m_isZeroPositionSelected = false;
         
         PointCloudService* getPointCloudService() const;
     };
