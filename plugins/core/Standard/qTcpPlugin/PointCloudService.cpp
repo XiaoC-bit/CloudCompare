@@ -143,6 +143,25 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 				{
 					m_probeCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "Failed"}, {"Ret_Err", "previous calibration interrupted"}};
 				}
+
+				// 读取旋转中心
+				if (probeObj.contains("RotationCenter") && probeObj["RotationCenter"].isObject())
+				{
+					auto rotationCenter = probeObj["RotationCenter"].toObject();
+					if (rotationCenter.contains("X") && rotationCenter.contains("Y") && rotationCenter.contains("Z"))
+					{
+						double x = rotationCenter["X"].toDouble();
+						double y = rotationCenter["Y"].toDouble();
+						double z = rotationCenter["Z"].toDouble();
+
+						// C轴旋转中心
+						m_cAxisCenter = Eigen::Vector3d(x, y, z);
+
+						// B轴旋转中心（X需要加上Offset）
+						double offset = rotationCenter.contains("Offset") ? rotationCenter["Offset"].toDouble() : 0.0;
+						m_bAxisCenter = Eigen::Vector3d(x + offset, y, z);
+					}
+				}
 			}
 		}
 		probeStatusFile.close();
@@ -1546,11 +1565,8 @@ Eigen::Matrix4d PointCloudService::makePivotTransform(const Eigen::Matrix3d& Rot
     return T;
 }
 
-Eigen::Matrix4d PointCloudService::computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg)
+Eigen::Matrix4d PointCloudService::computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C)
 {
-    const Eigen::Vector3d pivot_B(0, 0, 0);
-    const Eigen::Vector3d pivot_C(0, 0, 0);
-
     Eigen::Matrix4d T_robot_move = buildRobotMotion(x, y, z, B_deg, C_deg, pivot_B, pivot_C);
     Eigen::Matrix4d T_robot2cam = invertRigid(T_cam2robot);
 
@@ -4481,7 +4497,9 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 					    -(y - ZeroY),
 					    -(z - ZeroZ),
 					    b,
-					    c);
+					    c,
+					    m_bAxisCenter,
+					    m_cAxisCenter);
 
 					Eigen::Matrix4d finalTransform = (T_cam_motion * T1);
 
@@ -6482,7 +6500,9 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					(y - ZeroY),
 					(z - ZeroZ),
 					b,
-					c);
+					c,
+					m_bAxisCenter,
+					m_cAxisCenter);
 
 				ccGLMatrixd t1GlMatrix(finalTransform.data());
 
