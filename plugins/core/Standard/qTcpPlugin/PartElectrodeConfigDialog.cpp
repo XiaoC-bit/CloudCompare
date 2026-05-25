@@ -28,7 +28,7 @@ PartElectrodeConfigDialog::PartElectrodeConfigDialog(ccMainAppInterface* app, Po
 {
     setWindowTitle("工件电极配置");
     setMinimumSize(1000, 600);
-    resize(1200, 700);
+    resize(1730, 700);
     initUI();
     loadConfigFromFiles();
 }
@@ -534,14 +534,17 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 
         QTableWidgetItem* item0 = new QTableWidgetItem(electrode.electrodeName);
         item0->setFlags(item0->flags() | Qt::ItemIsEditable);
+        item0->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_ELECTRODE, item0);
 
         QTableWidgetItem* item1 = new QTableWidgetItem(electrode.processPosition);
         item1->setFlags(item1->flags() | Qt::ItemIsEditable);
+        item1->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_POSITION, item1);
 
         QTableWidgetItem* item2 = new QTableWidgetItem(electrode.dischargeParameter);
         item2->setFlags(item2->flags() | Qt::ItemIsEditable);
+        item2->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_PARAMETER, item2);
 
         QString inspectionProgramText = electrode.inspectionProgramPath;
@@ -556,6 +559,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 		QFont font = item3->font();
 		font.setUnderline(true);
 		item3->setFont(font);
+        item3->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_INSPECTION_PROGRAM, item3);
 
         QString measureMethod = electrode.measureMethod;
@@ -592,6 +596,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 		font = item5->font();
 		font.setUnderline(true);
 		item5->setFont(font);
+        item5->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_SCAN_POSITION, item5);
 
         QString regionText;
@@ -605,6 +610,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 		font = item6->font();
 		font.setUnderline(true);
 		item6->setFont(font);
+		item6->setTextAlignment(Qt::AlignCenter);
 		m_electrodeTable->setItem(i, COL_REGION, item6);
 
         QString probeProgramText = electrode.probeProgramPath;
@@ -618,30 +624,37 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
 		font = item7->font();
 		font.setUnderline(true);
 		item7->setFont(font);
+        item7->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_PROBE_PROGRAM, item7);
 
         QTableWidgetItem* item8 = new QTableWidgetItem(QString::number(electrode.startX));
         item8->setFlags(item8->flags() | Qt::ItemIsEditable);
+        item8->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_START_X, item8);
 
         QTableWidgetItem* item9 = new QTableWidgetItem(QString::number(electrode.startY));
         item9->setFlags(item9->flags() | Qt::ItemIsEditable);
+        item9->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_START_Y, item9);
 
         QTableWidgetItem* item10 = new QTableWidgetItem(QString::number(electrode.startZ));
         item10->setFlags(item10->flags() | Qt::ItemIsEditable);
+        item10->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_START_Z, item10);
 
         QTableWidgetItem* item11 = new QTableWidgetItem(QString::number(electrode.startA));
         item11->setFlags(item11->flags() | Qt::ItemIsEditable);
+        item11->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_START_A, item11);
 
         QTableWidgetItem* item12 = new QTableWidgetItem(QString::number(electrode.startB));
         item12->setFlags(item12->flags() | Qt::ItemIsEditable);
+        item12->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_START_B, item12);
 
         QTableWidgetItem* item13 = new QTableWidgetItem(QString::number(electrode.startC));
         item13->setFlags(item13->flags() | Qt::ItemIsEditable);
+        item13->setTextAlignment(Qt::AlignCenter);
         m_electrodeTable->setItem(i, COL_START_C, item13);
 
         updateColumnEnabledState(i, measureMethod);
