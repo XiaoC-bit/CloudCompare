@@ -3140,6 +3140,7 @@ bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
 		int                    highSpeedPortNo  = 24692;
 	} cfg;
 
+	const bool    flipX       = true;  // 控制X方向是否翻转
 	const bool    useAsync    = params["async"].toBool(false);
 	const QString outputName  = params["outputName"].toString("AcquiredCloud");
 	const int     totalPixels = cfg.xImageSize * cfg.maxLineSize;
@@ -3252,8 +3253,10 @@ bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
 				continue;
 			}
 
+			const float fx = flipX ? (- x * xPitch) : (x * xPitch);
+
 			cloud->addPoint(CCVector3(
-			    static_cast<PointCoordinateType>(x * xPitch),
+			    static_cast<PointCoordinateType>(fx),
 			    static_cast<PointCoordinateType>(y * yPitch),
 			    static_cast<PointCoordinateType>((*ptr - COLLECT_VALUE) * zPitch)));
 		}
@@ -3302,7 +3305,7 @@ bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
 					continue;
 				}
 
-				const float fx  = x * xPitch;
+				const float fx  = flipX ? ( - x * xPitch) : (x * xPitch);
 				const float fy  = y * yPitch;
 				const float fz  = static_cast<float>((*ptr - COLLECT_VALUE) * zPitch);
 				const int   len = snprintf(buf, sizeof(buf), "%.4f %.4f %.4f\n", fx, fy, fz);
@@ -3613,37 +3616,9 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	for (int i = 0; i < positions.size(); ++i)
 	{
 		const QVector3D& pos = positions[i];
-		Eigen::Vector3d  a   = Eigen::Vector3d(pos.x(), pos.y(), pos.z());
-		Eigen::Vector3d  b   = Eigen::Vector3d(pos.x(), pos.y(), pos.z()) - sphereCenter_M;
-		machinePoints.emplace_back(b);
-
-
-		QString matrixText;
-		for (int row = 0; row < 3; ++row)
-		{
-			matrixText += QString("%1 %2 %3")
-			                  .arg(a(row, 0))
-			                  .arg(a(row, 1))
-			                  .arg(a(row, 2));
-			if (row != 2)
-			{
-				matrixText += "\n";
-			}
-		}
-		m_app->dispToConsole(QString("[TcpPlugin]a[Point %1]\n%2").arg(i+1).arg(matrixText));
-		matrixText = "";
-		for (int row = 0; row < 3; ++row)
-		{
-			matrixText += QString("%1 %2 %3")
-			                  .arg(b(row, 0))
-			                  .arg(b(row, 1))
-			                  .arg(b(row, 2));
-			if (row != 2)
-			{
-				matrixText += "\n";
-			}
-		}
-		m_app->dispToConsole(QString("[TcpPlugin]b[Point %1]\n%2").arg(i + 1).arg(matrixText));
+		Eigen::Vector3d  b   = Eigen::Vector3d(pos.x(), pos.y(), pos.z());
+		//-sphereCenter_M;
+		machinePoints.emplace_back(sphereCenter_M - b);
 
 		if (progressCallback) {
 			progressCallback(i + 1, positions.size(), QString("移动到第%1个位置...").arg(i + 1));
@@ -3770,8 +3745,8 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 			return false;
 		}
 
+		
 		scannerPoints.emplace_back(centerX, centerY, centerZ);
-
 		QJsonObject fitItem;
 		fitItem["index"]   = i + 1;
 		fitItem["machine"] = QJsonArray{pos.x(), pos.y(), pos.z()};
@@ -3850,6 +3825,13 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	}
 	else
 	{
+		obj["Matrix"]             = matrixRows;
+		obj["FitResults"]         = fitResults;
+		obj["Residuals"]          = residuals;
+		obj["ResidualThreshold"]  = CALIBRATION_RESIDUAL_THRESHOLD;
+		obj["ResidualOk"]         = residualOk;
+		obj["PositionCount"]      = positions.size();
+		m_cameraCalibrationMatrix = matrix;
 		obj["Ret_Err"] = QString("Calibration completed but residuals exceed threshold");
 	}
 	m_cameraCalibrationResult["CalibrationResult"] = obj;
