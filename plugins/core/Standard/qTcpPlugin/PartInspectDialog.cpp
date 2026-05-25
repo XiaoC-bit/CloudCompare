@@ -120,7 +120,11 @@ bool PartInspectDialog::performOperation()
 		return false;
 	}
 
-	return m_pointCloudService->executePartInspect(partType, rfid);
+
+	bool    ret = m_pointCloudService->executePartInspect(partType, rfid);
+	QString errMsg;
+	m_pointCloudService->machineBackHome(errMsg);
+	return ret;
 }
 
 void PartInspectDialog::onOperationCompleted(bool success)

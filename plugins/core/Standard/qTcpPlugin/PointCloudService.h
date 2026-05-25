@@ -122,7 +122,8 @@ class PointCloudService : public QObject
 	bool getMachineMode(QString& mode, QString* errorMessage = nullptr);
 	bool waitForMachineIdle(int timeoutSeconds, QString* errorMessage = nullptr);
 	bool getDeviceMainAxisCoor(double& x, double& y, double& z, double& a, double& b, double& c, QString* errorMessage = nullptr);
-	
+
+	bool machineBackHome(QString& errMsg);
 
 
   private:
@@ -167,7 +168,6 @@ class PointCloudService : public QObject
 		double x, y, z, a, b, c;
 	} m_loadingPosition;
 
-	bool machineBackHome(QString &errMsg);
 	//标定函数
 	void calibrationFunc(const QJsonObject& params);
 	void cameraCalibrationFunc(const QJsonObject& params);

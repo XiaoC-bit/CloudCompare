@@ -551,7 +551,7 @@ bool CalibrationDialog::performOperation()
 	};
 
 	bool    ret = m_pointCloudService->executeCalibration(positions, progressCallback);
-	QString errMsg;
+	QString errMsg; 
 	m_pointCloudService->machineBackHome(errMsg);
 	return ret;
 }

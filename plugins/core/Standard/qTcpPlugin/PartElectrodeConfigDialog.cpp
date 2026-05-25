@@ -355,12 +355,12 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
                 capturePositionsArray = obj["scanPositions"].toArray();
             }
             
+            int scanIndex = 0;
             for (const QJsonValue& scanVal : capturePositionsArray) {
                 QJsonObject scanObj = scanVal.toObject();
                 ScanPositionData scanPos;
                 scanPos.name = scanObj["name"].toString();
                 if (scanPos.name.isEmpty()) {
-                    static int scanIndex = 0;
                     scanPos.name = QString("扫描点%1").arg(++scanIndex);
                 }
                 scanPos.x = scanObj["X"].toDouble();
@@ -1525,7 +1525,8 @@ QListWidget::item:selected:active {
     m_renameBtn = new QPushButton(QIcon(":/CC/icons/edit.svg"), "重命名", this);
     m_renameBtn->setFixedSize(90, 32);
     m_renameBtn->setEnabled(false);
-    leftLayout->addWidget(m_renameBtn);
+	m_renameBtn->setVisible(false);
+    //leftLayout->addWidget(m_renameBtn);
 
     buttonLayout->addWidget(leftButtonGroup);
     buttonLayout->addStretch(1);
