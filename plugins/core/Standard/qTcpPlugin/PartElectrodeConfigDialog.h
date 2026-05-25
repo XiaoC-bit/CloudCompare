@@ -172,7 +172,7 @@ private:
     class ScanPositionConfigDialog : public QDialog
     {
     public:
-        explicit ScanPositionConfigDialog(ScanPositionData& zeroPosition, QList<ScanPositionData>& scanPositions, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
+        explicit ScanPositionConfigDialog(ElectrodeData* electrode, PartElectrodeConfigDialog* parentDialog, QWidget* parent = nullptr);
         ~ScanPositionConfigDialog() override;
         
         bool hasChanges() const { return m_hasChanges; }
@@ -193,8 +193,7 @@ private:
         void onSave();
         void onCancel();
         
-        ScanPositionData& m_zeroPosition;
-        QList<ScanPositionData>& m_scanPositions;
+        ElectrodeData* m_electrode;
         PartElectrodeConfigDialog* m_parentDialog;
         QListWidget* m_scanPositionList;
         QLineEdit* m_xEdit;
