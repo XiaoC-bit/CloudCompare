@@ -3658,7 +3658,7 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		content.replace("{B}", QString::number(0));
 		content.replace("{C}", QString::number(0));
 
-		const QString outputFile = templateDir + QString("/Calibration_%1.nc").arg(i + 1);
+		const QString outputFile = appDir + QString("/Temp/Calibration_%1.nc").arg(i + 1);
 		QFile         outputNc(outputFile);
 		if (!outputNc.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
@@ -4162,7 +4162,7 @@ void PointCloudService::probeCalibrationFuncMock(const QJsonObject& params)
 bool PointCloudService::machineBackHome(QString& errorMessage)
 {
 	QString appDir      = QCoreApplication::applicationDirPath();
-	QString templateDir = appDir + "/PartInfo";
+	QString templateDir = appDir + "/Template";
 
 	QString value, errorMsg, strCmd;
 	strCmd = "GetStatus";
@@ -4529,7 +4529,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 					{
 						QString     regionFile = cropRegion["regionFile"].toString();
 						QJsonObject loadParams;
-						loadParams["path"] = QString("%1/PartInfo/%2").arg(appDir).arg(regionFile);
+						loadParams["path"] = QString("%1/Template/%2").arg(appDir).arg(regionFile);
 						loadParams["name"] = QString("%1%2").arg(cloudName).arg("_Region");
 						QString errorMessage;
 						if (!loadInternal(loadParams, &errorMessage))
