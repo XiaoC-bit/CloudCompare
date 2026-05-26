@@ -18,6 +18,7 @@
 #include <QPushButton>
 #include <QClipboard>
 #include <QApplication>
+#include <QTimer>
 
 CalibrationResultDialog::CalibrationResultDialog(QWidget* parent)
     : QDialog(parent)
@@ -184,7 +185,7 @@ void CalibrationResultDialog::initUI()
     {
         QHBoxLayout* headerLayout = new QHBoxLayout();
 
-        QLabel* sectionLabel = new QLabel("点云 → 机械 变换矩阵");
+        QLabel* sectionLabel = new QLabel("点云 → 机械 刚性变换矩阵");
         QFont f = sectionLabel->font();
         f.setBold(true);
         f.setPointSize(f.pointSize() + 1);
@@ -640,4 +641,25 @@ void CalibrationResultDialog::onCopyMatrix()
 
     QClipboard* clipboard = QApplication::clipboard();
     clipboard->setText(matrixText);
+
+    QLabel* tipLabel = new QLabel("矩阵已复制到剪贴板", this);
+    tipLabel->setStyleSheet(R"(
+        QLabel {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 8px 16px;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    )");
+    tipLabel->setAlignment(Qt::AlignCenter);
+    tipLabel->setAttribute(Qt::WA_DeleteOnClose);
+
+    QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(this->layout());
+    if (layout) {
+        layout->addWidget(tipLabel);
+    }
+
+    QTimer::singleShot(2000, tipLabel, &QLabel::close);
 }
