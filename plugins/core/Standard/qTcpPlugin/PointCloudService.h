@@ -96,6 +96,10 @@ class PointCloudService : public QObject
 	// 获取电极检测结果
 	QJsonObject getElectrodeInspectResult() const { return m_electrodeInspectResult; }
 
+	// 获取旋转中心
+	Eigen::Vector3d getBAxisCenter() const { return m_bAxisCenter; }
+	Eigen::Vector3d getCAxisCenter() const { return m_cAxisCenter; }
+
 
 	// 以下是与自动化相关的命令响应函数
 	// 相机标定

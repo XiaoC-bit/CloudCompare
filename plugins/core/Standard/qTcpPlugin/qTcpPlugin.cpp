@@ -38,6 +38,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_acquirePcdAction(nullptr)
     , m_calibrationResultAction(nullptr)
     , m_toggleLogDockAction(nullptr)
+	, m_edmProgramAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -141,7 +142,7 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_edmProgramAction)
 	{
-		m_edmProgramAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/edm.png"), "生成放电程序", this);
+		m_edmProgramAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/log.png"), "生成放电程序", this);
 		connect(m_edmProgramAction, &QAction::triggered, this, &qTcpPlugin::showEdmProgramDialog);
 	}
 
