@@ -6231,6 +6231,84 @@ bool PointCloudService::executeProbeCalibration()
 	return true;
 }
 
+bool PointCloudService::executeEdmProgram(double x, double y, double z, double b, double c)
+{
+	m_Status = MachineStatus::Running;
+
+	QString errorMessage;
+
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString templateFile = appDir + "/Template/PartProg.nc";
+	QString tempFile = appDir + "/Temp/PartProg.nc";
+
+	QFile file(templateFile);
+	if (!file.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	QString content = file.readAll();
+	file.close();
+
+	QRegularExpression regex(R"(\{(-?[\d.]+)\+([XYZBC])\})");
+	QRegularExpressionMatchIterator it = regex.globalMatch(content);
+	QString processedContent = content;
+
+	while (it.hasNext())
+	{
+		QRegularExpressionMatch match = it.next();
+		double baseValue = match.captured(1).toDouble();
+		QString varName = match.captured(2);
+
+		double value = 0;
+		if (varName == "X") value = x;
+		else if (varName == "Y") value = y;
+		else if (varName == "Z") value = z;
+		else if (varName == "B") value = b;
+		else if (varName == "C") value = c;
+
+		double result = baseValue + value;
+		processedContent.replace(match.captured(0), QString::number(result, 'f', 3));
+	}
+
+	QFile outFile(tempFile);
+	if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
+	{
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	outFile.write(processedContent.toUtf8());
+	outFile.close();
+
+	if (!sendFileToMachine(tempFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	m_Status = MachineStatus::Idle;
+	return true;
+}
+
 bool PointCloudService::executePartInspect(const QString& partType, const QString& rfid)
 {
 	// 清空所有点云

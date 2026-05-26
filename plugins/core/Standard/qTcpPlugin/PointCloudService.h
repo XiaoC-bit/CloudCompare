@@ -125,6 +125,8 @@ class PointCloudService : public QObject
 
 	bool machineBackHome(QString& errMsg);
 
+	// 放电程序执行函数
+	bool executeEdmProgram(double x, double y, double z, double b, double c);
 
   private:
 	enum class MachineStatus

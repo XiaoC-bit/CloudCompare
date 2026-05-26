@@ -33,6 +33,7 @@ private slots:
 	void showPartElectrodeConfigDialog();
 	void showAcquirePcdDialog();
 	void showCalibrationResultDialog();
+	void showEdmProgramDialog();
 	void toggleLogDock();
 	void onLogDockVisibilityChanged(bool visible);
 
@@ -49,6 +50,7 @@ private slots:
 	QAction*           m_partElectrodeConfigAction;
 	QAction*           m_acquirePcdAction;
 	QAction*           m_calibrationResultAction;
+	QAction*           m_edmProgramAction;
 	QAction*           m_toggleLogDockAction;
 private:
     CcTcpServer*       m_server;

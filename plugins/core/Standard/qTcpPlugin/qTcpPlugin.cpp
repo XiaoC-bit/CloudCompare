@@ -15,6 +15,7 @@
 #include "PartElectrodeConfigDialog.h"
 #include "AcquirePcdDialog.h"
 #include "CalibrationResultDialog.h"
+#include "EdmProgramDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -138,6 +139,12 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_calibrationResultAction, &QAction::triggered, this, &qTcpPlugin::showCalibrationResultDialog);
 	}
 
+	if (!m_edmProgramAction)
+	{
+		m_edmProgramAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/edm.png"), "生成放电程序", this);
+		connect(m_edmProgramAction, &QAction::triggered, this, &qTcpPlugin::showEdmProgramDialog);
+	}
+
 	if (!m_toggleLogDockAction)
 	{
 		m_toggleLogDockAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/log.png") ,"显示日志窗口", this);
@@ -147,7 +154,7 @@ QList<QAction*> qTcpPlugin::getActions()
 	}
 
 	updateActions();
-	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_toggleLogDockAction};
+	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_edmProgramAction, m_toggleLogDockAction};
 }
 
 void qTcpPlugin::startServer()
@@ -392,6 +399,12 @@ void qTcpPlugin::showAcquirePcdDialog()
 void qTcpPlugin::showCalibrationResultDialog()
 {
 	CalibrationResultDialog dialog(nullptr);
+	dialog.exec();
+}
+
+void qTcpPlugin::showEdmProgramDialog()
+{
+	EdmProgramDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
 }
 
