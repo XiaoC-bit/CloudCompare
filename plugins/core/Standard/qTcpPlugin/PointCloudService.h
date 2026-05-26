@@ -99,7 +99,10 @@ class PointCloudService : public QObject
 	// 获取旋转中心
 	Eigen::Vector3d getBAxisCenter() const { return m_bAxisCenter; }
 	Eigen::Vector3d getCAxisCenter() const { return m_cAxisCenter; }
-
+	Eigen::Matrix4d getHandEyeMatrix() const
+	{
+		return m_cameraCalibrationMatrix;
+	}
 
 	// 以下是与自动化相关的命令响应函数
 	// 相机标定

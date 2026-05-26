@@ -3,7 +3,6 @@
 #include "MachineStatusDialog.h"
 #include <Eigen/Dense>
 
-class QLineEdit;
 class QLabel;
 class QDoubleSpinBox;
 class QTableWidget;
@@ -23,21 +22,17 @@ protected:
 	void onOperationCompleted(bool success) override;
 
 private slots:
+	void onPasteMatrix();
 	void onCalculateCompensation();
 
 private:
 	QTableWidget* m_matrixTable;
-	QLabel* m_calculatedXLabel;
-	QLabel* m_calculatedYLabel;
-	QLabel* m_calculatedZLabel;
-	QLabel* m_calculatedBLabel;
-	QLabel* m_calculatedCLabel;
-
-	double m_calculatedX = 0;
-	double m_calculatedY = 0;
-	double m_calculatedZ = 0;
-	double m_calculatedB = 0;
-	double m_calculatedC = 0;
+	QDoubleSpinBox* m_xSpinBox;
+	QDoubleSpinBox* m_ySpinBox;
+	QDoubleSpinBox* m_zSpinBox;
+	QDoubleSpinBox* m_aSpinBox;
+	QDoubleSpinBox* m_bSpinBox;
+	QDoubleSpinBox* m_cSpinBox;
 
 	bool parseMatrix(Eigen::Matrix4d& matrix);
 	void calculateCompensation(const Eigen::Matrix4d& T_icp);
