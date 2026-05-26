@@ -18,6 +18,8 @@
 #include <QDoubleSpinBox>
 #include <ccMainAppInterface.h>
 
+#include "CommLogger.h"
+
 EdmProgramDialog::EdmProgramDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
 	: MachineStatusDialog(app, pointCloudService, parent)
 {
@@ -226,6 +228,39 @@ void EdmProgramDialog::calculateCompensation(const Eigen::Matrix4d& T_icp)
 	const Eigen::Vector3d Q_machine = m_pointCloudService->getCAxisCenter();   // C轴旋转中心，机床基坐标系 B=C=0
 	const Eigen::Matrix4d T_he      = m_pointCloudService->getHandEyeMatrix(); // scanner -> machine
 
+
+	// === 测试代码：B轴旋转1°产生的pivot平移 ===
+	{
+		const double test_B_rad = 1.0 * M_PI / 180.0;
+
+		const Eigen::Matrix3d Rb_test = Eigen::AngleAxisd(-test_B_rad,
+		                                                  Eigen::Vector3d::UnitY())
+		                                    .toRotationMatrix();
+
+		// 有耦合版本（以机床原点为基准）
+		const Eigen::Vector3d t_pivotB_test = P_machine - Rb_test * P_machine;
+		const Eigen::Vector3d Q_actual_test = P_machine + Rb_test * (Q_machine - P_machine);
+		const Eigen::Vector3d t_pivotC_test = Q_actual_test - Rb_test * Q_actual_test; // C=0，Rc=I，只有B带动C
+		const Eigen::Vector3d t_pivot_test  = t_pivotB_test + t_pivotC_test;
+
+		// 简化：C=0时Rc=I，t_pivotC=0，直接只看B的pivot
+		const Eigen::Vector3d t_pivotB_only = P_machine - Rb_test * P_machine;
+
+		LOG_INTERNAL("=== B轴旋转1°的pivot平移测试 ===");
+		LOG_INTERNAL("P_machine (B轴中心):"
+		         + QString::number(P_machine.x()) + ", " + QString::number(P_machine.y()) + ", " + QString::number(P_machine.z()));
+		LOG_INTERNAL("t_pivotB (B旋转产生的平移):"
+		         + QString::number(t_pivotB_only.x()) + ", " + QString::number(t_pivotB_only.y()) + ", " + QString::number(t_pivotB_only.z()));
+		LOG_INTERNAL("理论验算：");
+		LOG_INTERNAL("  dX = Pz*sin(1°) - Px*(1-cos(1°)) ="
+		         + QString::number(P_machine.z() * std::sin(test_B_rad) - P_machine.x() * (1 - std::cos(test_B_rad))));
+		LOG_INTERNAL("  dZ = -Px*sin(1°) - Pz*(1-cos(1°)) ="
+		         + QString::number(-P_machine.x() * std::sin(test_B_rad) - P_machine.z() * (1 - std::cos(test_B_rad))));	
+	}
+	// === 测试代码结束 ===
+
+
+
 	const double signB = 1.0; // 后续从配置读取
 	const double signC = 1.0;
 
@@ -233,11 +268,10 @@ void EdmProgramDialog::calculateCompensation(const Eigen::Matrix4d& T_icp)
 	// T_icp 是"点云往模型靠"的变换（偏差的逆），取逆得到实际工件偏差
 	// 再通过 hand-eye 转换到机床坐标系：T_machine = T_he * T_dev * T_he_inv
 	const Eigen::Matrix4d T_he_inv    = T_he.inverse();
-	const Eigen::Matrix4d T_deviation = T_icp.inverse();
-	const Eigen::Matrix4d T_machine   = T_he * T_deviation * T_he_inv;
+	const Eigen::Matrix4d T_machine   = T_he * T_icp * T_he_inv;
 
-	const Eigen::Matrix3d R = T_icp.block<3, 3>(0, 0);
-	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3);
+	const Eigen::Matrix3d R = T_machine.block<3, 3>(0, 0);
+	const Eigen::Vector3d t = T_machine.block<3, 1>(0, 3);
 
 	// --- Step 2: ZY 分解，R = Rz(C)·Ry(B) ---
 	// R(2,0) = -sinB*cosC
@@ -281,17 +315,26 @@ void EdmProgramDialog::calculateCompensation(const Eigen::Matrix4d& T_icp)
 	                                             Eigen::Vector3d::UnitZ())
 	                               .toRotationMatrix();
 
-	// B轴固定，绕 P_machine 旋转
+	//// B轴固定，绕 P_machine 旋转
+	//const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
+
+	//// C轴中心随B轴转动，B转后C轴中心在机床基坐标系下的实际位置
+	//const Eigen::Vector3d Q_actual = P_machine + Rb * (Q_machine - P_machine);
+
+	//// C绕实际中心旋转产生的平移
+	//const Eigen::Vector3d t_pivotC = Q_actual - Rc * Q_actual;
+
+	//// 总 pivot 平移（Q_actual 已在机床基坐标系，直接叠加）
+	//const Eigen::Vector3d t_pivot = t_pivotB + t_pivotC;
+
+
+	
+
 	const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
+	const Eigen::Vector3d t_pivotC = Q_machine - Rc * Q_machine;
+	// M_real * O 展开：
+	const Eigen::Vector3d t_pivot = t_pivotB + Rb * t_pivotC;
 
-	// C轴中心随B轴转动，B转后C轴中心在机床基坐标系下的实际位置
-	const Eigen::Vector3d Q_actual = P_machine + Rb * (Q_machine - P_machine);
-
-	// C绕实际中心旋转产生的平移
-	const Eigen::Vector3d t_pivotC = Q_actual - Rc * Q_actual;
-
-	// 总 pivot 平移（Q_actual 已在机床基坐标系，直接叠加）
-	const Eigen::Vector3d t_pivot = t_pivotB + t_pivotC;
 
 	// --- Step 4: 真实平移补偿 = ICP平移 - pivot平移 ---
 	const Eigen::Vector3d delta_xyz = t - t_pivot;

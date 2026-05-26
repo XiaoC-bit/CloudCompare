@@ -221,13 +221,13 @@ void qTcpPlugin::startServer()
 	double b_x = settings.value("RotationCenter/B_x", 0.0).toDouble();
 	double b_y = settings.value("RotationCenter/B_y", 0.0).toDouble();
 	double b_z = settings.value("RotationCenter/B_z", 0.0).toDouble();
-	m_pointCloudService->setBAxisCenter(b_x, b_y, b_z);
+	//m_pointCloudService->setBAxisCenter(b_x, b_y, b_z);
 	
 	// 读取C轴旋转中心
 	double c_x = settings.value("RotationCenter/C_x", 0.0).toDouble();
 	double c_y = settings.value("RotationCenter/C_y", 0.0).toDouble();
 	double c_z = settings.value("RotationCenter/C_z", 0.0).toDouble();
-	m_pointCloudService->setCAxisCenter(c_x, c_y, c_z);
+	//m_pointCloudService->setCAxisCenter(c_x, c_y, c_z);
 	
 	// 读取G54工件坐标系
 	double g54_x = settings.value("G54/X", 0.0).toDouble();
