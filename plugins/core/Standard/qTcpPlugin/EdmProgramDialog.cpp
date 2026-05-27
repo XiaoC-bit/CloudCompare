@@ -411,11 +411,11 @@ void EdmProgramDialog::onOperationStarted()
 
 bool EdmProgramDialog::performOperation()
 {
-	double x = m_xSpinBox->value();
-	double y = m_ySpinBox->value();
-	double z = m_zSpinBox->value();
-	double b = m_bSpinBox->value();
-	double c = m_cSpinBox->value();
+	double x = -m_xSpinBox->value();
+	double y = -m_ySpinBox->value();
+	double z = -m_zSpinBox->value();
+	double b = -m_bSpinBox->value();
+	double c = -m_cSpinBox->value();
 
 	return m_pointCloudService->executeEdmProgram(x, y, z, b, c);
 }

@@ -6257,25 +6257,73 @@ bool PointCloudService::executeEdmProgram(double x, double y, double z, double b
 	QString content = file.readAll();
 	file.close();
 
-	QRegularExpression regex(R"(\{(-?[\d.]+)\+([XYZBC])\})");
-	QRegularExpressionMatchIterator it = regex.globalMatch(content);
 	QString processedContent = content;
+
+	// 处理 {X}, {X+1}, {Y-0.1}, {-83.565+0.4+X} 这类格式
+	QRegularExpression braceRegex(R"(\{([^}]+)\})");
+	QRegularExpressionMatchIterator it = braceRegex.globalMatch(processedContent);
+
+	QList<QPair<QString, QString>> replacements;
 
 	while (it.hasNext())
 	{
 		QRegularExpressionMatch match = it.next();
-		double baseValue = match.captured(1).toDouble();
-		QString varName = match.captured(2);
+		QString fullMatch = match.captured(0);
+		QString expression = match.captured(1);
+		
+		QRegularExpression tokenRegex(R"(([\+\-]?[\d.]+)|([XYZBC]))");
+		QRegularExpressionMatchIterator tokenIt = tokenRegex.globalMatch(expression);
+		
+		QList<QPair<QString, int>> tokensWithPos;
+		while (tokenIt.hasNext())
+		{
+			QRegularExpressionMatch tokenMatch = tokenIt.next();
+			if (!tokenMatch.captured(1).isEmpty())
+				tokensWithPos.append(QPair<QString, int>(tokenMatch.captured(1), tokenMatch.capturedStart(1)));
+			else if (!tokenMatch.captured(2).isEmpty())
+				tokensWithPos.append(QPair<QString, int>(tokenMatch.captured(2), tokenMatch.capturedStart(2)));
+		}
+		
+		if (tokensWithPos.isEmpty())
+			continue;
+		
+		double result = 0.0;
+		bool first = true;
+		
+		for (int i = 0; i < tokensWithPos.size(); i++)
+		{
+			QString token = tokensWithPos[i].first;
+			int pos = tokensWithPos[i].second;
+			double val = 0;
+			
+			if (token == "X") val = x;
+			else if (token == "Y") val = y;
+			else if (token == "Z") val = z;
+			else if (token == "B") val = b;
+			else if (token == "C") val = c;
+			else val = token.toDouble();
+			
+			if (first)
+			{
+				result = val;
+				first = false;
+			}
+			else
+			{
+				QString op = expression.mid(pos - 1, 1);
+				if (op == "+")
+					result += val;
+				else
+					result -= val;
+			}
+		}
+		
+		replacements.append(QPair<QString, QString>(fullMatch, QString::number(result, 'f', 3)));
+	}
 
-		double value = 0;
-		if (varName == "X") value = x;
-		else if (varName == "Y") value = y;
-		else if (varName == "Z") value = z;
-		else if (varName == "B") value = b;
-		else if (varName == "C") value = c;
-
-		double result = baseValue + value;
-		processedContent.replace(match.captured(0), QString::number(result, 'f', 3));
+	for (const QPair<QString, QString>& rep : replacements)
+	{
+		processedContent.replace(rep.first, rep.second);
 	}
 
 	QFile outFile(tempFile);
@@ -6470,11 +6518,73 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 
 				// 生成NC文件
 				QString content = templateContent;
-				content.replace("{X}", QString::number(x));
-				content.replace("{Y}", QString::number(y));
-				content.replace("{Z}", QString::number(z));
-				content.replace("{B}", QString::number(b));
-				content.replace("{C}", QString::number(c));
+
+				// 处理 {X}, {X+1}, {Y-0.1}, {-83.565+0.4+X} 这类格式
+				QRegularExpression braceRegex(R"(\{([^}]+)\})");
+				QRegularExpressionMatchIterator it = braceRegex.globalMatch(content);
+
+				QList<QPair<QString, QString>> replacements;
+
+				while (it.hasNext())
+				{
+					QRegularExpressionMatch match = it.next();
+					QString fullMatch = match.captured(0);
+					QString expression = match.captured(1);
+					
+					QRegularExpression tokenRegex(R"(([\+\-]?[\d.]+)|([XYZBC]))");
+					QRegularExpressionMatchIterator tokenIt = tokenRegex.globalMatch(expression);
+					
+					QList<QPair<QString, int>> tokensWithPos;
+					while (tokenIt.hasNext())
+					{
+						QRegularExpressionMatch tokenMatch = tokenIt.next();
+						if (!tokenMatch.captured(1).isEmpty())
+							tokensWithPos.append(QPair<QString, int>(tokenMatch.captured(1), tokenMatch.capturedStart(1)));
+						else if (!tokenMatch.captured(2).isEmpty())
+							tokensWithPos.append(QPair<QString, int>(tokenMatch.captured(2), tokenMatch.capturedStart(2)));
+					}
+					
+					if (tokensWithPos.isEmpty())
+						continue;
+					
+					double result = 0.0;
+					bool first = true;
+					
+					for (int i = 0; i < tokensWithPos.size(); i++)
+					{
+						QString token = tokensWithPos[i].first;
+						int pos = tokensWithPos[i].second;
+						double val = 0;
+						
+						if (token == "X") val = x;
+						else if (token == "Y") val = y;
+						else if (token == "Z") val = z;
+						else if (token == "B") val = b;
+						else if (token == "C") val = c;
+						else val = token.toDouble();
+						
+						if (first)
+						{
+							result = val;
+							first = false;
+						}
+						else
+						{
+							QString op = expression.mid(pos - 1, 1);
+							if (op == "+")
+								result += val;
+							else
+								result -= val;
+						}
+					}
+					
+					replacements.append(QPair<QString, QString>(fullMatch, QString::number(result, 'f', 3)));
+				}
+
+				for (const QPair<QString, QString>& rep : replacements)
+				{
+					content.replace(rep.first, rep.second);
+				}
 
 				const QString outputFile = appDir + "/Temp/" +QString("/Inspect_%1_%2.nc").arg(i + 1).arg(j + 1);
 				QFile outputNc(outputFile);
