@@ -268,6 +268,7 @@ void EdmProgramDialog::calculateCompensation(const Eigen::Matrix4d& T_icp)
 		                                     .toRotationMatrix();
 		const Eigen::Matrix3d R_res    = Ry_neg_B * Rz_neg_C * R;
 		A_deg                          = std::atan2(R_res(1, 0), R_res(0, 0)) * 180.0 / M_PI;
+		A_deg                          = std::atan2(R_res(2, 1), R_res(2, 2)) * 180.0 / M_PI;
 	}
 	else
 	{
