@@ -3666,9 +3666,6 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		return false;
 	}
 
-	
-	
-
 	for (int i = 0; i < positions.size(); ++i)
 	{
 		const QVector3D& pos = positions[i];
@@ -6708,34 +6705,68 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					m_Status = MachineStatus::Idle;
 					return false;
 				}
+				//Step 1 将点云还原到机床坐标系下。
+				Eigen::Matrix4d finalMatrix;
+				// Step 2 将点云平移回机床坐标系的原点
+				Eigen::Matrix4d mMoveToMachineZero;
+				mMoveToMachineZero << 1, 0, 0, x,
+				    0, 1, 0, y,
+				    0, 0, 1, z,
+				    0,
+				    0,
+				    0,
+				    1;
+				// Step 3 将点云还原到工件坐标系下
+				Eigen::Matrix4d mMoveToPartZero;
+				mMoveToPartZero << 1, 0, 0, -ZeroX,
+				    0, 1, 0, -ZeroY,
+				    0, 0, 1, -ZeroZ,
+				    0,
+				    0,
+				    0,
+				    1;
 
-				// 应用变换
-				// 应用 T1 矩阵
-
-				// 应用基于 x, y, z, B, C 的变换
-				Eigen::Matrix4d finalTransform = computeCameraMotion(
-					m_cameraCalibrationMatrix,
-					(x - ZeroX),
-					(y - ZeroY),
-					(z - ZeroZ),
-					b,
-					c,
-					m_bAxisCenter,
-					m_cAxisCenter);
-
-				ccGLMatrixd t1GlMatrix(finalTransform.data());
-
-				QString errorMessage;
-				if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage)) {
+				finalMatrix = mMoveToPartZero * mMoveToMachineZero * m_cameraCalibrationMatrix;
+				if (!applyTransformationInternal(cloudName, ccGLMatrixd(finalMatrix.data()), false, &errorMessage))
+				{
 					QJsonObject result;
 					QJsonObject obj;
-					obj["Result"] = "NG";
-					obj["Ret_Err"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
 					result["InspectResult"] = obj;
 					savePartInspectResult(rfid, result);
 					m_Status = MachineStatus::Idle;
 					return false;
 				}
+
+				
+				
+				//// 应用变换
+				//// 应用 T1 矩阵
+
+				//// 应用基于 x, y, z, B, C 的变换
+				//Eigen::Matrix4d finalTransform = computeCameraMotion(
+				//	m_cameraCalibrationMatrix,
+				//	(x - ZeroX),
+				//	(y - ZeroY),
+				//	(z - ZeroZ),
+				//	b,
+				//	c,
+				//	m_bAxisCenter,
+				//	m_cAxisCenter);
+
+				//ccGLMatrixd t1GlMatrix(finalTransform.data());
+
+				//if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage)) {
+				//	QJsonObject result;
+				//	QJsonObject obj;
+				//	obj["Result"] = "NG";
+				//	obj["Ret_Err"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
+				//	result["InspectResult"] = obj;
+				//	savePartInspectResult(rfid, result);
+				//	m_Status = MachineStatus::Idle;
+				//	return false;
+				//}
 			}
 
 			// 合并当前打孔位置的所有点云
