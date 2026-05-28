@@ -85,22 +85,22 @@ QListWidget::item:selected:active {
     m_partInfoWidget->setFixedHeight(100);
     m_partInfoWidget->setStyleSheet(R"(
         QWidget {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 8px;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
             padding: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         QLabel {
-            color: black;
+            color: #333;
         }
         QLabel#titleLabel {
             font-size: 14px;
             font-weight: bold;
-            margin-bottom: 8px;
+            color: #495057;
         }
         QLabel#valueLabel {
             font-size: 13px;
-            opacity: 0.9;
+            color: #666;
         }
     )");
     
@@ -119,17 +119,18 @@ QListWidget::item:selected:active {
     m_editPartBtn->setEnabled(false);
     m_editPartBtn->setStyleSheet(R"(
         QPushButton {
-            background-color: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background-color: #4a90d9;
+            border: none;
             border-radius: 4px;
             color: white;
             font-size: 12px;
         }
         QPushButton:hover {
-            background-color: rgba(255, 255, 255, 0.3);
+            background-color: #3d7fc0;
         }
         QPushButton:disabled {
-            opacity: 0.5;
+            background-color: #ccc;
+            color: #999;
         }
     )");
     headerLayout->addWidget(m_editPartBtn);
@@ -875,44 +876,36 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
     zeroPosLabel->setStyleSheet("font-weight: bold;");
     formLayout->addRow(zeroPosLabel);
 
-    QHBoxLayout* zeroLayout1 = new QHBoxLayout();
     m_zeroXEdit = new QLineEdit(this);
-    m_zeroXEdit->setFixedWidth(80);
-    m_zeroXEdit->setPlaceholderText("X");
-    m_zeroYEdit = new QLineEdit(this);
-    m_zeroYEdit->setFixedWidth(80);
-    m_zeroYEdit->setPlaceholderText("Y");
-    m_zeroZEdit = new QLineEdit(this);
-    m_zeroZEdit->setFixedWidth(80);
-    m_zeroZEdit->setPlaceholderText("Z");
-    zeroLayout1->addWidget(m_zeroXEdit);
-    zeroLayout1->addWidget(m_zeroYEdit);
-    zeroLayout1->addWidget(m_zeroZEdit);
-    zeroLayout1->addStretch();
-    formLayout->addRow("", zeroLayout1);
+    m_zeroXEdit->setFixedWidth(150);
+    formLayout->addRow("X:", m_zeroXEdit);
 
-    QHBoxLayout* zeroLayout2 = new QHBoxLayout();
+    m_zeroYEdit = new QLineEdit(this);
+    m_zeroYEdit->setFixedWidth(150);
+    formLayout->addRow("Y:", m_zeroYEdit);
+
+    m_zeroZEdit = new QLineEdit(this);
+    m_zeroZEdit->setFixedWidth(150);
+    formLayout->addRow("Z:", m_zeroZEdit);
+
     m_zeroBEdit = new QLineEdit(this);
-    m_zeroBEdit->setFixedWidth(80);
-    m_zeroBEdit->setPlaceholderText("B");
+    m_zeroBEdit->setFixedWidth(150);
+    formLayout->addRow("B:", m_zeroBEdit);
+
     m_zeroCEdit = new QLineEdit(this);
-    m_zeroCEdit->setFixedWidth(80);
-    m_zeroCEdit->setPlaceholderText("C");
-    zeroLayout2->addWidget(m_zeroBEdit);
-    zeroLayout2->addWidget(m_zeroCEdit);
-    
+    m_zeroCEdit->setFixedWidth(150);
+    formLayout->addRow("C:", m_zeroCEdit);
+
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
     QPushButton* getDeviceCoorBtn = new QPushButton(QIcon(":/CC/icons/connect.svg"), "从设备获取", this);
-    getDeviceCoorBtn->setFixedSize(100, 28);
-    zeroLayout2->addWidget(getDeviceCoorBtn);
-    
-    zeroLayout2->addStretch();
-    formLayout->addRow("", zeroLayout2);
+    getDeviceCoorBtn->setFixedSize(120, 28);
+    buttonLayout->addWidget(getDeviceCoorBtn);
+    formLayout->addRow("", buttonLayout);
 
     mainLayout->addLayout(formLayout);
     mainLayout->addStretch();
 
-    QHBoxLayout* buttonLayout = new QHBoxLayout();
-    buttonLayout->addStretch();
 
     QPushButton* cancelBtn = new QPushButton("取消", this);
     cancelBtn->setFixedSize(80, 32);
