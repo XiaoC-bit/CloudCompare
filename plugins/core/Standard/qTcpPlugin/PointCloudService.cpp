@@ -6438,6 +6438,9 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 		}
 	}
 
+	
+	QJsonObject zeroPositions = config.value("ZeroPos").toObject();
+
 	QJsonArray holePositions = config.value("holePositions").toArray();
 	if (holePositions.isEmpty()) {
 		QJsonObject result;
@@ -6494,7 +6497,6 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 		if (inspectType == "camera") {
 			// 原有的相机检测逻辑
 			QJsonArray capturePositions = holePos.value("capturePositions").toArray();
-			QJsonObject zeroPositions = holePos.value("ZeroPos").toObject();
 			double ZeroX = 0.0, ZeroY = 0.0, ZeroZ = 0.0;
 			ZeroX = zeroPositions.value("X").toDouble();
 			ZeroY = zeroPositions.value("Y").toDouble();
