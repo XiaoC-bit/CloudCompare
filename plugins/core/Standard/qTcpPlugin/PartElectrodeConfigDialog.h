@@ -54,6 +54,11 @@ struct PartData
     QString modelFilePath;
     QList<ElectrodeData> electrodes;
     bool isModified = false;
+    double zeroX = 0.0;
+    double zeroY = 0.0;
+    double zeroZ = 0.0;
+    double zeroB = 0.0;
+    double zeroC = 0.0;
 };
 
 class PointCloudService;
@@ -69,6 +74,13 @@ public:
     void resetSavedState() {
         m_hasUnsavedChanges = false;
         updateSaveButtonState();
+    }
+
+    PartData* getCurrentPartData() {
+        if (m_partDataMap.contains(m_currentPartName)) {
+            return &m_partDataMap[m_currentPartName];
+        }
+        return nullptr;
     }
 
 private:
@@ -99,6 +111,8 @@ private:
     void onSave();
     void onCancel();
     void onChangeModelFile();
+    void onZeroPosChanged();
+    void onGetZeroPosFromDevice();
 
 	void closeEvent(QCloseEvent* event);
 
@@ -107,6 +121,12 @@ private:
     QLabel* m_partNameLabel;
     QLabel* m_modelFileLabel;
     QPushButton* m_changeModelBtn;
+    QLineEdit* m_zeroXEdit;
+    QLineEdit* m_zeroYEdit;
+    QLineEdit* m_zeroZEdit;
+    QLineEdit* m_zeroBEdit;
+    QLineEdit* m_zeroCEdit;
+    QPushButton* m_getZeroPosBtn;
     QListWidget* m_partList;
     QTableWidget* m_electrodeTable;
     QPushButton* m_addPartBtn;
@@ -154,17 +174,33 @@ private:
         QString getPartName() const { return m_partName; }
         QString getModelFilePath() const { return m_modelFilePath; }
         bool isValid() const { return m_valid; }
+        double getZeroX() const { return m_zeroX; }
+        double getZeroY() const { return m_zeroY; }
+        double getZeroZ() const { return m_zeroZ; }
+        double getZeroB() const { return m_zeroB; }
+        double getZeroC() const { return m_zeroC; }
 
     private:
         QString m_partName;
         QString m_modelFilePath;
         bool m_valid = false;
+        double m_zeroX = 0.0;
+        double m_zeroY = 0.0;
+        double m_zeroZ = 0.0;
+        double m_zeroB = 0.0;
+        double m_zeroC = 0.0;
         QLineEdit* m_nameEdit;
         QLabel* m_filePathLabel;
+        QLineEdit* m_zeroXEdit;
+        QLineEdit* m_zeroYEdit;
+        QLineEdit* m_zeroZEdit;
+        QLineEdit* m_zeroBEdit;
+        QLineEdit* m_zeroCEdit;
 		QPushButton* m_okBtn;
 
         void onNameChanged(const QString& text);
         void onSelectFile();
+		void onGetDeviceCoordinate();
         void onOk();
         void updateOkButton();
     };

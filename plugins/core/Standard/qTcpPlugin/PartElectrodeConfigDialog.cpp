@@ -44,7 +44,7 @@ void PartElectrodeConfigDialog::initUI()
     mainLayout->setSpacing(10);
 
     m_partInfoWidget = new QWidget(this);
-    m_partInfoWidget->setFixedHeight(60);
+    m_partInfoWidget->setFixedHeight(100);
     m_partInfoWidget->setStyleSheet(R"(
         QWidget {
             background-color: #f5f5f5;
@@ -53,34 +53,83 @@ void PartElectrodeConfigDialog::initUI()
             padding: 8px;
         }
     )");
-    QHBoxLayout* partInfoLayout = new QHBoxLayout(m_partInfoWidget);
-    partInfoLayout->setContentsMargins(10, 5, 10, 5);
+    QVBoxLayout* partInfoVLayout = new QVBoxLayout(m_partInfoWidget);
+    partInfoVLayout->setContentsMargins(10, 8, 10, 8);
+    partInfoVLayout->setSpacing(8);
+    
+    QHBoxLayout* partInfoLayout1 = new QHBoxLayout();
     
     QLabel* nameLabel = new QLabel("工件名称:", m_partInfoWidget);
     nameLabel->setStyleSheet("font-weight: bold; color: #333;");
-    partInfoLayout->addWidget(nameLabel);
+    partInfoLayout1->addWidget(nameLabel);
     
     m_partNameLabel = new QLabel("未选择", m_partInfoWidget);
     m_partNameLabel->setStyleSheet("color: #666;");
-    partInfoLayout->addWidget(m_partNameLabel);
+    partInfoLayout1->addWidget(m_partNameLabel);
     
-    partInfoLayout->addSpacing(30);
+    partInfoLayout1->addSpacing(30);
     
     QLabel* modelLabel = new QLabel("模型文件:", m_partInfoWidget);
     modelLabel->setStyleSheet("font-weight: bold; color: #333;");
-    partInfoLayout->addWidget(modelLabel);
+    partInfoLayout1->addWidget(modelLabel);
     
     m_modelFileLabel = new QLabel("无", m_partInfoWidget);
     m_modelFileLabel->setStyleSheet("color: #666;");
-    m_modelFileLabel->setMinimumWidth(200);
-    partInfoLayout->addWidget(m_modelFileLabel);
-    
-    partInfoLayout->addStretch();
+    m_modelFileLabel->setMinimumWidth(150);
+    partInfoLayout1->addWidget(m_modelFileLabel);
     
     m_changeModelBtn = new QPushButton("更换工件模型", m_partInfoWidget);
-    m_changeModelBtn->setFixedSize(100, 35);
+    m_changeModelBtn->setFixedSize(100, 28);
     m_changeModelBtn->setEnabled(false);
-    partInfoLayout->addWidget(m_changeModelBtn);
+    partInfoLayout1->addWidget(m_changeModelBtn);
+    
+    partInfoLayout1->addStretch();
+    
+    QHBoxLayout* partInfoLayout2 = new QHBoxLayout();
+    
+    QLabel* zeroPosLabel = new QLabel("工件原点:", m_partInfoWidget);
+    zeroPosLabel->setStyleSheet("font-weight: bold; color: #333;");
+    partInfoLayout2->addWidget(zeroPosLabel);
+    
+    m_zeroXEdit = new QLineEdit(m_partInfoWidget);
+    m_zeroXEdit->setFixedWidth(80);
+    m_zeroXEdit->setPlaceholderText("X");
+    m_zeroXEdit->setEnabled(false);
+    partInfoLayout2->addWidget(m_zeroXEdit);
+    
+    m_zeroYEdit = new QLineEdit(m_partInfoWidget);
+    m_zeroYEdit->setFixedWidth(80);
+    m_zeroYEdit->setPlaceholderText("Y");
+    m_zeroYEdit->setEnabled(false);
+    partInfoLayout2->addWidget(m_zeroYEdit);
+    
+    m_zeroZEdit = new QLineEdit(m_partInfoWidget);
+    m_zeroZEdit->setFixedWidth(80);
+    m_zeroZEdit->setPlaceholderText("Z");
+    m_zeroZEdit->setEnabled(false);
+    partInfoLayout2->addWidget(m_zeroZEdit);
+    
+    m_zeroBEdit = new QLineEdit(m_partInfoWidget);
+    m_zeroBEdit->setFixedWidth(80);
+    m_zeroBEdit->setPlaceholderText("B");
+    m_zeroBEdit->setEnabled(false);
+    partInfoLayout2->addWidget(m_zeroBEdit);
+    
+    m_zeroCEdit = new QLineEdit(m_partInfoWidget);
+    m_zeroCEdit->setFixedWidth(80);
+    m_zeroCEdit->setPlaceholderText("C");
+    m_zeroCEdit->setEnabled(false);
+    partInfoLayout2->addWidget(m_zeroCEdit);
+    
+    m_getZeroPosBtn = new QPushButton(QIcon(":/CC/icons/connect.svg"), "从设备获取", m_partInfoWidget);
+    m_getZeroPosBtn->setFixedSize(100, 28);
+    m_getZeroPosBtn->setEnabled(false);
+    partInfoLayout2->addWidget(m_getZeroPosBtn);
+    
+    partInfoLayout2->addStretch();
+    
+    partInfoVLayout->addLayout(partInfoLayout1);
+    partInfoVLayout->addLayout(partInfoLayout2);
     
     mainLayout->addWidget(m_partInfoWidget);
 
@@ -226,6 +275,12 @@ QListWidget::item:selected:active {
     connect(m_changeModelBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onChangeModelFile);
     connect(m_electrodeTable, &QTableWidget::cellClicked, this, &PartElectrodeConfigDialog::onCellClicked);
     connect(m_electrodeTable, &QTableWidget::cellEntered, this, &PartElectrodeConfigDialog::onCellEntered);
+    connect(m_zeroXEdit, &QLineEdit::textChanged, this, &PartElectrodeConfigDialog::onZeroPosChanged);
+    connect(m_zeroYEdit, &QLineEdit::textChanged, this, &PartElectrodeConfigDialog::onZeroPosChanged);
+    connect(m_zeroZEdit, &QLineEdit::textChanged, this, &PartElectrodeConfigDialog::onZeroPosChanged);
+    connect(m_zeroBEdit, &QLineEdit::textChanged, this, &PartElectrodeConfigDialog::onZeroPosChanged);
+    connect(m_zeroCEdit, &QLineEdit::textChanged, this, &PartElectrodeConfigDialog::onZeroPosChanged);
+    connect(m_getZeroPosBtn, &QPushButton::clicked, this, &PartElectrodeConfigDialog::onGetZeroPosFromDevice);
 }
 
 void PartElectrodeConfigDialog::updatePartInfo()
@@ -234,6 +289,17 @@ void PartElectrodeConfigDialog::updatePartInfo()
         m_partNameLabel->setText("未选择");
         m_modelFileLabel->setText("无");
         m_changeModelBtn->setEnabled(false);
+        m_zeroXEdit->clear();
+        m_zeroYEdit->clear();
+        m_zeroZEdit->clear();
+        m_zeroBEdit->clear();
+        m_zeroCEdit->clear();
+        m_zeroXEdit->setEnabled(false);
+        m_zeroYEdit->setEnabled(false);
+        m_zeroZEdit->setEnabled(false);
+        m_zeroBEdit->setEnabled(false);
+        m_zeroCEdit->setEnabled(false);
+        m_getZeroPosBtn->setEnabled(false);
     } else {
         m_partNameLabel->setText(m_currentPartName);
         PartData& partData = m_partDataMap[m_currentPartName];
@@ -243,6 +309,17 @@ void PartElectrodeConfigDialog::updatePartInfo()
             m_modelFileLabel->setText(partData.modelFilePath);
         }
         m_changeModelBtn->setEnabled(true);
+        m_zeroXEdit->setText(QString::number(partData.zeroX));
+        m_zeroYEdit->setText(QString::number(partData.zeroY));
+        m_zeroZEdit->setText(QString::number(partData.zeroZ));
+        m_zeroBEdit->setText(QString::number(partData.zeroB));
+        m_zeroCEdit->setText(QString::number(partData.zeroC));
+        m_zeroXEdit->setEnabled(true);
+        m_zeroYEdit->setEnabled(true);
+        m_zeroZEdit->setEnabled(true);
+        m_zeroBEdit->setEnabled(true);
+        m_zeroCEdit->setEnabled(true);
+        m_getZeroPosBtn->setEnabled(true);
     }
 }
 
@@ -291,6 +368,13 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
         partData.partName = partName;
         partData.modelFilePath = doc["modelFile"].toString();
 
+        QJsonObject zeroPosObj = doc["ZeroPos"].toObject();
+        partData.zeroX = zeroPosObj["X"].toDouble();
+        partData.zeroY = zeroPosObj["Y"].toDouble();
+        partData.zeroZ = zeroPosObj["Z"].toDouble();
+        partData.zeroB = zeroPosObj["B"].toDouble();
+        partData.zeroC = zeroPosObj["C"].toDouble();
+
         QJsonArray holePositions = doc["holePositions"].toArray();
         if (holePositions.isEmpty()) {
             holePositions = doc["electrodes"].toArray();
@@ -333,13 +417,20 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
                 electrode.probeProgramPath = obj["probeProgramPath"].toString();
             }
 
-            QJsonObject zeroPosObj = obj["ZeroPos"].toObject();
-            electrode.startX = zeroPosObj["X"].toDouble();
-            electrode.startY = zeroPosObj["Y"].toDouble();
-            electrode.startZ = zeroPosObj["Z"].toDouble();
+            electrode.startX = partData.zeroX;
+            electrode.startY = partData.zeroY;
+            electrode.startZ = partData.zeroZ;
             electrode.startA = obj["startA"].toDouble();
-            electrode.startB = zeroPosObj["B"].toDouble();
-            electrode.startC = zeroPosObj["C"].toDouble();
+            electrode.startB = partData.zeroB;
+            electrode.startC = partData.zeroC;
+
+            if (electrode.startX == 0 && electrode.startY == 0 && electrode.startZ == 0) {
+                electrode.startX = obj["ZeroPos"].toObject()["X"].toDouble();
+                electrode.startY = obj["ZeroPos"].toObject()["Y"].toDouble();
+                electrode.startZ = obj["ZeroPos"].toObject()["Z"].toDouble();
+                electrode.startB = obj["ZeroPos"].toObject()["B"].toDouble();
+                electrode.startC = obj["ZeroPos"].toObject()["C"].toDouble();
+            }
 
             if (electrode.startX == 0 && electrode.startY == 0 && electrode.startZ == 0) {
                 electrode.startX = obj["startX"].toDouble();
@@ -426,6 +517,14 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
         QJsonObject obj;
         obj["modelFile"] = partData.modelFilePath;
 
+        QJsonObject zeroPosObj;
+        zeroPosObj["X"] = partData.zeroX;
+        zeroPosObj["Y"] = partData.zeroY;
+        zeroPosObj["Z"] = partData.zeroZ;
+        zeroPosObj["B"] = partData.zeroB;
+        zeroPosObj["C"] = partData.zeroC;
+        obj["ZeroPos"] = zeroPosObj;
+
         QJsonArray holePositionsArray;
         for (const ElectrodeData& electrode : partData.electrodes) {
             QJsonObject holePositionObj;
@@ -437,14 +536,6 @@ void PartElectrodeConfigDialog::saveConfigToFiles()
             holePositionObj["inspectType"] = inspectType;
             holePositionObj["progPath"] = electrode.probeProgramPath;
             holePositionObj["elecProbePath"] = electrode.inspectionProgramPath;
-
-            QJsonObject zeroPosObj;
-            zeroPosObj["X"] = electrode.startX;
-            zeroPosObj["Y"] = electrode.startY;
-            zeroPosObj["Z"] = electrode.startZ;
-            zeroPosObj["B"] = electrode.startB;
-            zeroPosObj["C"] = electrode.startC;
-            holePositionObj["ZeroPos"] = zeroPosObj;
 
             QJsonArray capturePositionsArray;
             for (const ScanPositionData& scanPos : electrode.scanPositions) {
@@ -783,7 +874,7 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle("新增工件");
-    setFixedSize(500, 200);
+    setFixedSize(500, 350);
     setModal(true);
 
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -810,6 +901,43 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
     
     formLayout->addRow("模型文件:", fileLayout);
 
+    QLabel* zeroPosLabel = new QLabel("工件原点位置:", this);
+    zeroPosLabel->setStyleSheet("font-weight: bold;");
+    formLayout->addRow(zeroPosLabel);
+
+    QHBoxLayout* zeroLayout1 = new QHBoxLayout();
+    m_zeroXEdit = new QLineEdit(this);
+    m_zeroXEdit->setFixedWidth(80);
+    m_zeroXEdit->setPlaceholderText("X");
+    m_zeroYEdit = new QLineEdit(this);
+    m_zeroYEdit->setFixedWidth(80);
+    m_zeroYEdit->setPlaceholderText("Y");
+    m_zeroZEdit = new QLineEdit(this);
+    m_zeroZEdit->setFixedWidth(80);
+    m_zeroZEdit->setPlaceholderText("Z");
+    zeroLayout1->addWidget(m_zeroXEdit);
+    zeroLayout1->addWidget(m_zeroYEdit);
+    zeroLayout1->addWidget(m_zeroZEdit);
+    zeroLayout1->addStretch();
+    formLayout->addRow("", zeroLayout1);
+
+    QHBoxLayout* zeroLayout2 = new QHBoxLayout();
+    m_zeroBEdit = new QLineEdit(this);
+    m_zeroBEdit->setFixedWidth(80);
+    m_zeroBEdit->setPlaceholderText("B");
+    m_zeroCEdit = new QLineEdit(this);
+    m_zeroCEdit->setFixedWidth(80);
+    m_zeroCEdit->setPlaceholderText("C");
+    zeroLayout2->addWidget(m_zeroBEdit);
+    zeroLayout2->addWidget(m_zeroCEdit);
+    
+    QPushButton* getDeviceCoorBtn = new QPushButton(QIcon(":/CC/icons/connect.svg"), "从设备获取", this);
+    getDeviceCoorBtn->setFixedSize(100, 28);
+    zeroLayout2->addWidget(getDeviceCoorBtn);
+    
+    zeroLayout2->addStretch();
+    formLayout->addRow("", zeroLayout2);
+
     mainLayout->addLayout(formLayout);
     mainLayout->addStretch();
 
@@ -829,6 +957,7 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
 
     connect(m_nameEdit, &QLineEdit::textChanged, this, &AddPartDialog::onNameChanged);
     connect(selectFileBtn, &QPushButton::clicked, this, &AddPartDialog::onSelectFile);
+    connect(getDeviceCoorBtn, &QPushButton::clicked, this, &AddPartDialog::onGetDeviceCoordinate);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     connect(okBtn, &QPushButton::clicked, this, &AddPartDialog::onOk);
 
@@ -857,8 +986,35 @@ void PartElectrodeConfigDialog::AddPartDialog::onSelectFile()
 void PartElectrodeConfigDialog::AddPartDialog::onOk()
 {
     m_partName = m_nameEdit->text().trimmed();
+    m_zeroX = m_zeroXEdit->text().toDouble();
+    m_zeroY = m_zeroYEdit->text().toDouble();
+    m_zeroZ = m_zeroZEdit->text().toDouble();
+    m_zeroB = m_zeroBEdit->text().toDouble();
+    m_zeroC = m_zeroCEdit->text().toDouble();
     m_valid = true;
     accept();
+}
+
+void PartElectrodeConfigDialog::AddPartDialog::onGetDeviceCoordinate()
+{
+    PartElectrodeConfigDialog* parentDialog = qobject_cast<PartElectrodeConfigDialog*>(parent());
+    if (!parentDialog || !parentDialog->m_pointCloudService) {
+        QMessageBox::warning(this, "错误", "无法连接到点云服务");
+        return;
+    }
+
+    double x, y, z, a, b, c;
+    QString errorMessage;
+
+    if (parentDialog->m_pointCloudService->getDeviceMainAxisCoor(x, y, z, a, b, c, &errorMessage)) {
+        m_zeroXEdit->setText(QString::number(x, 'f', 3));
+        m_zeroYEdit->setText(QString::number(y, 'f', 3));
+        m_zeroZEdit->setText(QString::number(z, 'f', 3));
+        m_zeroBEdit->setText(QString::number(a, 'f', 3));
+        m_zeroCEdit->setText(QString::number(b, 'f', 3));
+    } else {
+        QMessageBox::warning(this, "失败", QString("获取设备坐标失败: %1").arg(errorMessage));
+    }
 }
 
 void PartElectrodeConfigDialog::AddPartDialog::updateOkButton()
@@ -895,6 +1051,11 @@ void PartElectrodeConfigDialog::onAddPart()
     PartData partData;
     partData.partName = partName;
     partData.modelFilePath = destFileName;
+    partData.zeroX = dlg.getZeroX();
+    partData.zeroY = dlg.getZeroY();
+    partData.zeroZ = dlg.getZeroZ();
+    partData.zeroB = dlg.getZeroB();
+    partData.zeroC = dlg.getZeroC();
     partData.isModified = true;
     m_partDataMap[partName] = partData;
 
@@ -944,6 +1105,54 @@ void PartElectrodeConfigDialog::onChangeModelFile()
     m_hasUnsavedChanges = true;
     updateSaveButtonState();
     updatePartInfo();
+}
+
+void PartElectrodeConfigDialog::onZeroPosChanged()
+{
+    if (m_currentPartName.isEmpty()) {
+        return;
+    }
+
+    PartData& partData = m_partDataMap[m_currentPartName];
+    partData.zeroX = m_zeroXEdit->text().toDouble();
+    partData.zeroY = m_zeroYEdit->text().toDouble();
+    partData.zeroZ = m_zeroZEdit->text().toDouble();
+    partData.zeroB = m_zeroBEdit->text().toDouble();
+    partData.zeroC = m_zeroCEdit->text().toDouble();
+    partData.isModified = true;
+
+    for (ElectrodeData& electrode : partData.electrodes) {
+        electrode.startX = partData.zeroX;
+        electrode.startY = partData.zeroY;
+        electrode.startZ = partData.zeroZ;
+        electrode.startB = partData.zeroB;
+        electrode.startC = partData.zeroC;
+    }
+
+    m_hasUnsavedChanges = true;
+    updateSaveButtonState();
+    updateElectrodeTable();
+}
+
+void PartElectrodeConfigDialog::onGetZeroPosFromDevice()
+{
+    if (!m_pointCloudService) {
+        QMessageBox::warning(this, "错误", "无法连接到点云服务");
+        return;
+    }
+
+    double x, y, z, a, b, c;
+    QString errorMessage;
+
+    if (m_pointCloudService->getDeviceMainAxisCoor(x, y, z, a, b, c, &errorMessage)) {
+        m_zeroXEdit->setText(QString::number(x, 'f', 3));
+        m_zeroYEdit->setText(QString::number(y, 'f', 3));
+        m_zeroZEdit->setText(QString::number(z, 'f', 3));
+        m_zeroBEdit->setText(QString::number(a, 'f', 3));
+        m_zeroCEdit->setText(QString::number(b, 'f', 3));
+    } else {
+        QMessageBox::warning(this, "失败", QString("获取设备坐标失败: %1").arg(errorMessage));
+    }
 }
 
 void PartElectrodeConfigDialog::onDeletePart()
@@ -1138,14 +1347,17 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
 
     case COL_START_X:
         electrode.startX = newValue.toDouble();
+        partData.zeroX = newValue.toDouble();
         break;
 
     case COL_START_Y:
         electrode.startY = newValue.toDouble();
+        partData.zeroY = newValue.toDouble();
         break;
 
     case COL_START_Z:
         electrode.startZ = newValue.toDouble();
+        partData.zeroZ = newValue.toDouble();
         break;
 
     case COL_START_A:
@@ -1154,10 +1366,12 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
 
     case COL_START_B:
         electrode.startB = newValue.toDouble();
+        partData.zeroB = newValue.toDouble();
         break;
 
     case COL_START_C:
         electrode.startC = newValue.toDouble();
+        partData.zeroC = newValue.toDouble();
         break;
     }
 
@@ -1615,13 +1829,32 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::updateCoordinateFields
     int index = m_scanPositionList->row(item);
     if (index == 0) {
         m_isZeroPositionSelected = true;
-        m_xEdit->setText(QString::number(m_electrode->startX));
-        m_yEdit->setText(QString::number(m_electrode->startY));
-        m_zEdit->setText(QString::number(m_electrode->startZ));
-        m_bEdit->setText(QString::number(m_electrode->startB));
-        m_cEdit->setText(QString::number(m_electrode->startC));
+        m_xEdit->setEnabled(false);
+        m_yEdit->setEnabled(false);
+        m_zEdit->setEnabled(false);
+        m_bEdit->setEnabled(false);
+        m_cEdit->setEnabled(false);
+        PartData* partData = m_parentDialog->getCurrentPartData();
+        if (partData) {
+            m_xEdit->setText(QString::number(partData->zeroX));
+            m_yEdit->setText(QString::number(partData->zeroY));
+            m_zEdit->setText(QString::number(partData->zeroZ));
+            m_bEdit->setText(QString::number(partData->zeroB));
+            m_cEdit->setText(QString::number(partData->zeroC));
+        } else {
+            m_xEdit->setText(QString::number(m_electrode->startX));
+            m_yEdit->setText(QString::number(m_electrode->startY));
+            m_zEdit->setText(QString::number(m_electrode->startZ));
+            m_bEdit->setText(QString::number(m_electrode->startB));
+            m_cEdit->setText(QString::number(m_electrode->startC));
+        }
     } else if (index > 0 && index <= m_electrode->scanPositions.size()) {
         m_isZeroPositionSelected = false;
+        m_xEdit->setEnabled(true);
+        m_yEdit->setEnabled(true);
+        m_zEdit->setEnabled(true);
+        m_bEdit->setEnabled(true);
+        m_cEdit->setEnabled(true);
         const ScanPositionData& pos = m_electrode->scanPositions[index - 1];
         m_xEdit->setText(QString::number(pos.x));
         m_yEdit->setText(QString::number(pos.y));
@@ -1820,14 +2053,7 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCoordinateChanged()
 
     int index = m_scanPositionList->row(item);
     if (index == 0) {
-        m_electrode->startX = m_xEdit->text().toDouble();
-        m_electrode->startY = m_yEdit->text().toDouble();
-        m_electrode->startZ = m_zEdit->text().toDouble();
-        m_electrode->startB = m_bEdit->text().toDouble();
-        m_electrode->startC = m_cEdit->text().toDouble();
-
-        m_hasChanges = true;
-        m_saveBtn->setEnabled(true);
+        return;
     } else if (index > 0 && index <= m_electrode->scanPositions.size()) {
         ScanPositionData& pos = m_electrode->scanPositions[index - 1];
         pos.x = m_xEdit->text().toDouble();
