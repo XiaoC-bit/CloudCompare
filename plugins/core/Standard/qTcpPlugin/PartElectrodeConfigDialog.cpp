@@ -39,9 +39,47 @@ PartElectrodeConfigDialog::~PartElectrodeConfigDialog()
 
 void PartElectrodeConfigDialog::initUI()
 {
-    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    QHBoxLayout* mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(12, 12, 12, 12);
     mainLayout->setSpacing(10);
+
+    m_partList = new QListWidget(this);
+    m_partList->setFixedWidth(240);
+	m_partList->setSpacing(4);
+
+	m_partList->setStyleSheet(R"(
+QListWidget {
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    background: white;
+    outline: none;
+    padding: 6px;
+}
+
+QListWidget::item {
+    height: 32px;
+    padding-left: 10px;
+    border-radius: 4px;
+    color: #303030;
+}
+
+QListWidget::item:hover {
+    background: #f2f6fc;
+}
+
+QListWidget::item:selected {
+    background: #4a90d9;
+    color: white;
+}
+
+QListWidget::item:selected:active {
+    background: #3d7fc0;
+}
+)");
+    mainLayout->addWidget(m_partList);
+
+    QVBoxLayout* rightLayout = new QVBoxLayout();
+    rightLayout->setSpacing(10);
 
     m_partInfoWidget = new QWidget(this);
     m_partInfoWidget->setFixedHeight(100);
@@ -53,7 +91,7 @@ void PartElectrodeConfigDialog::initUI()
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         QLabel {
-            color: white;
+            color: black;
         }
         QLabel#titleLabel {
             font-size: 14px;
@@ -120,45 +158,7 @@ void PartElectrodeConfigDialog::initUI()
     
     cardLayout->addLayout(infoGrid);
     
-    mainLayout->addWidget(m_partInfoWidget);
-
-    QHBoxLayout* contentLayout = new QHBoxLayout();
-    contentLayout->setSpacing(10);
-
-    m_partList = new QListWidget(this);
-    m_partList->setFixedWidth(240);
-	m_partList->setSpacing(4);
-
-	m_partList->setStyleSheet(R"(
-QListWidget {
-    border: 1px solid #dcdcdc;
-    border-radius: 6px;
-    background: white;
-    outline: none;
-    padding: 6px;
-}
-
-QListWidget::item {
-    height: 32px;
-    padding-left: 10px;
-    border-radius: 4px;
-    color: #303030;
-}
-
-QListWidget::item:hover {
-    background: #f2f6fc;
-}
-
-QListWidget::item:selected {
-    background: #4a90d9;
-    color: white;
-}
-
-QListWidget::item:selected:active {
-    background: #3d7fc0;
-}
-)");
-    contentLayout->addWidget(m_partList);
+    rightLayout->addWidget(m_partInfoWidget);
 
     m_electrodeTable = new QTableWidget(this);
     m_electrodeTable->setColumnCount(COL_COUNT);
@@ -194,9 +194,7 @@ QListWidget::item:selected:active {
     m_electrodeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_electrodeTable->setEditTriggers(QAbstractItemView::DoubleClicked);
     m_electrodeTable->setMouseTracking(true);
-    contentLayout->addWidget(m_electrodeTable);
-
-    mainLayout->addLayout(contentLayout);
+    rightLayout->addWidget(m_electrodeTable);
 
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->setSpacing(10);
@@ -219,18 +217,18 @@ QListWidget::item:selected:active {
     buttonLayout->addStretch();
 
     QWidget* rightButtons = new QWidget(this);
-    QHBoxLayout* rightLayout = new QHBoxLayout(rightButtons);
-    rightLayout->setSpacing(8);
+    QHBoxLayout* rightBtnLayout = new QHBoxLayout(rightButtons);
+    rightBtnLayout->setSpacing(8);
 
     m_addElectrodeBtn = new QPushButton("添加电极", this);
     m_addElectrodeBtn->setFixedSize(120, 32);
     m_addElectrodeBtn->setEnabled(false);
-    rightLayout->addWidget(m_addElectrodeBtn);
+    rightBtnLayout->addWidget(m_addElectrodeBtn);
 
     m_deleteElectrodeBtn = new QPushButton("删除电极", this);
     m_deleteElectrodeBtn->setFixedSize(140, 32);
     m_deleteElectrodeBtn->setEnabled(false);
-    rightLayout->addWidget(m_deleteElectrodeBtn);
+    rightBtnLayout->addWidget(m_deleteElectrodeBtn);
 
     buttonLayout->addWidget(rightButtons);
 
@@ -245,7 +243,8 @@ QListWidget::item:selected:active {
     m_cancelBtn->setFixedSize(80, 32);
     buttonLayout->addWidget(m_cancelBtn);
 
-    mainLayout->addLayout(buttonLayout);
+    rightLayout->addLayout(buttonLayout);
+    mainLayout->addLayout(rightLayout);
 
 	m_hasUnsavedChanges = false;
 	updateSaveButtonState();
