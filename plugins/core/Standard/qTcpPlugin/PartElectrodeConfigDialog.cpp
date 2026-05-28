@@ -376,26 +376,24 @@ void PartElectrodeConfigDialog::loadConfigFromFiles()
                 electrode.probeProgramPath = obj["probeProgramPath"].toString();
             }
 
-            electrode.startX = partData.zeroX;
-            electrode.startY = partData.zeroY;
-            electrode.startZ = partData.zeroZ;
-            electrode.startA = obj["startA"].toDouble();
-            electrode.startB = partData.zeroB;
-            electrode.startC = partData.zeroC;
-
-            if (electrode.startX == 0 && electrode.startY == 0 && electrode.startZ == 0) {
-                electrode.startX = obj["ZeroPos"].toObject()["X"].toDouble();
-                electrode.startY = obj["ZeroPos"].toObject()["Y"].toDouble();
-                electrode.startZ = obj["ZeroPos"].toObject()["Z"].toDouble();
-                electrode.startB = obj["ZeroPos"].toObject()["B"].toDouble();
-                electrode.startC = obj["ZeroPos"].toObject()["C"].toDouble();
-            }
-
-            if (electrode.startX == 0 && electrode.startY == 0 && electrode.startZ == 0) {
+            QJsonObject electrodePosObj = obj["electrodePos"].toObject();
+            QJsonArray beginArray = electrodePosObj["Begin"].toArray();
+            if (beginArray.size() >= 6) {
+                electrode.startX = beginArray[0].toDouble();
+                electrode.startY = beginArray[1].toDouble();
+                electrode.startZ = beginArray[2].toDouble();
+                electrode.startA = beginArray[3].toDouble();
+                electrode.startB = beginArray[4].toDouble();
+                electrode.startC = beginArray[5].toDouble();
+            } else {
                 electrode.startX = obj["startX"].toDouble();
                 electrode.startY = obj["startY"].toDouble();
                 electrode.startZ = obj["startZ"].toDouble();
+                electrode.startA = obj["startA"].toDouble();
+                electrode.startB = obj["startB"].toDouble();
+                electrode.startC = obj["startC"].toDouble();
             }
+            
 
             electrode.positionModified = false;
             electrode.parameterModified = false;
@@ -1078,14 +1076,6 @@ void PartElectrodeConfigDialog::onEditPart()
     partData.zeroC = dlg.getZeroC();
     partData.isModified = true;
 
-    for (ElectrodeData& electrode : partData.electrodes) {
-        electrode.startX = partData.zeroX;
-        electrode.startY = partData.zeroY;
-        electrode.startZ = partData.zeroZ;
-        electrode.startB = partData.zeroB;
-        electrode.startC = partData.zeroC;
-    }
-
     m_hasUnsavedChanges = true;
     updateSaveButtonState();
     updatePartInfo();
@@ -1325,17 +1315,14 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
 
     case COL_START_X:
         electrode.startX = newValue.toDouble();
-        partData.zeroX = newValue.toDouble();
         break;
 
     case COL_START_Y:
         electrode.startY = newValue.toDouble();
-        partData.zeroY = newValue.toDouble();
         break;
 
     case COL_START_Z:
         electrode.startZ = newValue.toDouble();
-        partData.zeroZ = newValue.toDouble();
         break;
 
     case COL_START_A:
@@ -1344,12 +1331,10 @@ void PartElectrodeConfigDialog::onCellChanged(int row, int column)
 
     case COL_START_B:
         electrode.startB = newValue.toDouble();
-        partData.zeroB = newValue.toDouble();
         break;
 
     case COL_START_C:
         electrode.startC = newValue.toDouble();
-        partData.zeroC = newValue.toDouble();
         break;
     }
 
