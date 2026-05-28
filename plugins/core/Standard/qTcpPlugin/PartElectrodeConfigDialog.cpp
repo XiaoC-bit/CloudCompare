@@ -82,7 +82,7 @@ QListWidget::item:selected:active {
     rightLayout->setSpacing(10);
 
     m_partInfoWidget = new QWidget(this);
-    m_partInfoWidget->setFixedHeight(105);
+    m_partInfoWidget->setFixedHeight(50);
     m_partInfoWidget->setStyleSheet(R"(
         QWidget {
             background-color: #f8f9fa;
@@ -92,39 +92,42 @@ QListWidget::item:selected:active {
         }
         QLabel {
             color: #333;
-            font-size: 14px;
+            font-size: 13px;
         }
         QLabel#valueLabel {
-            font-size: 14px;
+            font-size: 13px;
             color: #666;
         }
     )");
     
-    QGridLayout* infoGrid = new QGridLayout(m_partInfoWidget);
-    infoGrid->setContentsMargins(10, 8, 10, 8);
-    infoGrid->setHorizontalSpacing(20);
-    infoGrid->setVerticalSpacing(6);
+    QHBoxLayout* infoLayout = new QHBoxLayout(m_partInfoWidget);
+    infoLayout->setContentsMargins(10, 5, 10, 5);
+    infoLayout->setSpacing(15);
     
     QLabel* nameLabel = new QLabel("工件名称:", m_partInfoWidget);
-    infoGrid->addWidget(nameLabel, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    infoLayout->addWidget(nameLabel);
     m_partNameLabel = new QLabel("未选择", m_partInfoWidget);
     m_partNameLabel->setObjectName("valueLabel");
-    infoGrid->addWidget(m_partNameLabel, 0, 1, Qt::AlignLeft | Qt::AlignVCenter);
-    
-    QLabel* zeroLabel = new QLabel("工件原点:", m_partInfoWidget);
-    infoGrid->addWidget(zeroLabel, 0, 2, Qt::AlignLeft | Qt::AlignVCenter);
-    m_zeroPosLabel = new QLabel("无", m_partInfoWidget);
-    m_zeroPosLabel->setObjectName("valueLabel");
-    infoGrid->addWidget(m_zeroPosLabel, 0, 3, Qt::AlignLeft | Qt::AlignVCenter);
+    m_partNameLabel->setMinimumWidth(80);
+    infoLayout->addWidget(m_partNameLabel);
     
     QLabel* modelLabel = new QLabel("模型文件:", m_partInfoWidget);
-    infoGrid->addWidget(modelLabel, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    infoLayout->addWidget(modelLabel);
     m_modelFileLabel = new QLabel("无", m_partInfoWidget);
     m_modelFileLabel->setObjectName("valueLabel");
-    infoGrid->addWidget(m_modelFileLabel, 1, 1, Qt::AlignLeft | Qt::AlignVCenter);
+    m_modelFileLabel->setMinimumWidth(120);
+    infoLayout->addWidget(m_modelFileLabel);
+    
+    QLabel* zeroLabel = new QLabel("工件原点:", m_partInfoWidget);
+    infoLayout->addWidget(zeroLabel);
+    m_zeroPosLabel = new QLabel("无", m_partInfoWidget);
+    m_zeroPosLabel->setObjectName("valueLabel");
+    infoLayout->addWidget(m_zeroPosLabel);
+    
+    infoLayout->addStretch();
     
     m_editPartBtn = new QPushButton(QIcon(":/CC/icons/edit.svg"), "编辑", m_partInfoWidget);
-    m_editPartBtn->setFixedSize(80, 28);
+    m_editPartBtn->setFixedSize(75, 26);
     m_editPartBtn->setEnabled(false);
     m_editPartBtn->setStyleSheet(R"(
         QPushButton {
@@ -132,8 +135,8 @@ QListWidget::item:selected:active {
             border: none;
             border-radius: 4px;
             color: white;
-            font-size: 13px;
-            font-weight: bold;            
+            font-size: 12px;
+            font-weight: bold;
             padding: 0px;
         }
         QPushButton:hover {
@@ -144,7 +147,7 @@ QListWidget::item:selected:active {
             color: #999;
         }
     )");
-    infoGrid->addWidget(m_editPartBtn, 1, 3, Qt::AlignRight | Qt::AlignVCenter);
+    infoLayout->addWidget(m_editPartBtn);
     
     rightLayout->addWidget(m_partInfoWidget);
 
