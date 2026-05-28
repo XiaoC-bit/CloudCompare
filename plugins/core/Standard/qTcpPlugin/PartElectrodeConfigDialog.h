@@ -111,8 +111,7 @@ private:
     void onSave();
     void onCancel();
     void onChangeModelFile();
-    void onZeroPosChanged();
-    void onGetZeroPosFromDevice();
+    void onEditPart();
 
 	void closeEvent(QCloseEvent* event);
 
@@ -120,13 +119,8 @@ private:
     QWidget* m_partInfoWidget;
     QLabel* m_partNameLabel;
     QLabel* m_modelFileLabel;
-    QPushButton* m_changeModelBtn;
-    QLineEdit* m_zeroXEdit;
-    QLineEdit* m_zeroYEdit;
-    QLineEdit* m_zeroZEdit;
-    QLineEdit* m_zeroBEdit;
-    QLineEdit* m_zeroCEdit;
-    QPushButton* m_getZeroPosBtn;
+    QLabel* m_zeroPosLabel;
+    QPushButton* m_editPartBtn;
     QListWidget* m_partList;
     QTableWidget* m_electrodeTable;
     QPushButton* m_addPartBtn;
@@ -179,11 +173,14 @@ private:
         double getZeroZ() const { return m_zeroZ; }
         double getZeroB() const { return m_zeroB; }
         double getZeroC() const { return m_zeroC; }
+        void setEditMode(const QString& partName, const QString& modelFilePath, 
+                         double zeroX, double zeroY, double zeroZ, double zeroB, double zeroC);
 
     private:
         QString m_partName;
         QString m_modelFilePath;
         bool m_valid = false;
+        bool m_isEditMode = false;
         double m_zeroX = 0.0;
         double m_zeroY = 0.0;
         double m_zeroZ = 0.0;
@@ -245,7 +242,6 @@ private:
         QPushButton* m_saveBtn;
         QPushButton* m_cancelBtn;
         bool m_hasChanges = false;
-        bool m_isZeroPositionSelected = false;
         
         PointCloudService* getPointCloudService() const;
     };
