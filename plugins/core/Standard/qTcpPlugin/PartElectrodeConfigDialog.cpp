@@ -82,40 +82,38 @@ QListWidget::item:selected:active {
     rightLayout->setSpacing(10);
 
     m_partInfoWidget = new QWidget(this);
-    m_partInfoWidget->setFixedHeight(100);
+    m_partInfoWidget->setFixedHeight(120);
     m_partInfoWidget->setStyleSheet(R"(
         QWidget {
             background-color: #f8f9fa;
             border: 1px solid #e9ecef;
             border-radius: 6px;
-            padding: 12px;
         }
         QLabel {
             color: #333;
+            font-size: 14px;
+            min-height: 24px;
         }
         QLabel#titleLabel {
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
             color: #495057;
+            min-height: 28px;
         }
         QLabel#valueLabel {
-            font-size: 13px;
+            font-size: 14px;
             color: #666;
+            min-height: 24px;
         }
     )");
     
     QVBoxLayout* cardLayout = new QVBoxLayout(m_partInfoWidget);
-    cardLayout->setContentsMargins(15, 12, 15, 12);
-    cardLayout->setSpacing(6);
+    cardLayout->setContentsMargins(15, 15, 15, 15);
+    cardLayout->setSpacing(10);
     
-    QHBoxLayout* headerLayout = new QHBoxLayout();
-    QLabel* cardTitle = new QLabel("当前工件", m_partInfoWidget);
-    cardTitle->setObjectName("titleLabel");
-    headerLayout->addWidget(cardTitle);
-    headerLayout->addStretch();
     
     m_editPartBtn = new QPushButton(QIcon(":/CC/icons/edit.svg"), "编辑", m_partInfoWidget);
-    m_editPartBtn->setFixedSize(70, 28);
+    m_editPartBtn->setFixedSize(80, 32);
     m_editPartBtn->setEnabled(false);
     m_editPartBtn->setStyleSheet(R"(
         QPushButton {
@@ -123,7 +121,8 @@ QListWidget::item:selected:active {
             border: none;
             border-radius: 4px;
             color: white;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: bold;
         }
         QPushButton:hover {
             background-color: #3d7fc0;
@@ -133,11 +132,9 @@ QListWidget::item:selected:active {
             color: #999;
         }
     )");
-    headerLayout->addWidget(m_editPartBtn);
-    cardLayout->addLayout(headerLayout);
     
     QGridLayout* infoGrid = new QGridLayout();
-    infoGrid->setSpacing(15);
+    infoGrid->setSpacing(20);
     
     QLabel* nameLabel = new QLabel("工件名称:", m_partInfoWidget);
     infoGrid->addWidget(nameLabel, 0, 0);
@@ -148,9 +145,12 @@ QListWidget::item:selected:active {
     QLabel* modelLabel = new QLabel("模型文件:", m_partInfoWidget);
     infoGrid->addWidget(modelLabel, 1, 0);
     m_modelFileLabel = new QLabel("无", m_partInfoWidget);
-    m_modelFileLabel->setObjectName("valueLabel");
-    infoGrid->addWidget(m_modelFileLabel, 1, 1);
-    
+	m_modelFileLabel->setObjectName("valueLabel");
+	infoGrid->addWidget(m_modelFileLabel, 1, 1);
+	infoGrid->addWidget(m_editPartBtn, 1, 3);
+
+	
+
     QLabel* zeroLabel = new QLabel("工件原点:", m_partInfoWidget);
     infoGrid->addWidget(zeroLabel, 0, 2);
     m_zeroPosLabel = new QLabel("无", m_partInfoWidget);
