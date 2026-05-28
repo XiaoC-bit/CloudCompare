@@ -67,7 +67,7 @@ namespace
 	const int     CALIBRATION_MAX_FIT_RETRIES    = 3;
 	const QString PART_INSPECT_RESULT_FILE_NAME = "O1236";
 	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1536";
-	const QString BALL_INSPECT_RESULT_FILE_NAME       = "O1736";
+	const QString BALL_INSPECT_RESULT_FILE_NAME       = "O1536";
 	const int     MACHINE_COMMAND_RETRY_COUNT   = 3;
 
 } // namespace
@@ -3594,16 +3594,45 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	QString     content = in.readAll();
 	resultFile.close();
 
-	std::vector<Eigen::Vector3d>    probePoints;
-	QRegularExpression              regex(R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
-	QRegularExpressionMatchIterator it = regex.globalMatch(content);
-	while (it.hasNext())
+	std::vector<Eigen::Vector3d> probePoints;
+	
+	QStringList lines = content.split('\n', Qt::SkipEmptyParts);
+	if (lines.isEmpty())
 	{
-		QRegularExpressionMatch match = it.next();
-		double                  x     = match.captured(1).toDouble();
-		double                  y     = match.captured(2).toDouble();
-		double                  z     = match.captured(3).toDouble();
-		probePoints.emplace_back(x, y, z);
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"]                                  = "NG";
+		obj["Ret_Err"]                                 = "Probe result file is empty";
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	double partX = 0.0, partY = 0.0, partZ = 0.0;
+	QString lastLine = lines.last().trimmed();
+	QRegularExpression partRegex(R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
+	QRegularExpressionMatch partMatch = partRegex.match(lastLine);
+	if (partMatch.hasMatch())
+	{
+		partX = partMatch.captured(1).toDouble();
+		partY = partMatch.captured(2).toDouble();
+		partZ = partMatch.captured(3).toDouble();
+	}
+
+	for (int i = 0; i < lines.size() - 1; i += 4)
+	{
+		if (i + 3 < lines.size() - 1)
+		{
+			QString targetLine = lines[i + 3].trimmed();
+			QRegularExpressionMatch match = partRegex.match(targetLine);
+			if (match.hasMatch())
+			{
+				double x = match.captured(1).toDouble() + partX;
+				double y = match.captured(2).toDouble() + partY;
+				double z = match.captured(3).toDouble() + partZ;
+				probePoints.emplace_back(x, y, z);
+			}
+		}
 	}
 
 	if (probePoints.size() >= 4)
