@@ -6099,9 +6099,9 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 			programContent.replace(QString("{OFFSET_X_%1}").arg(i + 1), QString::number(compensation.x));
 			programContent.replace(QString("{OFFSET_Y_%1}").arg(i + 1), QString::number(compensation.y));
 			programContent.replace(QString("{OFFSET_Z_%1}").arg(i + 1), QString::number(compensation.z));
-			programContent.replace(QString("{OFFSET_A_%1}").arg(i + 1), QString::number(compensation.a));
-			programContent.replace(QString("{OFFSET_B_%1}").arg(i + 1), QString::number(compensation.b));
-			programContent.replace(QString("{OFFSET_C_%1}").arg(i + 1), QString::number(compensation.c));
+			programContent.replace(QString("{OFFSET_U_%1}").arg(i + 1), QString::number(compensation.u));
+			programContent.replace(QString("{OFFSET_V_%1}").arg(i + 1), QString::number(compensation.v));
+			programContent.replace(QString("{OFFSET_W_%1}").arg(i + 1), QString::number(compensation.w));
 		}
 		QString fileName = partRfid + "_" + electrodeRfid + ".nc";
 		QString path     = m_edmProgPath + fileName;
@@ -7882,20 +7882,13 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	compensation.x = 0.0;
 	compensation.y = 0.0;
 	compensation.z = 0.0;
-	compensation.a = 0.0;
-	compensation.b = 0.0;
-	compensation.c = 0.0;
+	compensation.u = 0.0;
+	compensation.v = 0.0;
+	compensation.w = 0.0;
 
 	// ====================== 
 	// RTCP 补偿量计算 (摇篮式五轴: 工作台摆动型) 
 	// ====================== 
-
-	// 从参数中提取B/C角度（假设beginPos和endPos的最后两个元素是B/C角度）
-	double B_deg = 0.0, C_deg = 0.0;
-	if (beginPos.size() >= 6) {
-		B_deg = beginPos[4].toDouble();
-		C_deg = beginPos[5].toDouble();
-	}
 
 	// 从edmParameters中获取BC旋转中心
 	Eigen::Vector3d P_machine(0, 0, 0); // B轴旋转中心
@@ -7921,76 +7914,125 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 
 	// G54（工件原点）在机床坐标系
 	// 假设工件检测结果中包含G54信息
-	Eigen::Vector3d g54_in_machine(0, 0, 0);
+	Eigen::Vector3d P_workpiece(0, 0, 0);
 	if (partInspectResult.contains("ZeroPos")) {
 		QJsonObject g54 = partInspectResult["ZeroPos"].toObject();
-		if (g54.contains("X")) g54_in_machine.x() = g54["X"].toDouble();
-		if (g54.contains("Y")) g54_in_machine.y() = g54["Y"].toDouble();
-		if (g54.contains("Z")) g54_in_machine.z() = g54["Z"].toDouble();
+		if (g54.contains("X")) P_workpiece.x() = g54["X"].toDouble();
+		if (g54.contains("Y")) P_workpiece.y() = g54["Y"].toDouble();
+		if (g54.contains("Z")) P_workpiece.z() = g54["Z"].toDouble();
 	}
 
-	// 转换到弧度
-	double B = deg2rad(B_deg);
-	double C = deg2rad(C_deg);
+	// 提取 ICP 矩阵结果
+	Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity();
+	if (partInspectResult.contains("InspectResult")) {
+		QJsonObject inspectResult = partInspectResult["InspectResult"].toObject();
+		if (inspectResult.contains("InspectInfo")) {
+			QJsonObject inspectInfo = inspectResult["InspectInfo"].toObject();
+			if (inspectInfo.contains("IcpResults") && inspectInfo["IcpResults"].isArray()) {
+				QJsonArray icpResults = inspectInfo["IcpResults"].toArray();
+				if (!icpResults.isEmpty()) {
+					QJsonObject icpResultObj = icpResults[0].toObject();
+					if (icpResultObj.contains("icpMatrix") && icpResultObj["icpMatrix"].isArray()) {
+						QJsonArray icpMatrixArray = icpResultObj["icpMatrix"].toArray();
+						if (icpMatrixArray.size() == 4) {
+							for (int i = 0; i < 4; i++) {
+								QJsonArray row = icpMatrixArray[i].toArray();
+								if (row.size() == 4) {
+									for (int j = 0; j < 4; j++) {
+										T_icp(i, j) = row[j].toDouble();
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
-	// ====================== 
-	// Step 1：转换到工件坐标系 
-	// ====================== 
 
-	// 工件系 = 机床系 - G54 
-	Eigen::Vector3d P = P_machine - g54_in_machine;
-	Eigen::Vector3d Q = Q_machine - g54_in_machine;
+	const double signB = 1.0;
+	const double signC = 1.0;
 
-	// ====================== 
-	// Step 2：旋转矩阵 
-	// ====================== 
+	// --- Step 1: 将工件坐标系下的 T_icp 转换到机床坐标系 ---
+	// T_he 退化为纯平移矩阵，R 部分为 I
+	// T_machine = Trans(P_workpiece) * T_icp * Trans(-P_workpiece)
+	// => R_machine = R_icp
+	// => t_machine = t_icp + (I - R_icp) * P_workpiece
+	const Eigen::Matrix3d R = T_icp.block<3, 3>(0, 0);
+	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3)
+	                          + (Eigen::Matrix3d::Identity() - R) * P_workpiece;
 
-	// 机床配置的转台第一旋转轴矢量
-	// 摇篮式机床使用-1
-	double first_spin_vector = -1;
-	double second_spin_vector = -1;
+	// --- Step 2: ZY 分解，R = Rz(C)·Ry(B) ---
+	// R(2,0) = -sinB*cosC
+	// R(2,1) = -sinB*sinC
+	// R(2,2) =  cosB
+	// R(1,0) =  sinC*cosB
+	// R(0,0) =  cosC*cosB
+	const double C_rad = std::atan2(R(1, 0), R(0, 0));
+	const double sinB  = -(R(2, 0) * std::cos(C_rad) + R(2, 1) * std::sin(C_rad));
+	const double cosB  = R(2, 2);
+	const double B_rad = std::atan2(sinB, cosB); // 有符号，范围(-π, π)
+	const double B_deg = B_rad * 180.0 / M_PI;
+	const double C_deg = C_rad * 180.0 / M_PI;
 
-	Eigen::Matrix3d Rb = rotY(first_spin_vector * B);
-	Eigen::Matrix3d Rc = rotZ(second_spin_vector * C);
+	// A角：残余旋转 R_res = Ry(-B)·Rz(-C)·R
+	// CBC机床无法执行A轴补偿，仅显示参考；理想情况应≈0
+	double           A_deg                 = 0.0;
+	constexpr double GIMBAL_LOCK_THRESHOLD = 1e-2;
+	if (std::abs(cosB) > GIMBAL_LOCK_THRESHOLD)
+	{
+		const Eigen::Matrix3d Rz_neg_C = Eigen::AngleAxisd(-C_rad,
+		                                                   Eigen::Vector3d::UnitZ())
+		                                     .toRotationMatrix();
+		const Eigen::Matrix3d Ry_neg_B = Eigen::AngleAxisd(-B_rad,
+		                                                   Eigen::Vector3d::UnitY())
+		                                     .toRotationMatrix();
+		const Eigen::Matrix3d R_res    = Ry_neg_B * Rz_neg_C * R;
+		A_deg                          = std::atan2(R_res(1, 0), R_res(0, 0)) * 180.0 / M_PI;
+		A_deg                          = std::atan2(R_res(2, 1), R_res(2, 2)) * 180.0 / M_PI;
+	}
+	else
+	{
+		// Gimbal lock：B≈±90°，C与A不可区分，约定A=0
+		A_deg = 0.0;
+	}
 
-	// ====================== 
-	// Step 3：实际机床运动（绕 P / Q） 
-	// ====================== 
+	// --- Step 3: Pivot-induced translation（BC转台，C轴随B轴转动）---
+	const Eigen::Matrix3d Rb = Eigen::AngleAxisd(signB * B_rad,
+	                                             Eigen::Vector3d::UnitY())
+	                               .toRotationMatrix();
+	const Eigen::Matrix3d Rc = Eigen::AngleAxisd(signC * C_rad,
+	                                             Eigen::Vector3d::UnitZ())
+	                               .toRotationMatrix();
 
-	Eigen::Matrix4d T_C = rotateAroundPoint(Rc, Q);
-	Eigen::Matrix4d T_B = rotateAroundPoint(Rb, P);
+	//// B轴固定，绕 P_machine 旋转
+	// const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
 
-	Eigen::Matrix4d M_real = T_B * T_C;
+	//// C轴中心随B轴转动，B转后C轴中心在机床基坐标系下的实际位置
+	// const Eigen::Vector3d Q_actual = P_machine + Rb * (Q_machine - P_machine);
 
-	// ====================== 
-	// Step 4：理想运动（绕工件原点） 
-	// ====================== 
+	//// C绕实际中心旋转产生的平移
+	// const Eigen::Vector3d t_pivotC = Q_actual - Rc * Q_actual;
 
-	Eigen::Matrix4d M_ideal = makeTransform(Rb * Rc, Eigen::Vector3d::Zero());
+	//// 总 pivot 平移（Q_actual 已在机床基坐标系，直接叠加）
+	// const Eigen::Vector3d t_pivot = t_pivotB + t_pivotC;
 
-	// ====================== 
-	// Step 5：计算补偿（核心） 
-	// ====================== 
+	const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
+	const Eigen::Vector3d t_pivotC = Q_machine - Rc * Q_machine;
+	// M_real * O 展开：
+	const Eigen::Vector3d t_pivot = t_pivotB + Rb * t_pivotC;
 
-	// 工件原点 (0,0,0) 
-	Eigen::Vector4d O(0, 0, 0, 1);
+	// --- Step 4: 真实平移补偿 = ICP平移 - pivot平移 ---
+	const Eigen::Vector3d delta_xyz = t - t_pivot;
 
-	// 实际旋转后的原点位置 
-	Eigen::Vector4d O_real = M_real * O;
 
-	// 需要把它拉回原点 
-	Eigen::Vector3d delta = -O_real.head<3>();
-
-	// ====================== 
-	// 输出补偿值 
-	// ====================== 
-
-	compensation.x = delta.x();
-	compensation.y = delta.y();
-	compensation.z = delta.z();
-	compensation.a = 0.0; // A轴补偿
-	compensation.b = B_deg; // B轴角度
-	compensation.c = C_deg; // C轴角度
+	compensation.x = delta_xyz.x();
+	compensation.y = delta_xyz.y();
+	compensation.z = delta_xyz.z();
+	compensation.u = A_deg; // A轴补偿
+	compensation.v = B_deg; // B轴角度
+	compensation.w = C_deg; // C轴角度
 
 	return compensation;
 }

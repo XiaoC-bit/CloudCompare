@@ -253,7 +253,7 @@ class PointCloudService : public QObject
     QVector<QVector3D> resolveCalibrationPositions(const QJsonObject& params, QString* errorMessage = nullptr) const;
     QVector<QVector3D> getCalibrationPositionsFromFile(QString* errorMessage = nullptr) const;
 	struct RTCPCompensation {
-		double x, y, z, a, b, c;
+		double x, y, z, u, v, w;
 	};
 	RTCPCompensation computeRTCPCompensation(
 		const QJsonObject& partInspectResult,
