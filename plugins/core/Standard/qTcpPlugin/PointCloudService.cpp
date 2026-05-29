@@ -1641,7 +1641,7 @@ Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z
     return T_B * T_C * T_XYZ;
 }
 
-bool PointCloudService::applyTransformationInternal(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage)
+bool PointCloudService::executeApplyTransformation(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage)
 {
     if (objectName.isEmpty()) {
         if (errorMessage) {
@@ -4567,7 +4567,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 					ccGLMatrixd t1GlMatrix(finalTransform.data()); // 直接传指针，无需循环
 
 					QString errorMessage;
-					if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage))
+					if (!executeApplyTransformation(cloudName, t1GlMatrix, false, &errorMessage))
 					{
 						QJsonObject result;
 						QJsonObject obj;
@@ -6965,7 +6965,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				    1;
 
 				finalMatrix = mMoveToPartZero * mMoveToMachineZero * m_cameraCalibrationMatrix;
-				if (!applyTransformationInternal(cloudName, ccGLMatrixd(finalMatrix.data()), false, &errorMessage))
+				if (!executeApplyTransformation(cloudName, ccGLMatrixd(finalMatrix.data()), false, &errorMessage))
 				{
 					QJsonObject result;
 					QJsonObject obj;
