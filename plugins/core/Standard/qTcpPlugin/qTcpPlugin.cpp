@@ -409,7 +409,7 @@ void qTcpPlugin::showPartElectrodeConfigDialog()
 
 void qTcpPlugin::showAcquirePcdDialog()
 {
-	AcquirePcdDialog dialog(m_app, nullptr);
+	AcquirePcdDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
 }
 
