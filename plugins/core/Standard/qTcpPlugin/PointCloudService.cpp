@@ -194,8 +194,6 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	{
 		m_ringCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "NG"}, {"Ret_Err", "not inited"}};
 	}
-
-
 }
 
 void PointCloudService::setEnableMock(bool enable)

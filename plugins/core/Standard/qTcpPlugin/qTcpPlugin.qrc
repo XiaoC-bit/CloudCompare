@@ -10,5 +10,6 @@
         <file>res/calibration.png</file>
         <file>res/result.png</file>
         <file>res/test.png</file>
+        <file>res/ring.png</file>
     </qresource>
 </RCC>

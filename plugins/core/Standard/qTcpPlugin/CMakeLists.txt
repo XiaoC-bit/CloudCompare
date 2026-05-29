@@ -19,6 +19,8 @@ if( PLUGIN_STANDARD_QTCP )
 		PartInspectDialog.cpp
 		EdmProgramDialog.h
 		EdmProgramDialog.cpp
+		RingCalibrationDialog.h
+		RingCalibrationDialog.cpp
 		LogDockWidget.h		
 		AppLogger.h
 		CalibrationResultDialog.h

@@ -10,6 +10,7 @@
 #include "CommLogger.h"
 #include "CalibrationDialog.h"
 #include "ProbeCalibrationDialog.h"
+#include "RingCalibrationDialog.h"
 #include "PartInspectDialog.h"
 #include "ElectrodeInspectDialog.h"
 #include "PartElectrodeConfigDialog.h"
@@ -32,6 +33,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_stopAction(nullptr)
     , m_calibrationAction(nullptr)
     , m_probeCalibrationAction(nullptr)
+    , m_ringCalibrationAction(nullptr)
     , m_partInspectAction(nullptr)
     , m_electrodeInspectAction(nullptr)
     , m_partElectrodeConfigAction(nullptr)
@@ -110,6 +112,12 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_probeCalibrationAction, &QAction::triggered, this, &qTcpPlugin::showProbeCalibrationDialog);
 	}
 
+	if (!m_ringCalibrationAction)
+	{
+		m_ringCalibrationAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/ring.png"), "环规标定", this);
+		connect(m_ringCalibrationAction, &QAction::triggered, this, &qTcpPlugin::showRingCalibrationDialog);
+	}
+
 	if (!m_partInspectAction)
 	{
 		m_partInspectAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/part.png"), "工件检测", this);
@@ -155,7 +163,7 @@ QList<QAction*> qTcpPlugin::getActions()
 	}
 
 	updateActions();
-	return { m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_edmProgramAction, m_toggleLogDockAction};
+	return {m_ringCalibrationAction, m_calibrationAction, m_probeCalibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_edmProgramAction, m_toggleLogDockAction};
 }
 
 void qTcpPlugin::startServer()
@@ -372,6 +380,12 @@ void qTcpPlugin::showCalibrationDialog()
 void qTcpPlugin::showProbeCalibrationDialog()
 {
 	ProbeCalibrationDialog dialog(m_app, m_pointCloudService, nullptr);
+	dialog.exec();
+}
+
+void qTcpPlugin::showRingCalibrationDialog()
+{
+	RingCalibrationDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
 }
 

@@ -28,6 +28,7 @@ private slots:
 	void stopServer();
 	void showCalibrationDialog();
 	void showProbeCalibrationDialog();
+	void showRingCalibrationDialog();
 	void showPartInspectDialog();
 	void showElectrodeInspectDialog();
 	void showPartElectrodeConfigDialog();
@@ -45,6 +46,7 @@ private slots:
 	QAction*           m_stopAction;
 	QAction*           m_calibrationAction;
 	QAction*           m_probeCalibrationAction;
+	QAction*           m_ringCalibrationAction;
 	QAction*           m_partInspectAction;
 	QAction*           m_electrodeInspectAction;
 	QAction*           m_partElectrodeConfigAction;
