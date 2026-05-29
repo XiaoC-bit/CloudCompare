@@ -6010,7 +6010,7 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 				{
 					QJsonObject obj;
 					obj[strCmd + "_Ret"] = "1";
-					obj["Ret_Err"]       = QString("PartResult file %1 is empty").arg(partResultFile);
+					obj["Ret_Err"]       = QString("PartResult file %1 missing 'partInspectResult' field").arg(partResultFile);
 					sendRes(socket, obj, idCode);
 					return;
 				}
@@ -6018,7 +6018,16 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 				if(!partInspectResultObj.contains("Result")){
 					QJsonObject obj;
 					obj[strCmd + "_Ret"] = "1";
-					obj["Ret_Err"]       = QString("PartResult file %1 is empty").arg(partResultFile);
+					obj["Ret_Err"]       = QString("PartResult file %1 missing 'Result' field").arg(partResultFile);
+					sendRes(socket, obj, idCode);
+					return;
+				}
+				bool result = partInspectResultObj.value("Result").toBool();
+				if(!result){
+					QJsonObject obj;
+					obj[strCmd + "_Ret"] = "1";
+					QString errMsg = partInspectResultObj.contains("Ret_Err") ? partInspectResultObj["Ret_Err"].toString() : "Part inspection failed";
+					obj["Ret_Err"]       = QString("Part inspection failed: %1").arg(errMsg);
 					sendRes(socket, obj, idCode);
 					return;
 				}
