@@ -37,6 +37,14 @@ void PointCloudCommandHandler::handle(const Command& cmd) {
 	{
 		m_service->cameraCalibration(cmd.params, cmd.socket, cmd.idCode);
 	}
+	else if (cmd.type == "RingCalibration")
+	{
+		m_service->ringCalibration(cmd.params, cmd.socket, cmd.idCode);
+	}
+	else if (cmd.type == "RingCalibrationResult")
+	{
+		m_service->ringCalibrationResult(cmd.params, cmd.socket, cmd.idCode);
+	}
 	else if (cmd.type == "CameraCalibrationResult")
 	{
 		m_service->cameraCalibrationResult(cmd.params, cmd.socket, cmd.idCode);

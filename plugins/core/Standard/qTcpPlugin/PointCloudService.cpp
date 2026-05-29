@@ -84,6 +84,8 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	QString appDir      = QCoreApplication::applicationDirPath();
 	m_cameraCalibrationFilePath    = appDir + "/Template/camera_calibration_status.json";
 	m_probeCalibrationFilePath = appDir + "/Template/probe_calibration_status.json";
+	m_ringCalibrationFilePath = appDir + "/Template/ring_calibration_status.json";
+		
 	m_Status = MachineStatus::Idle;
 	// 加载之前的相机标定结果
 	QFile statusFile(m_cameraCalibrationFilePath);
@@ -170,6 +172,30 @@ PointCloudService::PointCloudService(ccMainAppInterface* app, QObject* parent)
 	{
 		m_probeCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "NG"}, {"Ret_Err", "not inited"}};
 	}
+
+	// 加载之前的环规标定结果
+	QFile ringStatusFile(m_ringCalibrationFilePath);
+	if (ringStatusFile.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		QByteArray ringData = ringStatusFile.readAll();
+		QJsonParseError err;
+		QJsonDocument ringDoc = QJsonDocument::fromJson(ringData, &err);
+		if (!ringDoc.isNull() && ringDoc.isObject())
+		{
+			m_ringCalibrationResult = ringDoc.object();
+		}
+		else
+		{
+			m_ringCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "NG"}, {"Ret_Err", "invalid calibration file"}};
+		}
+		ringStatusFile.close();
+	}
+	else
+	{
+		m_ringCalibrationResult["CalibrationResult"] = QJsonObject{{"Result", "NG"}, {"Ret_Err", "not inited"}};
+	}
+
+
 }
 
 void PointCloudService::setEnableMock(bool enable)
@@ -277,6 +303,14 @@ void PointCloudService::saveCalibrationStatus() {
 		QByteArray probeData = QJsonDocument(m_probeCalibrationResult).toJson(QJsonDocument::Indented);
         probeStatusFile.write(probeData);
         probeStatusFile.close();
+    }
+
+	// 保存环规标定结果
+    QFile ringStatusFile(m_ringCalibrationFilePath);
+    if (ringStatusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		QByteArray ringData = QJsonDocument(m_ringCalibrationResult).toJson(QJsonDocument::Indented);
+        ringStatusFile.write(ringData);
+        ringStatusFile.close();
     }
 }
 
@@ -6050,6 +6084,71 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 
 
 
+void PointCloudService::ringCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	QString strCmd = "RingCalibration";
+
+	// 如果已经在标定中，直接返回错误
+	if (m_Status == MachineStatus::Running)
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Ret_Err"]         = "machine is running";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+
+	QString errorMessage;
+	if (!waitForMachineIdle(1, &errorMessage))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Ret_Err"]         = "Machine is not idle";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	QString mode;
+	if (!getMachineMode(mode, &errorMessage))
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Ret_Err"]         = "Failed to get machine mode";
+		sendRes(socket, obj, idCode);
+		return;
+	}
+	if (mode != "Auto")
+	{
+		QJsonObject obj;
+		obj[strCmd + "_Ret"] = "1";
+		obj["Ret_Err"]         = QString("Machine mode must be Auto, current mode is '%1'").arg(mode);
+		sendRes(socket, obj, idCode);
+		return;
+	}
+
+	// 清空之前的标定结果
+	m_ringCalibrationResult["CalibrationResult"] = 	QJsonObject{{"Result", "NG"}, {"Ret_Err", "machine is calibrating"}};
+	m_Status                      = MachineStatus::Running;
+	// 保存状态
+	saveCalibrationStatus();
+
+	// 立即返回 OK
+	QJsonObject obj;
+	obj[strCmd + "_Ret"] = "0";
+	sendRes(socket, obj, idCode);
+
+	QMetaObject::invokeMethod(qApp, [this, params]()
+	                          {
+								executeRingCalibration();
+
+		m_Status = MachineStatus::Idle;
+		saveCalibrationStatus();
+		},
+	                          Qt::QueuedConnection); 
+}
+
+
 void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {
 	QString strCmd = "CameraCalibration";
@@ -6118,6 +6217,89 @@ void PointCloudService::cameraCalibration(const QJsonObject& params, QTcpSocket*
 		saveCalibrationStatus();
 		},
 	                          Qt::QueuedConnection); 
+}
+
+bool PointCloudService::executeRingCalibration()
+{
+	QString errorMessage;
+
+	// 检查Template目录是否存在
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString templateDir = appDir + "/Template";
+	QDir dir(templateDir);
+	if (!dir.exists())
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "Template directory does not exist";
+		m_ringCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	// 查找probe前缀的环规检测程序文件
+	QString     probeFile = templateDir + "/RingInspect.nc";
+
+	// 发送文件到机床
+	if (!sendFileToMachine(probeFile, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to send probe calibration file: %1").arg(errorMessage);
+		m_ringCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	// 设置主程序
+	if (!setMainProgram(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to set main program: %1").arg(errorMessage);
+		m_ringCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	// 启动机床
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to start machine: %1").arg(errorMessage);
+		m_ringCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+
+	// 等待机床空闲
+	if (!waitForMachineIdle(-1, &errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Machine did not become idle: %1").arg(errorMessage);
+		m_ringCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
+	
+
+	// 保存旋转中心到结果中
+	QJsonObject obj;
+	obj["Result"] = "OK";
+	obj["Ret_Err"] = "Ring calibration completed successfully";
+	m_ringCalibrationResult["CalibrationResult"] = obj;
+
+	// 保存状态
+	saveCalibrationStatus();
+	m_Status = MachineStatus::Idle;
+	return true;
 }
 
 bool PointCloudService::executeProbeCalibration()
@@ -7335,6 +7517,30 @@ void PointCloudService::probeCalibrationResult(const QJsonObject& params, QTcpSo
 
 	sendRes(socket, resObj, idCode);
 }
+
+void PointCloudService::ringCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
+{
+	QString     strCmd = "RingCalibrationResult";
+	QJsonObject resObj;
+	if (!m_ringCalibrationResult.contains("CalibrationResult") || !m_ringCalibrationResult["CalibrationResult"].isObject())
+	{
+		resObj[strCmd + "_Ret"] = "1";
+		resObj["Ret_Err"]       = "No calibration result available";
+		sendRes(socket, resObj, idCode);
+		return;
+	}
+
+	QJsonObject result = m_ringCalibrationResult["CalibrationResult"].toObject();
+
+	resObj[strCmd + "_Ret"] = "0";
+	resObj["Data"]          = m_ringCalibrationResult["CalibrationResult"];
+	resObj["Result"]        = result["Result"];
+	resObj["Ret_Err"]        = result["Ret_Err"];
+
+	sendRes(socket, resObj, idCode);
+}
+
+
 
 void PointCloudService::cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
 {

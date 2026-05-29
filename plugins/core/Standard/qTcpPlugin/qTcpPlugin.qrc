@@ -9,5 +9,6 @@
         <file>res/config.png</file>
         <file>res/calibration.png</file>
         <file>res/result.png</file>
+        <file>res/test.png</file>
     </qresource>
 </RCC>

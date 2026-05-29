@@ -76,6 +76,10 @@ class PointCloudService : public QObject
 	// 返回值：true表示标定成功，false表示失败
 	// 标定结果通过getProbeCalibrationResult()获取
 	bool executeProbeCalibration();
+	// 执行环规标定（供RingCalibrationDialog直接调用）
+	// 返回值：true表示标定成功，false表示失败
+	// 标定结果通过getRingCalibrationResult()获取
+	bool executeRingCalibration();
 
 	// 获取测头标定结果
 	QJsonObject getProbeCalibrationResult() const { return m_probeCalibrationResult; }
@@ -105,6 +109,10 @@ class PointCloudService : public QObject
 	}
 
 	// 以下是与自动化相关的命令响应函数
+	//环规标定
+	void ringCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+	void ringCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
+
 	// 相机标定
 	void cameraCalibration(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
 	void cameraCalibrationResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode);
@@ -154,6 +162,7 @@ class PointCloudService : public QObject
 	QTcpSocket*                 m_machineSocket;       // 机床长连接（主线程）
 	QTcpSocket*                 m_workerMachineSocket; // 机床长连接（工作线程）
 	MachineStatus               m_Status;   // 状态
+	QJsonObject                 m_ringCalibrationResult;   // 环规标定结果
 	QJsonObject                 m_cameraCalibrationResult;   // 相机标定结果
 	Eigen::Matrix4d             m_cameraCalibrationMatrix;   // 相机标定结果矩阵
 
@@ -164,6 +173,7 @@ class PointCloudService : public QObject
 	QString m_edmProgPath;
 	QString                     m_cameraCalibrationFilePath;      // 状态文件路径
 	QString m_probeCalibrationFilePath;  // 状态文件路径
+	QString m_ringCalibrationFilePath;  // 状态文件路径
 	bool m_enableMock; // 是否启用mock命令
 
 	// 旋转中心

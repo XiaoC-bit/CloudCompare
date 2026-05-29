@@ -142,7 +142,7 @@ QList<QAction*> qTcpPlugin::getActions()
 
 	if (!m_edmProgramAction)
 	{
-		m_edmProgramAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/log.png"), "生成放电程序", this);
+		m_edmProgramAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/test.png"), "生成放电程序", this);
 		connect(m_edmProgramAction, &QAction::triggered, this, &qTcpPlugin::showEdmProgramDialog);
 	}
 
@@ -274,6 +274,8 @@ void qTcpPlugin::startServer()
 
 	m_dispatcher->registerHandler("CameraCalibration", handler);
 	m_dispatcher->registerHandler("CameraCalibrationResult", handler);
+	m_dispatcher->registerHandler("RingCalibration", handler);
+	m_dispatcher->registerHandler("RingCalibrationResult", handler);
 
 	m_dispatcher->registerHandler("ProbeCalibration", handler);
 	m_dispatcher->registerHandler("ProbeCalibrationResult", handler);
