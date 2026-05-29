@@ -5965,8 +5965,7 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 		// 查找模板文件
 		QString templateFile;
 		QStringList filters; 
-		filters << QString("%1_%2_%3*.nc").arg(partType).arg(electrodeType).arg(machineType)
-		        << QString("%1_%2_%3*.txt").arg(partType).arg(electrodeType).arg(machineType);
+		filters << QString("%1_%2_%3*.nc").arg(partType).arg(electrodeType).arg(machineType);
 		QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
 		if (fileList.isEmpty()) {
 			QJsonObject obj;
@@ -6007,7 +6006,38 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 			QJsonDocument partDoc = QJsonDocument::fromJson(partData, &partParseError);
 			if (partParseError.error == QJsonParseError::NoError && partDoc.isObject()) {
 				partInspectResult = partDoc.object();
+				if(!partInspectResult.contains("partInspectResult"))
+				{
+					QJsonObject obj;
+					obj[strCmd + "_Ret"] = "1";
+					obj["Ret_Err"]       = QString("PartResult file %1 is empty").arg(partResultFile);
+					sendRes(socket, obj, idCode);
+					return;
+				}
+				QJsonObject partInspectResultObj = partInspectResult.value("partInspectResult").toObject();
+				if(!partInspectResultObj.contains("Result")){
+					QJsonObject obj;
+					obj[strCmd + "_Ret"] = "1";
+					obj["Ret_Err"]       = QString("PartResult file %1 is empty").arg(partResultFile);
+					sendRes(socket, obj, idCode);
+					return;
+				}
+				
 			}
+			else{
+				QJsonObject obj;
+				obj[strCmd + "_Ret"] = "1";
+				obj["Ret_Err"]       = QString("PartResult file %1 not found").arg(partResultFile);
+				sendRes(socket, obj, idCode);
+				return;
+			}
+		}
+		else{
+			QJsonObject obj;
+			obj[strCmd + "_Ret"] = "1";
+			obj["Ret_Err"]       = QString("PartResult file %1 not found").arg(partResultFile);
+			sendRes(socket, obj, idCode);
+			return;
 		}
 
 		// 读取电极检测结果
@@ -6022,6 +6052,20 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 			if (electrodeParseError.error == QJsonParseError::NoError && electrodeDoc.isObject()) {
 				electrodeInspectResult = electrodeDoc.object();
 			}
+			else{
+				QJsonObject obj;
+				obj[strCmd + "_Ret"] = "1";
+				obj["Ret_Err"]       = QString("ElectrodeResult file %1 not found").arg(electrodeResultFile);
+				sendRes(socket, obj, idCode);
+				return;
+			}
+		}
+		else{
+			QJsonObject obj;
+			obj[strCmd + "_Ret"] = "1";
+			obj["Ret_Err"]       = QString("ElectrodeResult file %1 not found").arg(electrodeResultFile);
+			sendRes(socket, obj, idCode);
+			return;
 		}
 
 		// 5. 处理每个放电位置
@@ -6043,15 +6087,15 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 			);
 
 			// 替换模板中的变量
-			programContent.replace(QString("{补偿X_%1}").arg(i + 1), QString::number(compensation.x));
-			programContent.replace(QString("{补偿Y_%1}").arg(i + 1), QString::number(compensation.y));
-			programContent.replace(QString("{补偿Z_%1}").arg(i + 1), QString::number(compensation.z));
-			programContent.replace(QString("{补偿A_%1}").arg(i + 1), QString::number(compensation.a));
-			programContent.replace(QString("{补偿B_%1}").arg(i + 1), QString::number(compensation.b));
-			programContent.replace(QString("{补偿C_%1}").arg(i + 1), QString::number(compensation.c));
+			programContent.replace(QString("{OFFSET_X_%1}").arg(i + 1), QString::number(compensation.x));
+			programContent.replace(QString("{OFFSET_Y_%1}").arg(i + 1), QString::number(compensation.y));
+			programContent.replace(QString("{OFFSET_Z_%1}").arg(i + 1), QString::number(compensation.z));
+			programContent.replace(QString("{OFFSET_A_%1}").arg(i + 1), QString::number(compensation.a));
+			programContent.replace(QString("{OFFSET_B_%1}").arg(i + 1), QString::number(compensation.b));
+			programContent.replace(QString("{OFFSET_C_%1}").arg(i + 1), QString::number(compensation.c));
 		}
-
-		QString path = m_edmProgPath + partRfid + "_" + electrodeRfid + ".nc";
+		QString fileName = partRfid + "_" + electrodeRfid + ".nc";
+		QString path     = m_edmProgPath + fileName;
 		// 7. 写入程序文件
 		QFile outputFile(path);
 		if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -6068,7 +6112,7 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 
 		// 返回结果
 		QJsonObject result;
-		result["Path"] = path;
+		result["FileName"]          = fileName;
 		result["MachineType"] = machineType;
 		result["PartType"] = partType;
 		result["ElectrodeType"] = electrodeType;
@@ -7412,6 +7456,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 	inspectionInfo["PartType"] = partType;
 	inspectionInfo["Rfid"] = rfid;
 	inspectionInfo["HoleCount"] = holePositions.size();
+	inspectionInfo["ZeroPos"]           = zeroPositions;
 
 	obj["InspectInfo"] = inspectionInfo;
 	result["InspectResult"] = obj;
@@ -7868,11 +7913,11 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	// G54（工件原点）在机床坐标系
 	// 假设工件检测结果中包含G54信息
 	Eigen::Vector3d g54_in_machine(0, 0, 0);
-	if (partInspectResult.contains("g54")) {
-		QJsonObject g54 = partInspectResult["g54"].toObject();
-		if (g54.contains("x")) g54_in_machine.x() = g54["x"].toDouble();
-		if (g54.contains("y")) g54_in_machine.y() = g54["y"].toDouble();
-		if (g54.contains("z")) g54_in_machine.z() = g54["z"].toDouble();
+	if (partInspectResult.contains("ZeroPos")) {
+		QJsonObject g54 = partInspectResult["ZeroPos"].toObject();
+		if (g54.contains("X")) g54_in_machine.x() = g54["X"].toDouble();
+		if (g54.contains("Y")) g54_in_machine.y() = g54["Y"].toDouble();
+		if (g54.contains("Z")) g54_in_machine.z() = g54["Z"].toDouble();
 	}
 
 	// 转换到弧度
