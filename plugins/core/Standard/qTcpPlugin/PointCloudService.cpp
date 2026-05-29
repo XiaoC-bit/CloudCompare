@@ -69,6 +69,7 @@ namespace
 	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1536";
 	const QString BALL_INSPECT_RESULT_FILE_NAME       = "O1536";
 	const int     MACHINE_COMMAND_RETRY_COUNT   = 3;
+	const double  MAX_RESIDUAL_THRESHOLD              = 0.025; // 最大残差阈值，单位：mm
 
 } // namespace
 
@@ -1332,7 +1333,7 @@ void PointCloudService::filter(const QJsonObject& params, QTcpSocket* socket, co
 	                          Qt::QueuedConnection);
 }
 
-bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMessage, ccGLMatrix* transMat)
+bool PointCloudService::icpInternal(const QJsonObject& params, double& finalRms, QString* errorMessage, ccGLMatrix* transMat)
 {
     // 支持两种参数名称：source/target 和 data/model
     const QString dataName = params.contains("source") ? params["source"].toString() : params["data"].toString();
@@ -1401,12 +1402,12 @@ bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMes
 
     // Run ICP
     ccGLMatrix localTransMat;
-    double finalError = 0.0;
+	double     finalRMS        = 0.0;
     double finalScale = 1.0;
     unsigned finalPointCount = 0;
 
     bool success = ccRegistrationTools::ICP(
-        dataObj, modelObj, localTransMat, finalScale, finalError, finalPointCount,
+	    dataObj, modelObj, localTransMat, finalScale, finalRMS, finalPointCount,
         icpParams, false, false, (QWidget*)(m_app->getMainWindow()));
 
     if (!success) {
@@ -1465,7 +1466,7 @@ bool PointCloudService::icpInternal(const QJsonObject& params, QString* errorMes
     m_app->updateUI();
 
     const QString matrixStr = localTransMat.toString(6, ' ');
-    m_app->dispToConsole(QString("[TcpPlugin][ICP] Final RMS: %1 (on %2 points)").arg(finalError).arg(finalPointCount));
+	m_app->dispToConsole(QString("[TcpPlugin][ICP] Final RMS: %1 (on %2 points)").arg(finalRMS).arg(finalPointCount));
     m_app->dispToConsole(QString("[TcpPlugin][ICP] Transformation matrix:\n") + matrixStr);
 
     // 返回变换矩阵
@@ -1693,7 +1694,9 @@ void PointCloudService::icp(const QJsonObject& params, QTcpSocket* socket, const
 	QMetaObject::invokeMethod(qApp, [this, params, socket, idCode]()
 	                          {
         QString errorMessage;
-        if (icpInternal(params, &errorMessage)) {
+		double finalRms = 0;
+		if (icpInternal(params, finalRms, & errorMessage))
+		{
             sendOk(socket, "ICP registration completed", idCode);
         } else {
             sendError(socket, errorMessage, idCode);
@@ -4721,7 +4724,9 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 
 				QString    errorMessage;
 				ccGLMatrix transMat;
-				if (!icpInternal(icpParams, &errorMessage, &transMat))
+
+				double finalRms = 0;
+				if (!icpInternal(icpParams, finalRms, &errorMessage, &transMat))
 				{
 					QJsonObject result;
 					QJsonObject obj;
@@ -6971,35 +6976,6 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					m_Status = MachineStatus::Idle;
 					return false;
 				}
-
-				
-				
-				//// 应用变换
-				//// 应用 T1 矩阵
-
-				//// 应用基于 x, y, z, B, C 的变换
-				//Eigen::Matrix4d finalTransform = computeCameraMotion(
-				//	m_cameraCalibrationMatrix,
-				//	(x - ZeroX),
-				//	(y - ZeroY),
-				//	(z - ZeroZ),
-				//	b,
-				//	c,
-				//	m_bAxisCenter,
-				//	m_cAxisCenter);
-
-				//ccGLMatrixd t1GlMatrix(finalTransform.data());
-
-				//if (!applyTransformationInternal(cloudName, t1GlMatrix, false, &errorMessage)) {
-				//	QJsonObject result;
-				//	QJsonObject obj;
-				//	obj["Result"] = "NG";
-				//	obj["Ret_Err"] = QString("Failed to apply T1 transformation: %1").arg(errorMessage);
-				//	result["InspectResult"] = obj;
-				//	savePartInspectResult(rfid, result);
-				//	m_Status = MachineStatus::Idle;
-				//	return false;
-				//}
 			}
 
 			// 合并当前打孔位置的所有点云
@@ -7137,11 +7113,25 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 
 				QString errorMessage;
 				ccGLMatrix transMat;
-				if (!icpInternal(icpParams, &errorMessage, &transMat)) {
+				double     finalRms = 1;
+				if (!icpInternal(icpParams, finalRms, & errorMessage, &transMat))
+				{
 					QJsonObject result;
 					QJsonObject obj;
 					obj["Result"] = "NG";
 					obj["Ret_Err"] = QString("Failed to perform ICP registration: %1").arg(errorMessage);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					m_Status = MachineStatus::Idle;
+					return false;
+				}
+
+				if (finalRms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
+				{
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("ICP registration result is not accurate enough (RMS: %1)").arg(finalRms);
 					result["InspectResult"] = obj;
 					savePartInspectResult(rfid, result);
 					m_Status = MachineStatus::Idle;
@@ -7388,6 +7378,29 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				QJsonObject obj;
 				obj["Result"]           = "NG";
 				obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
+			}
+
+			if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (RMS: %1)").arg(probeResult.rms);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
+			}
+			if (probeResult.maxResidual > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的残差阈值
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Probe fitting has large residuals (Max Residual: %1)").arg(probeResult.maxResidual);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
 				return false;
@@ -8142,8 +8155,6 @@ bool PointCloudService::executeElectrodeInspect(const QString& electrodeType, co
 		return false;
 	}
 
-	double offsetX, offsetY, offsetZ, offsetA, offsetB, offsetC;
-
 	QString cncPath = "/h/lnc8/prog/";
 	QString cncFile = ELEC_INSPECT_RESULT_FILE_NAME;
 	QString localFile = "D:\\Elec\\" + rfid + ".res";
@@ -8161,12 +8172,29 @@ bool PointCloudService::executeElectrodeInspect(const QString& electrodeType, co
 		return false;
 	}
 
+	
+
+
+	ProbeFit6DOF_BC::G54Config measureG54;
+	measureG54.xyz   = Eigen::Vector3d(-51.837, -82.130, -93.148);
+	measureG54.B_deg = 0.0;
+	measureG54.C_deg = 0.0;
+
+	Eigen::Vector3d measureBcenter(-51.828, -82.531, -173.454);
+	Eigen::Vector3d measureCcenter(-51.798, -82.531, -173.454);
+
+	// ── 拟合器 ──
+	ProbeFit6DOF_BC fitter(measureG54, measureBcenter, measureCcenter);
+
+	// 解析文件
 	QFile file(localFile);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Failed to open inspection result file: %1").arg(file.errorString());
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
 		result["InspectResult"] = obj;
 		m_electrodeInspectResult = result;
 		saveElectrodeInspectResult(rfid, result);
@@ -8174,17 +8202,188 @@ bool PointCloudService::executeElectrodeInspect(const QString& electrodeType, co
 		return false;
 	}
 
-	QJsonObject resultObj;
-	resultObj["Result"] = "OK";
-	resultObj["ElectrodeType"] = electrodeType;
-	resultObj["Rfid"] = rfid;
-	resultObj["Offset"] = QJsonObject{ {"X", offsetX}, {"Y", offsetY}, {"Z", offsetZ} };
-	resultObj["Timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+	// ── 解析数据并添加测点 ──
+	QTextStream in(&file);
+	QString     content = in.readAll();
+	file.close();
 
-	QJsonObject result;
-	result["InspectResult"] = resultObj;
-	m_electrodeInspectResult = result;
-	saveElectrodeInspectResult(rfid, result);
+	// 正则：匹配一组数据（支持任意空白分隔）
+	// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
+	QRegularExpression regex(
+	    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
+	    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
+	    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
+	    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
+	);
+
+	QRegularExpressionMatchIterator it         = regex.globalMatch(content);
+	int                             pointCount = 0;
+
+	bool ok = false;
+	while (it.hasNext())
+	{
+		QRegularExpressionMatch match = it.next();
+
+		double B = match.captured(1).toDouble(&ok);
+		if (!ok)
+			break;
+		double C = match.captured(2).toDouble(&ok);
+		if (!ok)
+			break;
+
+		double I = match.captured(3).toDouble(&ok);
+		if (!ok)
+			break;
+		double J = match.captured(4).toDouble(&ok);
+		if (!ok)
+			break;
+		double K = match.captured(5).toDouble(&ok);
+		if (!ok)
+			break;
+
+		double theoX = match.captured(6).toDouble(&ok);
+		if (!ok)
+			break;
+		double theoY = match.captured(7).toDouble(&ok);
+		if (!ok)
+			break;
+		double theoZ = match.captured(8).toDouble(&ok);
+		if (!ok)
+			break;
+
+		double actualX = match.captured(9).toDouble(&ok);
+		if (!ok)
+			break;
+		double actualY = match.captured(10).toDouble(&ok);
+		if (!ok)
+			break;
+		double actualZ = match.captured(11).toDouble(&ok);
+		if (!ok)
+			break;
+
+		fitter.addPoint({theoX, theoY, theoZ},
+		                {actualX, actualY, actualZ},
+		                {I, J, K},
+		                B,
+		                C);
+		pointCount++;
+	}
+
+	// 如果有任何解析失败，直接报异常
+	if (!ok)
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	ProbeFit6DOF_BC::Result probeResult;
+	if (!fitter.solve(probeResult))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (RMS: %1)").arg(probeResult.rms);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	if(probeResult.maxResidual > MAX_RESIDUAL_THRESHOLD)
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (Max Residual: %1)").arg(probeResult.maxResidual);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
+	QJsonObject partResult;
+
+	// 构建 4x4 变换矩阵
+	Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
+	transformMatrix.block<3, 3>(0, 0) = probeResult.R;
+	transformMatrix.block<3, 1>(0, 3) = probeResult.t;
+
+	// 存储变换矩阵
+	QJsonArray matrixArray;
+	for (int i = 0; i < 4; ++i)
+	{
+		QJsonArray rowArray;
+		for (int j = 0; j < 4; ++j)
+		{
+			rowArray.append(transformMatrix(i, j));
+		}
+		matrixArray.append(rowArray);
+	}
+	partResult["icpMatrix"] = matrixArray;
+
+	// 存储质心
+	QJsonArray centroidArray;
+	centroidArray.append(probeResult.centroid.x());
+	centroidArray.append(probeResult.centroid.y());
+	centroidArray.append(probeResult.centroid.z());
+	partResult["centroid"] = centroidArray;
+
+	// 存储旋转向量
+	QJsonArray omegaArray;
+	omegaArray.append(probeResult.omega.x());
+	omegaArray.append(probeResult.omega.y());
+	omegaArray.append(probeResult.omega.z());
+	partResult["omega"] = omegaArray;
+
+	// 存储拟合精度指标
+	partResult["rms"]              = probeResult.rms;
+	partResult["maxResidual"]      = probeResult.maxResidual;
+	partResult["maxResidualIndex"] = probeResult.maxResidualIndex;
+	partResult["dof"]              = probeResult.dof;
+
+	// 存储残差列表
+	QJsonArray residualsArray;
+	for (double residual : probeResult.residuals)
+	{
+		residualsArray.append(residual);
+	}
+	partResult["residuals"] = residualsArray;
+
+	QJsonObject res;
+	QJsonObject obj;
+	obj["Result"]        = "OK";
+	obj["Ret_Err"]       = "Mock electrode inspection completed successfully";
+	obj["MockMode"]      = true;
+	obj["Detail"]        = partResult;
+	res["InspectResult"] = obj;
+
+	saveElectrodeInspectResult(rfid, res);
 
 	m_Status = MachineStatus::Idle;
 	return true;
