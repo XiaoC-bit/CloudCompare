@@ -60,16 +60,17 @@ namespace
 	const QString MACHINE_DEVICE_TYPE            = "Cnc";
 	const QString CALIBRATION_CNC_FILE           = "O1236";
 	const QString CALIBRATION_TEMP_CNC_FILE           = "O8210";
-	const QString CALIBRATION_CNC_PATH           = "/c/AC/";
+	const QString CALIBRATION_CNC_PATH                = "/c/AC/";
+	const QString PROBE_CNC_PATH                      = "/c/BC/"; // 工件、电极的检测程序放在BC路径下
 	const double  CALIBRATION_RADIUS             = 12.5;
 	const double  CALIBRATION_RMS_THRESHOLD      = 0.012;
 	const double  CALIBRATION_RESIDUAL_THRESHOLD = 0.12;
 	const int     CALIBRATION_MAX_FIT_RETRIES    = 3;
 	const QString PART_INSPECT_RESULT_FILE_NAME = "O1236";
-	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1536";
+	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1236";
 	const QString BALL_INSPECT_RESULT_FILE_NAME       = "O1536";
 	const int     MACHINE_COMMAND_RETRY_COUNT   = 3;
-	const double  MAX_RESIDUAL_THRESHOLD              = 0.025; // 最大残差阈值，单位：mm
+	const double  MAX_RESIDUAL_THRESHOLD              = 0.028; // 最大残差阈值，单位：mm
 
 } // namespace
 
@@ -805,6 +806,35 @@ bool PointCloudService::checkMachineCommandRet(const QJsonObject& response,
 	return false;
 }
 
+
+bool PointCloudService::sendFileToMachine(const QString& ncPath, const QString& filePath, QString* errorMessage)
+{
+	const int   timeout = 20;
+	QJsonObject params;
+	params["Command"]    = "SendFile";
+	params["DeviceName"] = MACHINE_DEVICE_NAME;
+	params["DeviceType"] = MACHINE_DEVICE_TYPE;
+	params["CNCPath"]    = ncPath;
+	params["CNCFile"]    = CALIBRATION_CNC_FILE;
+	params["LocalFile"]  = filePath;
+	params["Timeout"]    = timeout;
+
+	QJsonObject response;
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
+	{
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "SendFile", errorMessage))
+		{
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
+	}
+	return false;
+}
+
 bool PointCloudService::sendFileToMachine(const QString& filePath, QString* errorMessage)
 {
 	const int   timeout = 20;
@@ -945,6 +975,35 @@ bool PointCloudService::setTempMainProgram(QString* errorMessage)
 	}
 	return false;
 }
+
+bool PointCloudService::setMainProgram(const QString& cncPath, QString* errorMessage)
+{
+	const int   timeout = 10;
+	QJsonObject params;
+	params["Command"]    = "SetMainProg";
+	params["DeviceType"] = MACHINE_DEVICE_TYPE;
+	params["DeviceName"] = MACHINE_DEVICE_NAME;
+	params["MainProg"]   = CALIBRATION_CNC_FILE;
+	params["Path"]       = cncPath;
+	params["Timeout"]    = timeout;
+
+	QJsonObject response;
+	for (int retry = 0; retry < MACHINE_COMMAND_RETRY_COUNT; ++retry)
+	{
+		if (sendMachineCommand(params, response, errorMessage, timeout * 1000)
+		    && checkMachineCommandRet(response, "SetMainProg", errorMessage))
+		{
+			return true;
+		}
+		if (retry < MACHINE_COMMAND_RETRY_COUNT - 1)
+		{
+			QThread::msleep(200);
+		}
+	}
+	return false;
+}
+
+
 bool PointCloudService::setMainProgram(QString* errorMessage)
 {
 	const int   timeout = 10;
@@ -7184,8 +7243,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				return false;
 			}
 
-			// 构建测头检测程序路径
-			QString probeProgPath = templateDir + "/" + progPath;
+			QString probeProgPath = progPath;
 			QFile   probeProgFile(probeProgPath);
 			if (!probeProgFile.exists())
 			{
@@ -7209,7 +7267,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				return false;
 			}
 			// 发送文件到机床
-			if (!sendFileToMachine(probeProgPath, &errorMessage))
+			if (!sendFileToMachine(PROBE_CNC_PATH, probeProgPath, &errorMessage))
 			{
 				QJsonObject result;
 				QJsonObject obj;
@@ -7221,7 +7279,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 			}
 
 			// 设置主程序
-			if (!setMainProgram(&errorMessage))
+			if (!setMainProgram(PROBE_CNC_PATH ,& errorMessage))
 			{
 				QJsonObject result;
 				QJsonObject obj;
@@ -7233,16 +7291,19 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 			}
 
 			// 启动机床
-			if (!startMachine(&errorMessage))
-			{
-				QJsonObject result;
-				QJsonObject obj;
-				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = QString("Failed to start machine: %1").arg(errorMessage);
-				result["InspectResult"] = obj;
-				savePartInspectResult(rfid, result);
-				return false;
+			if (0) {
+				if (!startMachine(&errorMessage))
+				{
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Failed to start machine: %1").arg(errorMessage);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return false;
+				}
 			}
+			
 
 			// 等待机床完成
 			if (!waitForMachineIdle(-1, &errorMessage))
@@ -7257,8 +7318,10 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 			}
 
 			QString cncPath   = "/h/lnc8/prog/";
-			QString cncFile   = PART_INSPECT_RESULT_FILE_NAME;
-			QString localFile = "D:\\Result\\Part\\" + rfid + ".res";
+			QString cncFile   = PART_INSPECT_RESULT_FILE_NAME;			
+			//QString appDir    = QCoreApplication::applicationDirPath();
+			QString localFile = appDir + "/Temp/" + rfid +".res";
+
 
 			if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 			{
@@ -7272,16 +7335,18 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				return false;
 			}
 
+
 			ProbeFit6DOF_BC::G54Config measureG54;
-			measureG54.xyz   = Eigen::Vector3d(-51.837, -82.130, -93.148);
+			measureG54.xyz   = Eigen::Vector3d(
+				zeroPositions.value("X").toDouble(),
+			    zeroPositions.value("Y").toDouble(),
+			    zeroPositions.value("Z").toDouble());
 			measureG54.B_deg = 0.0;
 			measureG54.C_deg = 0.0;
 
-			Eigen::Vector3d measureBcenter(-51.828, -82.531, -173.454);
-			Eigen::Vector3d measureCcenter(-51.798, -82.531, -173.454);
 
 			// ── 拟合器 ──
-			ProbeFit6DOF_BC fitter(measureG54, measureBcenter, measureCcenter);
+			ProbeFit6DOF_BC fitter(measureG54, m_bAxisCenter, m_cAxisCenter);
 
 			// 解析文件
 			QFile file(localFile);
@@ -7419,7 +7484,8 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 			// 构建 4x4 变换矩阵
 			Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
 			transformMatrix.block<3, 3>(0, 0) = probeResult.R;
-			transformMatrix.block<3, 1>(0, 3) = probeResult.t;
+			// transformMatrix.block<3, 1>(0, 3) = probeResult.t;  // 原来：t 在第4列
+			transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
 
 			// 存储变换矩阵
 			QJsonArray matrixArray;
@@ -8077,14 +8143,14 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	}
 
 	QString appDir = QCoreApplication::applicationDirPath();
-	QString templateDir = appDir + "/Template";
-	QDir dir(templateDir);
+	QString partConfigDir = appDir + "/PartConfig/" + partType;
+	QDir dir(partConfigDir);
 	if (!dir.exists())
 	{
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = "Template directory does not exist";
+		obj["Ret_Err"] = QString("PartConfig directory does not exist: %1").arg(partConfigDir);
 		result["InspectResult"] = obj;
 		m_electrodeInspectResult = result;
 		saveElectrodeInspectResult(rfid, result);
@@ -8092,15 +8158,13 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	QString electrodeFile;
-	QStringList filters; filters << QString("%1*.nc").arg(electrodeType) ;
-	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
-	if (fileList.isEmpty())
+	QString electrodeFile = partConfigDir + "/" + electrodeType + ".nc";
+	if (!QFile::exists(electrodeFile))
 	{
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("No electrode file found for type: %1").arg(electrodeType);
+		obj["Ret_Err"] = QString("No electrode file found: %1").arg(electrodeFile);
 		result["InspectResult"] = obj;
 		m_electrodeInspectResult = result;
 		saveElectrodeInspectResult(rfid, result);
@@ -8108,9 +8172,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	electrodeFile = fileList.first().absoluteFilePath();
-
-	if (!sendFileToMachine(electrodeFile, &errorMessage))
+	if (!sendFileToMachine(PROBE_CNC_PATH,electrodeFile, &errorMessage))
 	{
 		QJsonObject result;
 		QJsonObject obj;
@@ -8123,7 +8185,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	if (!setMainProgram(&errorMessage))
+	if (!setMainProgram(PROBE_CNC_PATH ,& errorMessage))
 	{
 		QJsonObject result;
 		QJsonObject obj;
@@ -8179,19 +8241,14 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	
-
-
 	ProbeFit6DOF_BC::G54Config measureG54;
 	measureG54.xyz   = Eigen::Vector3d(-51.837, -82.130, -93.148);
 	measureG54.B_deg = 0.0;
 	measureG54.C_deg = 0.0;
 
-	Eigen::Vector3d measureBcenter(-51.828, -82.531, -173.454);
-	Eigen::Vector3d measureCcenter(-51.798, -82.531, -173.454);
 
 	// ── 拟合器 ──
-	ProbeFit6DOF_BC fitter(measureG54, measureBcenter, measureCcenter);
+	ProbeFit6DOF_BC fitter(measureG54, m_bAxisCenter, m_cAxisCenter);
 
 	// 解析文件
 	QFile file(localFile);
@@ -8339,7 +8396,8 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	// 构建 4x4 变换矩阵
 	Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
 	transformMatrix.block<3, 3>(0, 0) = probeResult.R;
-	transformMatrix.block<3, 1>(0, 3) = probeResult.t;
+	//transformMatrix.block<3, 1>(0, 3) = probeResult.t;
+	transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
 
 	// 存储变换矩阵
 	QJsonArray matrixArray;

@@ -242,11 +242,13 @@ class PointCloudService : public QObject
 	bool               acquirePcdInternal(const QJsonObject& params, QTcpSocket* socket, const QString& idCode, QJsonObject* result = nullptr);
 	bool               sendMachineCommand(const QJsonObject& params, QJsonObject& response, QString* errorMessage = nullptr, int timeout = 10000);
 	bool               checkMachineCommandRet(const QJsonObject& response, const QString& commandName, QString* errorMessage = nullptr, const QString& messageKey = QString());
-	bool sendFileToMachine(const QString& filePath, QString* errorMessage = nullptr);
+	bool               sendFileToMachine(const QString& filePath, QString* errorMessage = nullptr);
+	bool               sendFileToMachine(const QString& ncPath, const QString& filePath, QString* errorMessage = nullptr);
 	bool downloadFileFromMachine(const QString& cncPath, const QString& cncFile, const QString& localFile, QString* errorMessage = nullptr);
 	
 	bool               setTempMainProgram(QString* errorMessage = nullptr);
 	bool               setMainProgram(QString* errorMessage = nullptr);
+	bool               setMainProgram(const QString& cncPath, QString* errorMessage = nullptr);
 	bool               startMachine(QString* errorMessage = nullptr);
 	bool               getDeviceRun(QString& value, QString* errorMessage = nullptr);
 	bool               readMacro(int addr, double& value, QString* errorMessage = nullptr);

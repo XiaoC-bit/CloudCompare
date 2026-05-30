@@ -1412,7 +1412,25 @@ void PartElectrodeConfigDialog::onSelectInspectionProgram(int row)
         return;
     }
 
-    partData.electrodes[row].inspectionProgramPath = filePath;
+    QString targetDir = QCoreApplication::applicationDirPath() + "/PartConfig/" + m_currentPartName;
+    QDir dir(targetDir);
+    if (!dir.exists()) {
+        if (!dir.mkpath(targetDir)) {
+            showErrorMessage("无法创建目标目录: " + targetDir);
+            return;
+        }
+    }
+
+    QString electrodeName = partData.electrodes[row].electrodeName;
+    QString targetFilePath = targetDir + "/" + electrodeName + ".nc";
+
+    QFile sourceFile(filePath);
+    if (!sourceFile.copy(targetFilePath)) {
+        showErrorMessage("文件拷贝失败: " + sourceFile.errorString());
+        return;
+    }
+
+    partData.electrodes[row].inspectionProgramPath = targetFilePath;
     partData.isModified = true;
     m_hasUnsavedChanges = true;
     updateSaveButtonState();
@@ -1437,7 +1455,25 @@ void PartElectrodeConfigDialog::onSelectProbeProgram(int row)
         return;
     }
 
-    partData.electrodes[row].probeProgramPath = filePath;
+    QString targetDir = QCoreApplication::applicationDirPath() + "/PartConfig/" + m_currentPartName;
+    QDir dir(targetDir);
+    if (!dir.exists()) {
+        if (!dir.mkpath(targetDir)) {
+            showErrorMessage("无法创建目标目录: " + targetDir);
+            return;
+        }
+    }
+
+    QString electrodeName = partData.electrodes[row].electrodeName;
+	QString targetFilePath = targetDir + "/" + m_currentPartName + "_" + electrodeName + ".nc";
+
+    QFile sourceFile(filePath);
+    if (!sourceFile.copy(targetFilePath)) {
+        showErrorMessage("文件拷贝失败: " + sourceFile.errorString());
+        return;
+    }
+
+    partData.electrodes[row].probeProgramPath = targetFilePath;
     partData.isModified = true;
     m_hasUnsavedChanges = true;
     updateSaveButtonState();
