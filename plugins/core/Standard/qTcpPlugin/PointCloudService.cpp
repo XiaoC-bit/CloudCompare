@@ -7005,13 +7005,17 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				QJsonArray cropRegions = holePos["cropRegion"].toArray();
 				for (const QJsonValue& cropRegionVal : cropRegions) {
 					QJsonObject cropRegion = cropRegionVal.toObject();
-
+					QString     regionFile = "";
 					// 加载选区
 					if (cropRegion.contains("regionFile")) {
-						QString regionFile = cropRegion["regionFile"].toString();
+						regionFile = cropRegion["regionFile"].toString();
 						QJsonObject loadParams;
-						loadParams["path"] = QString("%1/PartConfig/%2").arg(appDir).arg(regionFile);
-						loadParams["name"] = QString("%1%2").arg(mergedCloudName).arg("_Region");
+						loadParams["path"] = QString("%1/RegionConfig/%2_%3_%4.bin")
+							.arg(appDir)
+						    .arg(partType)
+						    .arg(holdId)
+							.arg(regionFile);
+						loadParams["name"] = QString("%1%2").arg(regionFile).arg("_Region");
 						QString errorMessage;
 						if (!loadInternal(loadParams, &errorMessage)) {
 							QJsonObject result;
@@ -7031,7 +7035,8 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					if (dbRoot) {
 						for (unsigned k = 0; k < dbRoot->getChildrenNumber(); ++k) {
 							ccHObject* child = dbRoot->getChild(k);
-							if (child && child->getName() == QString("%1%2").arg(mergedCloudName).arg("_Region")) {
+							if (child && child->getName() == QString("%1%2").arg(regionFile).arg("_Region"))
+							{
 								regionObject = child;
 								break;
 							}
@@ -7044,7 +7049,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 							// 切换视图
 							if (true || cropRegion.contains("viewport")) {
 								QJsonObject viewportParams;
-								viewportParams["name"] = QString("%1%2").arg(mergedCloudName).arg("_Region");
+								viewportParams["name"] = QString("%1%2").arg(regionFile).arg("_Region");
 								QString errorMessage;
 								if (!applyViewportInternalByIndex(viewportParams, k, &errorMessage)) {
 									QJsonObject result;
@@ -7062,10 +7067,11 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 							if (true || cropRegion.contains("cropParams"))
 							{
 								QJsonObject segmentParams;
-								segmentParams["binName"] = QString("%1%2").arg(mergedCloudName).arg("_Region");
-								segmentParams["meshName"] = mergedCloudName;
+								segmentParams["binName"]      = QString("%1%2").arg(regionFile).arg("_Region");
+								segmentParams["meshName"]     = mergedCloudName;
 								segmentParams["modifySource"] = true;
-
+								segmentParams["keepInside"] = false;
+								
 								QString errorMessage;
 								if (!segmentPolygonInternalByIndex(segmentParams, k, &errorMessage))
 								{
