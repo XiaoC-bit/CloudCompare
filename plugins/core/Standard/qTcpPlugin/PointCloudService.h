@@ -95,7 +95,7 @@ class PointCloudService : public QObject
 	// 执行电极检测（供ElectrodeInspectDialog直接调用）
 	// 返回值：true表示检测成功，false表示失败
 	// 检测结果通过getElectrodeInspectResult()获取
-	bool executeElectrodeInspect(const QString& electrodeType, const QString& rfid);
+	bool executeElectrodeInspect(const QString& partType, const QString& electrodeType, const QString& rfid);
 
 	// 获取电极检测结果
 	QJsonObject getElectrodeInspectResult() const { return m_electrodeInspectResult; }

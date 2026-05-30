@@ -5756,10 +5756,11 @@ void PointCloudService::electrodeInspect(const QJsonObject& params, QTcpSocket* 
 
 void PointCloudService::electrodeInspectFunc(const QJsonObject& params)
 {
+	QString PartType      = params.value("PartType").toString();
 	QString electrodeType = params.value("ElectrodeType").toString();
 	QString rfid = params.value("Rfid").toString();
 
-	executeElectrodeInspect(electrodeType, rfid);
+	executeElectrodeInspect(PartType,electrodeType, rfid);
 }
 
 void PointCloudService::getElectrodeInspectResult(const QJsonObject& params, QTcpSocket* socket, const QString& idCode)
@@ -8056,7 +8057,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	return compensation;
 }
 
-bool PointCloudService::executeElectrodeInspect(const QString& electrodeType, const QString& rfid)
+bool PointCloudService::executeElectrodeInspect(const QString& partType, const QString& electrodeType, const QString& rfid)
 {
 	m_Status = MachineStatus::Running;
 
@@ -8092,7 +8093,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& electrodeType, co
 	}
 
 	QString electrodeFile;
-	QStringList filters; filters << QString("%1*.nc").arg(electrodeType) << QString("%1*.txt").arg(electrodeType);
+	QStringList filters; filters << QString("%1*.nc").arg(electrodeType) ;
 	QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
 	if (fileList.isEmpty())
 	{

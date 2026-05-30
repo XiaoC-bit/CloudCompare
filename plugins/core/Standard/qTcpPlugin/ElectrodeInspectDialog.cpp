@@ -185,6 +185,8 @@ void ElectrodeInspectDialog::onOperationStarted()
 
 bool ElectrodeInspectDialog::performOperation()
 {
+	
+	QString partType = m_partTypeCombo->currentText();
 	QString electrodeType = m_electrodeTypeCombo->currentText();
 	QString rfid = m_rfidEdit->text();
 
@@ -193,7 +195,7 @@ bool ElectrodeInspectDialog::performOperation()
 		return false;
 	}
 
-	return m_pointCloudService->executeElectrodeInspect(electrodeType, rfid);
+	return m_pointCloudService->executeElectrodeInspect(partType,electrodeType, rfid);
 }
 
 void ElectrodeInspectDialog::onOperationCompleted(bool success)
