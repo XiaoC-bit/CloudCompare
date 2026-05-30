@@ -70,4 +70,9 @@ private:
     QLineEdit* m_modelBEdit;
     QLineEdit* m_modelCEdit;
     QPushButton* m_getModelOriginBtn;
+
+    // 示意图和操作提示
+    QLabel* m_schematicLabel;
+    QLabel* m_instructionLabel;
+    QWidget* m_infoFrame;
 };

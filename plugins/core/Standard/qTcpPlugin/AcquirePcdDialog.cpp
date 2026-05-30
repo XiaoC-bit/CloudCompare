@@ -41,11 +41,54 @@ AcquirePcdDialog::~AcquirePcdDialog()
 
 void AcquirePcdDialog::setupUI()
 {
-    setFixedSize(500, 500);
+    setFixedSize(900, 900);
 
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(20, 20, 20, 20);
-    mainLayout->setSpacing(15);
+    mainLayout->setContentsMargins(20, 16, 20, 16);
+    mainLayout->setSpacing(10);
+
+    // 信息卡片（示意图 + 操作提示）
+    m_infoFrame = new QWidget(this);
+    m_infoFrame->setMinimumHeight(170);
+    m_infoFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    m_infoFrame->setStyleSheet("QWidget { background-color: #f5f7fa; border: 1px solid #d0d7e0; border-radius: 8px; }");
+    QHBoxLayout* infoLayout = new QHBoxLayout(m_infoFrame);
+    infoLayout->setContentsMargins(16, 16, 16, 16);
+    infoLayout->setSpacing(20);
+
+    m_schematicLabel = new QLabel(this);
+    m_schematicLabel->setFixedSize(560, 460);
+    m_schematicLabel->setStyleSheet("QLabel { background-color: white; border: 2px solid #c0c8d0; border-radius: 6px; }");
+    m_schematicLabel->setAlignment(Qt::AlignCenter);
+    m_schematicLabel->setScaledContents(true);
+
+    QPixmap schematicPixmap(":/CC/plugin/qTcpPlugin/res/camera_op.png");
+    if (!schematicPixmap.isNull()) {
+		m_schematicLabel->setPixmap(schematicPixmap.scaled(560, 460, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    } else {
+        m_schematicLabel->setText(
+            "<div style='text-align: center; color: #999;'>"
+            "<div style='font-size: 14px;'>示意图</div>"
+            "</div>"
+        );
+    }
+
+    infoLayout->addWidget(m_schematicLabel);
+
+    m_instructionLabel = new QLabel(this);
+    m_instructionLabel->setWordWrap(true);
+    m_instructionLabel->setStyleSheet("QLabel { color: #333; line-height: 1.6; }");
+    m_instructionLabel->setText(
+        "<h3 style='margin: 0 0 8px 0; color: #4a90d9;'>操作说明</h3>"
+        "<p style='margin: 4px 0;'>1. 将待扫描物体（工件/电极）放置于<strong>机床工作台</strong>上</p>"
+        "<p style='margin: 4px 0;'>2. 调节移动<strong>3D扫描仪</strong>至合适位置</p>"
+        "<p style='margin: 4px 0;'>3. 调整成像距离，确保<strong>成像清晰</strong></p>"
+        "<p style='margin: 10px 0 0 0; color: #cc6600; font-weight: bold;'>⚠️ 确认以上步骤完成后，再点击「开始获取」</p>"
+    );
+
+    infoLayout->addWidget(m_instructionLabel, 1);
+
+    mainLayout->addWidget(m_infoFrame);
 
     // 拍摄选项
     QGroupBox* captureOptionGroup = new QGroupBox("拍摄选项", this);

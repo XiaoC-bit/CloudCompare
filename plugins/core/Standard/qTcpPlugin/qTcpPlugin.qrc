@@ -16,5 +16,6 @@
         <file>res/ring_op.png</file>
         <file>res/part_op.png</file>
         <file>res/elec_op.png</file>
+        <file>res/camera_op.png</file>
     </qresource>
 </RCC>
