@@ -14,5 +14,7 @@
         <file>res/ball.png</file>
         <file>res/block.png</file>
         <file>res/ring_op.png</file>
+        <file>res/part_op.png</file>
+        <file>res/elec_op.png</file>
     </qresource>
 </RCC>

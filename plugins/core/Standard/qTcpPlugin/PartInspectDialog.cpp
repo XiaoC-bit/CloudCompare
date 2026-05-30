@@ -5,17 +5,19 @@
 #include <QLabel>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QPushButton>
 #include <QGroupBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFrame>
 
 PartInspectDialog::PartInspectDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
 	: MachineStatusDialog(app, pointCloudService, parent)
 {
 	setWindowTitle("工件检测");
-	setFixedSize(450, 320);
+	setFixedSize(700, 420);
 	init();
 }
 
@@ -27,6 +29,47 @@ void PartInspectDialog::setupAdditionalUI()
 {
 	m_mainLayout->setContentsMargins(20, 16, 20, 16);
 	m_mainLayout->setSpacing(10);
+
+	m_infoFrame = new QFrame(this);
+	m_infoFrame->setFrameShape(QFrame::StyledPanel);
+	m_infoFrame->setStyleSheet("QFrame { background-color: #f5f7fa; border: 1px solid #d0d7e0; border-radius: 8px; }");
+	QHBoxLayout* infoLayout = new QHBoxLayout(m_infoFrame);
+	infoLayout->setContentsMargins(16, 16, 16, 16);
+	infoLayout->setSpacing(20);
+
+	m_schematicLabel = new QLabel(this);
+	m_schematicLabel->setFixedSize(280, 140);
+	m_schematicLabel->setStyleSheet("QLabel { background-color: white; border: 2px solid #c0c8d0; border-radius: 6px; }");
+	m_schematicLabel->setAlignment(Qt::AlignCenter);
+	m_schematicLabel->setScaledContents(true);
+
+	QPixmap schematicPixmap(":/CC/plugin/qTcpPlugin/res/part_op.png");
+	if (!schematicPixmap.isNull()) {
+		m_schematicLabel->setPixmap(schematicPixmap.scaled(280, 140, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	} else {
+		m_schematicLabel->setText(
+			"<div style='text-align: center; color: #999;'>"
+			"<div style='font-size: 14px;'>示意图</div>"
+			"</div>"
+		);
+	}
+
+	infoLayout->addWidget(m_schematicLabel);
+
+	m_instructionLabel = new QLabel(this);
+	m_instructionLabel->setWordWrap(true);
+	m_instructionLabel->setStyleSheet("QLabel { color: #333; line-height: 1.6; }");
+	m_instructionLabel->setText(
+		"<h3 style='margin: 0 0 8px 0; color: #4a90d9;'>操作说明</h3>"
+		"<p style='margin: 4px 0;'>1. 选择正确的<strong>工件类型</strong></p>"
+		"<p style='margin: 4px 0;'>2. 输入对应<strong>RFID编号</strong></p>"
+		"<p style='margin: 4px 0;'>3. 确认工件已<strong>正确放置</strong>并固定</p>"
+		"<p style='margin: 10px 0 0 0; color: #cc6600; font-weight: bold;'>⚠️ 确认以上步骤完成后，再点击「开始检测」</p>"
+	);
+
+	infoLayout->addWidget(m_instructionLabel, 1);
+
+	m_mainLayout->addWidget(m_infoFrame);
 
 	// --- 标题 ---
 	QLabel* headerLabel = new QLabel("检测参数", this);

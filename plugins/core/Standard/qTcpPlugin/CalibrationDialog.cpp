@@ -126,14 +126,14 @@ void CalibrationDialog::setupAdditionalUI()
 	infoLayout->setSpacing(20);
 
 	m_schematicLabel = new QLabel(this);
-	m_schematicLabel->setFixedSize(200, 100);
+	m_schematicLabel->setFixedSize(280, 140);
 	m_schematicLabel->setStyleSheet("QLabel { background-color: white; border: 2px solid #c0c8d0; border-radius: 6px; }");
 	m_schematicLabel->setAlignment(Qt::AlignCenter);
 	m_schematicLabel->setScaledContents(true);
 
 	QPixmap schematicPixmap(":/CC/plugin/qTcpPlugin/res/ball.png");
 	if (!schematicPixmap.isNull()) {
-		m_schematicLabel->setPixmap(schematicPixmap.scaled(200, 100, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+		m_schematicLabel->setPixmap(schematicPixmap.scaled(280, 140, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 	} else {
 		m_schematicLabel->setText(
 			"<div style='text-align: center; color: #999;'>"

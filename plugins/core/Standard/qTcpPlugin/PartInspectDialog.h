@@ -6,6 +6,8 @@ class QComboBox;
 class QLineEdit;
 class QPushButton;
 class QHBoxLayout;
+class QLabel;
+class QFrame;
 
 class PartInspectDialog : public MachineStatusDialog
 {
@@ -27,6 +29,9 @@ private:
 	QPushButton* m_startButton;
 	QPushButton* m_cancelButton;
 	QHBoxLayout* m_buttonLayout;
+	QLabel* m_schematicLabel;
+	QLabel* m_instructionLabel;
+	QFrame* m_infoFrame;
 	
 	void loadPartTypes();
 };
