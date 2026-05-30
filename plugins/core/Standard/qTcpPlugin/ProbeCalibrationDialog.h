@@ -4,6 +4,8 @@
 
 class QPushButton;
 class QHBoxLayout;
+class QLabel;
+class QFrame;
 
 class ProbeCalibrationDialog : public MachineStatusDialog
 {
@@ -23,4 +25,7 @@ private:
 	QPushButton* m_startButton;
 	QPushButton* m_cancelButton;
 	QHBoxLayout* m_buttonLayout;
+	QLabel* m_schematicLabel;
+	QLabel* m_instructionLabel;
+	QFrame* m_infoFrame;
 };
