@@ -153,7 +153,7 @@ QListWidget::item:selected:active {
 
     m_electrodeTable = new QTableWidget(this);
     m_electrodeTable->setColumnCount(COL_COUNT);
-    QStringList headers = { "电极名称", "加工位置", "放电参数", "电极检测程序", "加工位置测量方式", "扫描位置", "裁剪区域", "测针打点程序", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
+    QStringList headers = { "电极名称", "加工位置", "放电参数", "电极检测程序", "加工位置测量方式", "扫描位置", "感兴趣区域(ROI)", "测针打点程序", "开始X", "开始Y", "开始Z", "开始A", "开始B", "开始C" };
     m_electrodeTable->setHorizontalHeaderLabels(headers);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_ELECTRODE, QHeaderView::Fixed);
     m_electrodeTable->horizontalHeader()->setSectionResizeMode(COL_POSITION, QHeaderView::Fixed);
@@ -651,7 +651,7 @@ void PartElectrodeConfigDialog::updateElectrodeTable()
         if (electrode.regions.isEmpty()) {
             regionText = "未配置";
         } else {
-            regionText = QString("%1个裁剪区域").arg(electrode.regions.size());
+            regionText = QString("%1个感兴趣区域(ROI)").arg(electrode.regions.size());
         }
         QTableWidgetItem* item6 = new QTableWidgetItem(regionText);
         item6->setFlags(item6->flags() & ~Qt::ItemIsEditable);
@@ -2061,7 +2061,7 @@ void PartElectrodeConfigDialog::ScanPositionConfigDialog::onCancel()
 PartElectrodeConfigDialog::RegionConfigDialog::RegionConfigDialog(QList<RegionData>& regions, ccMainAppInterface* app, PartElectrodeConfigDialog* parentDialog, const QString& partName, const QString& electrodeName, QWidget* parent)
     : QDialog(parent), m_regions(regions), m_app(app), m_parentDialog(parentDialog), m_partName(partName), m_electrodeName(electrodeName)
 {
-    setWindowTitle("配置裁剪区域");
+    setWindowTitle("配置感兴趣区域(ROI)");
     setMinimumSize(600, 450);
     resize(650, 500);
     initUI();
@@ -2087,7 +2087,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::initUI()
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(8);
 
-    QLabel* availableLabel = new QLabel("可用裁剪区域", this);
+    QLabel* availableLabel = new QLabel("可用感兴趣区域(ROI)", this);
     availableLabel->setStyleSheet("font-weight: bold;");
     leftLayout->addWidget(availableLabel);
 
@@ -2142,7 +2142,7 @@ QListWidget::item:selected {
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(8);
 
-    QLabel* selectedLabel = new QLabel("已选择的裁剪区域", this);
+    QLabel* selectedLabel = new QLabel("已选择的感兴趣区域(ROI)", this);
     selectedLabel->setStyleSheet("font-weight: bold;");
     rightLayout->addWidget(selectedLabel);
 
@@ -2258,14 +2258,14 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onAddRegion()
     if (isFromFile) {
         bool ok = loadRegionFromFile(originalName);
         if (!ok) {
-            QMessageBox::warning(this, "错误", "无法从文件加载裁剪区域: " + originalName);
+            QMessageBox::warning(this, "错误", "无法从文件加载感兴趣区域(ROI): " + originalName);
             return;
         }
     }
 
     QMessageBox msgBox(this);
     msgBox.setWindowTitle("选择命名方式");
-    msgBox.setText("请选择裁剪区域的命名方式：");
+    msgBox.setText("请选择感兴趣区域(ROI)的命名方式：");
     
     QPushButton* useOriginalBtn = msgBox.addButton("使用原名称", QMessageBox::AcceptRole);
     QPushButton* customBtn = msgBox.addButton("自定义名称", QMessageBox::AcceptRole);
@@ -2278,7 +2278,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onAddRegion()
         regionName = originalName;
     } else if (msgBox.clickedButton() == customBtn) {
         bool ok;
-        regionName = QInputDialog::getText(this, "自定义名称", "请输入裁剪区域名称:",
+        regionName = QInputDialog::getText(this, "自定义名称", "请输入感兴趣区域(ROI)名称:",
             QLineEdit::Normal, originalName, &ok);
         if (!ok || regionName.isEmpty()) {
             return;
@@ -2328,7 +2328,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
     if (!existsInDB) {
         QMessageBox msgBox(this);
         msgBox.setWindowTitle("提示");
-        msgBox.setText("该裁剪区域不在项目资源中，是否需要先将其添加到项目中？");
+        msgBox.setText("该感兴趣区域(ROI)不在项目资源中，是否需要先将其添加到项目中？");
         
         QPushButton* removeOnlyBtn = msgBox.addButton("仅删除", QMessageBox::AcceptRole);
         QPushButton* addAndRemoveBtn = msgBox.addButton("添加到项目并删除", QMessageBox::AcceptRole);
@@ -2339,7 +2339,7 @@ void PartElectrodeConfigDialog::RegionConfigDialog::onRemoveRegion()
         if (msgBox.clickedButton() == addAndRemoveBtn) {
             bool ok = loadRegionFromFile(regionName);
             if (!ok) {
-                QMessageBox::warning(this, "错误", "无法从文件加载裁剪区域: " + regionName);
+                QMessageBox::warning(this, "错误", "无法从文件加载感兴趣区域(ROI): " + regionName);
                 return;
             }
 			deleteRegionFile(regionName);
