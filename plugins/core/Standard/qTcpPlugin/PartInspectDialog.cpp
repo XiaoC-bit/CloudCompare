@@ -17,7 +17,7 @@ PartInspectDialog::PartInspectDialog(ccMainAppInterface* app, PointCloudService*
 	: MachineStatusDialog(app, pointCloudService, parent)
 {
 	setWindowTitle("工件检测");
-	setFixedSize(700, 420);
+	setFixedSize(750, 600);
 	init();
 }
 
@@ -32,6 +32,8 @@ void PartInspectDialog::setupAdditionalUI()
 
 	m_infoFrame = new QFrame(this);
 	m_infoFrame->setFrameShape(QFrame::StyledPanel);
+	m_infoFrame->setMinimumHeight(170);
+	m_infoFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 	m_infoFrame->setStyleSheet("QFrame { background-color: #f5f7fa; border: 1px solid #d0d7e0; border-radius: 8px; }");
 	QHBoxLayout* infoLayout = new QHBoxLayout(m_infoFrame);
 	infoLayout->setContentsMargins(16, 16, 16, 16);
