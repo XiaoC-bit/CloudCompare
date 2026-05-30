@@ -6,6 +6,8 @@
 class QTableWidget;
 class QPushButton;
 class QHBoxLayout;
+class QLabel;
+class QFrame;
 
 class CalibrationDialog : public MachineStatusDialog
 {
@@ -60,6 +62,9 @@ private:
 	QPushButton* m_startButton;
 	QPushButton* m_cancelButton;
 	QHBoxLayout* m_buttonLayout;
+	QLabel* m_schematicLabel;
+	QLabel* m_instructionLabel;
+	QFrame* m_infoFrame;
 
 	QVector<Position> m_positions;
 	int m_defaultPositionCount;

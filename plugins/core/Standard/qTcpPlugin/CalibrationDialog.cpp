@@ -105,7 +105,7 @@ CalibrationDialog::CalibrationDialog(ccMainAppInterface* app, PointCloudService*
 {
 	m_defaultPositionCount = m_positions.size();
 	setWindowTitle("激光相机标定");
-	setFixedSize(450, 600);
+	setFixedSize(750, 680);
 	init();
 }
 
@@ -118,9 +118,52 @@ void CalibrationDialog::setupAdditionalUI()
 	m_mainLayout->setContentsMargins(20, 16, 20, 16);
 	m_mainLayout->setSpacing(10);
 
+	m_infoFrame = new QFrame(this);
+	m_infoFrame->setFrameShape(QFrame::StyledPanel);
+	m_infoFrame->setStyleSheet("QFrame { background-color: #f5f7fa; border: 1px solid #d0d7e0; border-radius: 8px; }");
+	QHBoxLayout* infoLayout = new QHBoxLayout(m_infoFrame);
+	infoLayout->setContentsMargins(16, 16, 16, 16);
+	infoLayout->setSpacing(20);
+
+	m_schematicLabel = new QLabel(this);
+	m_schematicLabel->setFixedSize(200, 100);
+	m_schematicLabel->setStyleSheet("QLabel { background-color: white; border: 2px solid #c0c8d0; border-radius: 6px; }");
+	m_schematicLabel->setAlignment(Qt::AlignCenter);
+	m_schematicLabel->setScaledContents(true);
+
+	QPixmap schematicPixmap(":/CC/plugin/qTcpPlugin/res/ball.png");
+	if (!schematicPixmap.isNull()) {
+		m_schematicLabel->setPixmap(schematicPixmap.scaled(200, 100, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	} else {
+		m_schematicLabel->setText(
+			"<div style='text-align: center; color: #999;'>"
+			"<div style='font-size: 14px;'>示意图</div>"
+			"</div>"
+		);
+	}
+
+	infoLayout->addWidget(m_schematicLabel);
+
+	m_instructionLabel = new QLabel(this);
+	m_instructionLabel->setWordWrap(true);
+	m_instructionLabel->setStyleSheet("QLabel { color: #333; line-height: 1.6; }");
+	m_instructionLabel->setText(
+		"<h3 style='margin: 0 0 8px 0; color: #4a90d9;'>操作说明</h3>"
+		"<p style='margin: 4px 0;'>1. 在下方表格中设置<strong>标定位置</strong></p>"
+		"<p style='margin: 4px 0;'>2. 可使用「生成位置」<strong>自动生成</strong>或手动输入</p>"
+	    "<p style='margin: 4px 0;'>3. 请将<strong>标准球</strong>放置在<strong>机床工作台</strong></p>"
+	    "<p style='margin: 4px 0;'>4. 确保标准块表面<strong>干净</strong></p>"
+		"<p style='margin: 4px 0;'>5. 点击「保存」<strong>保存配置</strong>后开始标定</p>"
+		"<p style='margin: 10px 0 0 0; color: #cc6600; font-weight: bold;'>⚠️ 确认以上步骤完成后，再点击「开始标定」</p>"
+	);
+
+	infoLayout->addWidget(m_instructionLabel, 1);
+
+	m_mainLayout->addWidget(m_infoFrame);
+
 	// --- 标题行 + 新增按钮 ---
 	QHBoxLayout* headerLayout = new QHBoxLayout();
-	headerLayout->setContentsMargins(0, 0, 0, 0);
+	headerLayout->setContentsMargins(0, 8, 0, 0);
 
 	QLabel* headerLabel = new QLabel("标定位置", this);
 	QFont   font        = headerLabel->font();
@@ -159,10 +202,9 @@ void CalibrationDialog::setupAdditionalUI()
 	m_tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
 	m_tableWidget->verticalHeader()->setVisible(false);
 	m_tableWidget->horizontalHeader()->setHighlightSections(false);
-	m_tableWidget->verticalHeader()->setDefaultSectionSize(36); // 固定行高
+	m_tableWidget->verticalHeader()->setDefaultSectionSize(36);
 	m_tableWidget->setMinimumHeight(220);
 
-	// stylesheet 统一风格
 	m_tableWidget->setStyleSheet(R"(
         QTableWidget {
             border: 1px solid #d0d0d0;
@@ -188,20 +230,17 @@ void CalibrationDialog::setupAdditionalUI()
         }
     )");
 
-	m_mainLayout->addWidget(m_tableWidget, 1); // stretch factor=1，表格优先撑高
+	m_mainLayout->addWidget(m_tableWidget, 1);
 
-	// --- 分隔线 ---
 	QFrame* separator = new QFrame(this);
 	separator->setFrameShape(QFrame::HLine);
 	separator->setFrameShadow(QFrame::Sunken);
 	m_mainLayout->addWidget(separator);
 
-	// --- 保存提示 ---
 	QLabel* saveTipLabel = new QLabel("💡 保存后，自动化流程将使用当前标定位置", this);
 	saveTipLabel->setStyleSheet("color: #666666; font-size: 12px;");
 	m_mainLayout->addWidget(saveTipLabel);
 
-	// --- 底部按钮 ---
 	m_buttonLayout = new QHBoxLayout();
 	m_buttonLayout->setSpacing(8);
 
@@ -239,7 +278,7 @@ void CalibrationDialog::setupAdditionalUI()
 
 void CalibrationDialog::populateTable()
 {
-	m_tableWidget->setUpdatesEnabled(false); // 批量更新，避免闪烁
+	m_tableWidget->setUpdatesEnabled(false);
 	m_tableWidget->setRowCount(m_positions.size());
 
 	for (int i = 0; i < m_positions.size(); ++i)
@@ -551,7 +590,7 @@ bool CalibrationDialog::performOperation()
 	};
 
 	bool    ret = m_pointCloudService->executeCalibration(positions, progressCallback);
-	QString errMsg; 
+	QString errMsg;
 	m_pointCloudService->machineBackHome(errMsg);
 	return ret;
 }
