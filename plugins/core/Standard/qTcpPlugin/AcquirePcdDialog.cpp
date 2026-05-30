@@ -194,7 +194,7 @@ void AcquirePcdDialog::onAcquireClicked()
     m_progressTimer->start(100);
 
 
-	 bool    success = acquirePointCloud("AcquiredCloud");
+	bool    success = acquirePointCloud("AcquiredCloud");
 	QString errorMessage;
 
 	if (!success && !m_cancelRequested)
@@ -523,6 +523,50 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 			}
 		}
 	}
+
+	bool                 lockedVertices = false;
+	ccGenericPointCloud* pointCloud          = ccHObjectCaster::ToGenericPointCloud(cloud, &lockedVertices);
+	if (pointCloud && lockedVertices)
+	{
+		return false;
+	}
+	if (pointCloud)
+	{
+		pointCloud->deleteOctree();
+	}
+
+	if (m_alignCaptureBtn->isChecked())
+	{
+		// Step 1 将点云还原到机床坐标系下。
+		Eigen::Matrix4d finalMatrix;
+		// Step 2 将点云平移回机床坐标系的原点
+		Eigen::Matrix4d mMoveToMachineZero;
+		mMoveToMachineZero << 1, 0, 0, m_captureXEdit->text().toDouble(),
+		    0, 1, 0, m_captureYEdit->text().toDouble(),
+		    0, 0, 1, m_captureZEdit->text().toDouble(),
+		    0,
+		    0,
+		    0,
+		    1;
+		// Step 3 将点云还原到工件坐标系下
+		Eigen::Matrix4d mMoveToPartZero;
+		mMoveToPartZero << 1, 0, 0, -m_modelXEdit->text().toDouble(),
+		    0, 1, 0, -m_modelYEdit->text().toDouble(),
+		    0, 0, 1, -m_modelZEdit->text().toDouble(),
+		    0,
+		    0,
+		    0,
+		    1;
+
+		finalMatrix = mMoveToPartZero * mMoveToMachineZero * m_pointCloudService->getHandEyeMatrix();
+
+		cloud->setGLTransformation(ccGLMatrix(finalMatrix.data()));
+		cloud->applyGLTransformation_recursive();
+		cloud->prepareDisplayForRefresh_recursive();
+	}
+
+	
+
 
 	m_app->addToDB(cloud);
 	m_app->refreshAll();

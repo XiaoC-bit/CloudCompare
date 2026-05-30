@@ -1333,7 +1333,7 @@ void PointCloudService::filter(const QJsonObject& params, QTcpSocket* socket, co
 	                          Qt::QueuedConnection);
 }
 
-bool PointCloudService::icpInternal(const QJsonObject& params, double& finalRms, QString* errorMessage, ccGLMatrix* transMat)
+bool PointCloudService::icpInternal(const QJsonObject& params, double& finalRMS, QString* errorMessage, ccGLMatrix* transMat)
 {
     // 支持两种参数名称：source/target 和 data/model
     const QString dataName = params.contains("source") ? params["source"].toString() : params["data"].toString();
@@ -1402,7 +1402,7 @@ bool PointCloudService::icpInternal(const QJsonObject& params, double& finalRms,
 
     // Run ICP
     ccGLMatrix localTransMat;
-	double     finalRMS        = 0.0;
+	finalRMS        = 1;
     double finalScale = 1.0;
     unsigned finalPointCount = 0;
 
