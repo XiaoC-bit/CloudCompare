@@ -45,12 +45,22 @@ protected:
 	bool m_operationRunning;
 	bool m_machineReady;
 
+	struct StatusItem {
+		QLabel* label;
+		QString name;
+		bool ok;
+		QString message;
+	};
+
+	QList<StatusItem*> m_statusItems;
+
 public slots:
 	void onStartOperation();
 	void checkStatus();
 
 protected:
 	void closeEvent(QCloseEvent* event) override;
+	void updateStatusDisplay();
 
 protected:
 	virtual void updateUIState();

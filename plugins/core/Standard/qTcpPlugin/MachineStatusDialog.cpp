@@ -3,6 +3,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QFrame>
 #include <ccMainAppInterface.h>
 #include <QTimer>
 #include <qevent.h>
@@ -25,15 +26,39 @@ MachineStatusDialog::~MachineStatusDialog()
 		m_statusCheckTimer->stop();
 		delete m_statusCheckTimer;
 	}
+	qDeleteAll(m_statusItems);
+	m_statusItems.clear();
 }
 
 void MachineStatusDialog::setupUI()
 {
 	m_mainLayout = new QVBoxLayout(this);
+	m_mainLayout->setSpacing(10);
 
 	m_progressLabel = new QLabel("检查设备状态...", this);
 	m_progressLabel->setAlignment(Qt::AlignCenter);
 	m_mainLayout->addWidget(m_progressLabel);
+
+	StatusItem* item1 = new StatusItem;
+	item1->name = "设备空闲状态";
+	item1->label = new QLabel("● " + item1->name + ": 检测中...", this);
+	item1->ok = false;
+	item1->message = "";
+	m_statusItems.append(item1);
+	m_mainLayout->addWidget(item1->label);
+
+	StatusItem* item2 = new StatusItem;
+	item2->name = "设备模式";
+	item2->label = new QLabel("● " + item2->name + ": 检测中...", this);
+	item2->ok = false;
+	item2->message = "";
+	m_statusItems.append(item2);
+	m_mainLayout->addWidget(item2->label);
+
+	QFrame* line = new QFrame(this);
+	line->setFrameShape(QFrame::HLine);
+	line->setFrameShadow(QFrame::Sunken);
+	m_mainLayout->addWidget(line);
 
 	m_progressBar = new QProgressBar(this);
 	m_progressBar->setRange(0, 100);
@@ -69,23 +94,108 @@ void MachineStatusDialog::closeEvent(QCloseEvent* event)
 	}
 }
 
+void MachineStatusDialog::updateStatusDisplay()
+{
+	bool allOk = true;
+
+	for (StatusItem* item : m_statusItems)
+	{
+		QString text;
+		if (item->ok)
+		{
+			text = QString("<span style=\"color: green;\">● %1: ✓ 通过</span>").arg(item->name);
+		}
+		else
+		{
+			allOk = false;
+			if (item->message.isEmpty())
+			{
+				text = QString("<span style=\"color: red;\">● %1: ✗ 未通过</span>").arg(item->name);
+			}
+			else
+			{
+				text = QString("<span style=\"color: red;\">● %1: ✗ %2</span>").arg(item->name).arg(item->message);
+			}
+		}
+		item->label->setText(text);
+	}
+
+	if (allOk)
+	{
+		m_progressLabel->setText("<span style=\"color: green; font-weight: bold;\">✅ 所有检查项通过，设备就绪</span>");
+	}
+	else
+	{
+		m_progressLabel->setText("<span style=\"color: #cc6600; font-weight: bold;\">⚠️ 部分检查项未通过，请查看详情</span>");
+	}
+
+	m_machineReady = allOk;
+}
+
 void MachineStatusDialog::checkStatus()
 {
 	if (m_operationRunning)
 		return;
 
 	QString errorMessage;
+
+	for (StatusItem* item : m_statusItems)
+	{
+		item->ok = false;
+		item->message = "";
+	}
+
+	if (!m_pointCloudService)
+	{
+		if (m_statusItems.size() > 0)
+		{
+			m_statusItems[0]->ok = false;
+			m_statusItems[0]->message = "PointCloudService未初始化";
+		}
+		updateStatusDisplay();
+		updateUIState();
+		return;
+	}
+
+	QString tempError;
+	if (m_statusItems.size() > 0)
+	{
+		if (m_pointCloudService->waitForMachineIdle(1, &tempError))
+		{
+			m_statusItems[0]->ok = true;
+		}
+		else
+		{
+			m_statusItems[0]->ok = false;
+			m_statusItems[0]->message = tempError.isEmpty() ? "设备未处于空闲状态" : tempError;
+		}
+	}
+
+	if (m_statusItems.size() > 1)
+	{
+		QString mode;
+		if (m_pointCloudService->getMachineMode(mode, &tempError))
+		{
+			if (mode == "Auto")
+			{
+				m_statusItems[1]->ok = true;
+			}
+			else
+			{
+				m_statusItems[1]->ok = false;
+				m_statusItems[1]->message = QString("当前模式: %1 (需要: Auto)").arg(mode);
+			}
+		}
+		else
+		{
+			m_statusItems[1]->ok = false;
+			m_statusItems[1]->message = tempError.isEmpty() ? "获取设备模式失败" : tempError;
+		}
+	}
+
 	m_machineReady = checkMachineStatus(errorMessage);
 
-	if (m_machineReady)
-	{
-		m_progressLabel->setText("✅ 设备就绪，可以开始操作");
-	}
-	else
-	{
-		m_progressLabel->setText(QString("⚠️ 设备未就绪: %1").arg(errorMessage));
-	}
-
+	updateStatusDisplay();
 	updateUIState();
 }
 
@@ -97,21 +207,30 @@ bool MachineStatusDialog::checkMachineStatus(QString& errorMessage)
 		return false;
 	}
 
-	if (!m_pointCloudService->waitForMachineIdle(1, &errorMessage))
+	QString tempError;
+	if (!m_pointCloudService->waitForMachineIdle(1, &tempError))
 	{
-		if (errorMessage.isEmpty())
+		if (tempError.isEmpty())
 		{
 			errorMessage = "设备未处于空闲状态";
+		}
+		else
+		{
+			errorMessage = tempError;
 		}
 		return false;
 	}
 
 	QString mode;
-	if (!m_pointCloudService->getMachineMode(mode, &errorMessage))
+	if (!m_pointCloudService->getMachineMode(mode, &tempError))
 	{
-		if (errorMessage.isEmpty())
+		if (tempError.isEmpty())
 		{
 			errorMessage = "获取设备模式失败";
+		}
+		else
+		{
+			errorMessage = tempError;
 		}
 		return false;
 	}
