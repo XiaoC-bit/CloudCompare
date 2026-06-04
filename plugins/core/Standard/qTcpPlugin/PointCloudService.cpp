@@ -6072,6 +6072,29 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 	const QString templateContent = QTextStream(&templateNc).readAll();
 	templateNc.close();
 
+	double g54X = 0.0;
+	double g54Y = 0.0;
+	bool foundG54Coor = false;
+
+	QStringList lines = templateContent.split('\n');
+	for (const QString& line : lines) {
+		if (line.contains("(G54COOR)")) {
+			QRegularExpression rx("X([\\-+]?[0-9]*\\.?[0-9]+)Y([\\-+]?[0-9]*\\.?[0-9]+)");
+			QRegularExpressionMatch match = rx.match(line);
+			if (match.hasMatch()) {
+				g54X = match.captured(1).toDouble();
+				g54Y = match.captured(2).toDouble();
+				foundG54Coor = true;
+				break;
+			}
+		}
+	}
+
+	if (!foundG54Coor) {
+		errorMessage = "Program template file missing G54 coordinate line (G54COOR)";
+		return false;
+	}
+
 	QJsonObject partInspectResult;
 	QJsonObject electrodeInspectResult;
 
