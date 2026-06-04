@@ -6153,12 +6153,18 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 			end
 		);
 
-		programContent.replace(QString("{OFFSET_X_%1}").arg(i + 1), QString::number(compensation.x));
-		programContent.replace(QString("{OFFSET_Y_%1}").arg(i + 1), QString::number(compensation.y));
-		programContent.replace(QString("{OFFSET_Z_%1}").arg(i + 1), QString::number(compensation.z));
-		programContent.replace(QString("{OFFSET_U_%1}").arg(i + 1), QString::number(compensation.u));
-		programContent.replace(QString("{OFFSET_V_%1}").arg(i + 1), QString::number(compensation.v));
-		programContent.replace(QString("{OFFSET_W_%1}").arg(i + 1), QString::number(compensation.w));
+		//只有一个跑位  i暂时没有使用
+		programContent.replace(QString("{OFFSET_X}").arg(i + 1), QString::number(compensation.x));
+		programContent.replace(QString("{OFFSET_Y}").arg(i + 1), QString::number(compensation.y));
+		programContent.replace(QString("{OFFSET_Z}").arg(i + 1), QString::number(compensation.z));
+		programContent.replace(QString("{OFFSET_U}").arg(i + 1), QString::number(compensation.u));
+		programContent.replace(QString("{OFFSET_V}").arg(i + 1), QString::number(compensation.v));
+		programContent.replace(QString("{OFFSET_W}").arg(i + 1), QString::number(compensation.w));
+
+		//卡盘中心相对于程序中使用坐标系的位置
+		programContent.replace(QString("{SPIN_X}").arg(i + 1), QString::number(compensation.v));
+		programContent.replace(QString("{SPIN_Y}").arg(i + 1), QString::number(compensation.w));
+		 
 	}
 
 	QString fileName = partRfid + "_" + electrodeRfid + ".nc";
