@@ -8064,6 +8064,8 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			return compensation;
 		}
 	}
+	compensation.spinX = DownChuck.x() - g54X;
+	compensation.spinY = DownChuck.y() - g54Y;
 
 	// 提取 ICP 矩阵结果
 	Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity();
@@ -8221,6 +8223,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	compensation.u = A_deg; // A轴补偿
 	compensation.v = B_deg; // B轴角度
 	compensation.w = C_deg; // C轴角度
+	compensation.result = true;
 
 	return compensation;
 }
