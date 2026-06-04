@@ -332,12 +332,15 @@ bool SparkMachineProgramDialog::performOperation()
 	downChuck.append(m_downChuckCenterZSpin->value());
 	edmParams["DownChuck"] = downChuck;
 
+	QJsonArray electrodePos;
+
 	return m_pointCloudService->executeSparkMachineProgram(
 		machineType,
 		partType,
 		electrodeType,
 		partRfid,
 		electrodeRfid,
+		electrodePos,
 		edmParams,
 		m_lastError
 	);

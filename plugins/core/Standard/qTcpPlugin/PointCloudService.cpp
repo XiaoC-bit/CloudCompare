@@ -6008,7 +6008,8 @@ void PointCloudService::generateElectrodeProgram(const QJsonObject& params, QTcp
 		// 正常模式
 		QString errorMessage;
 		QString fileName = partRfid + "_" + electrodeRfid + ".nc";
-		if(!executeSparkMachineProgram(machineType, partType, electrodeType, partRfid, electrodeRfid, edmParameters, errorMessage)){
+		if (!executeSparkMachineProgram(machineType, partType, electrodeType, partRfid, electrodeRfid, electrodePos, edmParameters, errorMessage))
+		{
 			QJsonObject obj;
 			obj[strCmd + "_Ret"] = "1";
 			obj["Ret_Err"]       = errorMessage;
@@ -6035,7 +6036,8 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 												   const QString& partType,
 												   const QString& electrodeType,
 												   const QString& partRfid,
-												   const QString& electrodeRfid,
+                                                   const QString&     electrodeRfid,
+                                                   const QJsonArray&  electrodePos,
 												   const QJsonObject& edmParameters,
 												   QString& errorMessage)
 {
@@ -6157,7 +6159,6 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 
 	QString programContent = templateContent;
 
-	QJsonArray electrodePos = edmParameters.value("ElectrodePos").toArray();
 	if (electrodePos.isEmpty()) {
 		errorMessage = "ElectrodePos is empty";
 		return false;
@@ -6166,12 +6167,14 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 	for (int i = 0; i < electrodePos.size(); ++i) {
 		QJsonObject pos = electrodePos[i].toObject();
 		QJsonArray begin = pos.value("Begin").toArray();
-		QJsonArray end = pos.value("End").toArray();
-
+		QJsonArray  end   = pos.value("End").toArray();
+		QString posName = pos.value("PosName").toString();
+		
 		RTCPCompensation compensation = computeRTCPCompensation(
 			partInspectResult,
 			electrodeInspectResult,
 			edmParameters,
+		    posName,
 			begin,
 			end,
 		    g54X,
@@ -7969,6 +7972,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	const QJsonObject& partInspectResult,
 	const QJsonObject& electrodeInspectResult,
 	const QJsonObject& edmParameters,
+	const QString &posName,
 	const QJsonArray& beginPos,
 	const QJsonArray& endPos,
 	const double &g54X,
@@ -8057,18 +8061,42 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			QJsonObject inspectInfo = inspectResult["InspectInfo"].toObject();
 			if (inspectInfo.contains("IcpResults") && inspectInfo["IcpResults"].isArray()) {
 				QJsonArray icpResults = inspectInfo["IcpResults"].toArray();
-				if (!icpResults.isEmpty()) {
-					QJsonObject icpResultObj = icpResults[0].toObject();
-					if (icpResultObj.contains("icpMatrix") && icpResultObj["icpMatrix"].isArray()) {
-						QJsonArray icpMatrixArray = icpResultObj["icpMatrix"].toArray();
-						if (icpMatrixArray.size() == 4) {
-							for (int i = 0; i < 4; i++) {
-								QJsonArray row = icpMatrixArray[i].toArray();
-								if (row.size() == 4) {
-									for (int j = 0; j < 4; j++) {
-										T_icp(i, j) = row[j].toDouble();
+				for (const QJsonValue& val : icpResults) {
+					QJsonObject icpResultObj = val.toObject();
+					if (icpResultObj.contains("holdId") && icpResultObj["holdId"].toString() == posName) {
+						if (icpResultObj.contains("icpMatrix") && icpResultObj["icpMatrix"].isArray()) {
+							QJsonArray icpMatrixArray = icpResultObj["icpMatrix"].toArray();
+							if (icpMatrixArray.size() == 4) {
+								for (int i = 0; i < 4; i++) {
+									QJsonArray row = icpMatrixArray[i].toArray();
+									if (row.size() == 4) {
+										for (int j = 0; j < 4; j++) {
+											T_icp(i, j) = row[j].toDouble();
+										}
 									}
 								}
+							}
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	Eigen::Matrix4d T_electrode_icp = Eigen::Matrix4d::Identity();
+	if (electrodeInspectResult.contains("InspectResult")) {
+		QJsonObject inspectResult = electrodeInspectResult["InspectResult"].toObject();
+		if (inspectResult.contains("Detail")) {
+			QJsonObject detail = inspectResult["Detail"].toObject();
+			if (detail.contains("icpMatrix") && detail["icpMatrix"].isArray()) {
+				QJsonArray icpMatrixArray = detail["icpMatrix"].toArray();
+				if (icpMatrixArray.size() == 4) {
+					for (int i = 0; i < 4; i++) {
+						QJsonArray row = icpMatrixArray[i].toArray();
+						if (row.size() == 4) {
+							for (int j = 0; j < 4; j++) {
+								T_electrode_icp(i, j) = row[j].toDouble();
 							}
 						}
 					}

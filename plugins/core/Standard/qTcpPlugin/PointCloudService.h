@@ -89,6 +89,7 @@ class PointCloudService : public QObject
 									const QString& electrodeType,
 									const QString& partRfid,
 									const QString& electrodeRfid,
+	                                const QJsonArray& electrodePos,
 									const QJsonObject& edmParameters,
 									QString& errorMessage);
 
@@ -273,7 +274,8 @@ class PointCloudService : public QObject
 	RTCPCompensation computeRTCPCompensation(
 		const QJsonObject& partInspectResult,
 		const QJsonObject& electrodeInspectResult,
-		const QJsonObject& edmParameters,
+	    const QJsonObject& edmParameters,
+	    const QString&     posName,
 		const QJsonArray& beginPos,
 		const QJsonArray& endPos,
 		const double &g54X,
