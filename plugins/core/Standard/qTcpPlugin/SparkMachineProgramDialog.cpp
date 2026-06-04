@@ -332,7 +332,6 @@ bool SparkMachineProgramDialog::performOperation()
 	downChuck.append(m_downChuckCenterZSpin->value());
 	edmParams["DownChuck"] = downChuck;
 
-	return true;
 	return m_pointCloudService->executeSparkMachineProgram(
 		machineType,
 		partType,
