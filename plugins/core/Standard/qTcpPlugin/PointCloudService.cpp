@@ -8153,49 +8153,61 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	// => R_machine = R_icp
 	// => t_machine = t_icp + (I - R_icp) * P_workpiece
 	const Eigen::Matrix3d R = T_icp.block<3, 3>(0, 0);
-	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3)
-	                          + (Eigen::Matrix3d::Identity() - R) * P_workpiece;
+	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3);
 
-	// --- Step 2: ZY 分解，R = Rz(C)·Ry(B) ---
-	// R(2,0) = -sinB*cosC
-	// R(2,1) = -sinB*sinC
+	// --- Step 2: ZYZ分解，R = Rz(C_spindle)·Ry(B_table)·Rz(C_table) ---
+	// 对应CBC机床：主轴C → 转台B → 转台C
+	//
 	// R(2,2) =  cosB
-	// R(1,0) =  sinC*cosB
-	// R(0,0) =  cosC*cosB
-	const double C_rad = std::atan2(R(1, 0), R(0, 0));
-	const double sinB  = -(R(2, 0) * std::cos(C_rad) + R(2, 1) * std::sin(C_rad));
-	const double cosB  = R(2, 2);
-	const double B_rad = std::atan2(sinB, cosB); // 有符号，范围(-π, π)
-	const double B_deg = B_rad * 180.0 / M_PI;
-	const double C_deg = C_rad * 180.0 / M_PI;
+	// R(2,0) = -sinB·cosC_spindle
+	// R(2,1) = -sinB·sinC_spindle
+	// R(0,2) =  sinB·cosC_table
+	// R(1,2) =  sinB·sinC_table
 
-	// A角：残余旋转 R_res = Ry(-B)·Rz(-C)·R
-	// CBC机床无法执行A轴补偿，仅显示参考；理想情况应≈0
-	double           A_deg                 = 0.0;
 	constexpr double GIMBAL_LOCK_THRESHOLD = 1e-2;
-	if (std::abs(cosB) > GIMBAL_LOCK_THRESHOLD)
+
+	const double cosB     = R(2, 2);
+	const double sinB_val = std::sqrt(R(2, 0) * R(2, 0) + R(2, 1) * R(2, 1)); // ≥0
+
+	const double B_rad = std::atan2(sinB_val, cosB); // 取[0,π)，与ZYZ约定一致
+	const double B_deg = B_rad * 180.0 / M_PI;
+
+	double C_spindle_rad = 0.0; // 主轴C
+	double C_table_rad   = 0.0; // 转台C
+
+	if (sinB_val > GIMBAL_LOCK_THRESHOLD)
 	{
-		const Eigen::Matrix3d Rz_neg_C = Eigen::AngleAxisd(-C_rad,
-		                                                   Eigen::Vector3d::UnitZ())
-		                                     .toRotationMatrix();
-		const Eigen::Matrix3d Ry_neg_B = Eigen::AngleAxisd(-B_rad,
-		                                                   Eigen::Vector3d::UnitY())
-		                                     .toRotationMatrix();
-		const Eigen::Matrix3d R_res    = Ry_neg_B * Rz_neg_C * R;
-		A_deg                          = std::atan2(R_res(1, 0), R_res(0, 0)) * 180.0 / M_PI;
-		A_deg                          = std::atan2(R_res(2, 1), R_res(2, 2)) * 180.0 / M_PI;
+		// 正常情况
+		// C_spindle：从R第三行提取
+		C_spindle_rad = std::atan2(R(2, 1), -R(2, 0)); // atan2(-sinB·sinC, -(-sinB·cosC))
+		// C_table：从R第三列提取
+		C_table_rad = std::atan2(R(1, 2), R(0, 2)); // atan2(sinB·sinC_t, sinB·cosC_t)
 	}
 	else
 	{
-		// Gimbal lock：B≈±90°，C与A不可区分，约定A=0
-		A_deg = 0.0;
+		// 万向锁：B≈0°或180°，C_spindle与C_table耦合，只能恢复它们的和/差
+		// 约定C_table=0，所有旋转归入C_spindle
+		if (cosB > 0)
+		{
+			// B≈0：R ≈ Rz(C_spindle + C_table)
+			C_spindle_rad = std::atan2(R(1, 0), R(0, 0));
+		}
+		else
+		{
+			// B≈180：R ≈ Rz(C_spindle - C_table)·diag(1,1,-1)
+			C_spindle_rad = std::atan2(-R(1, 0), -R(0, 0));
+		}
+		C_table_rad = 0.0;
 	}
 
-	// --- Step 3: Pivot-induced translation（BC转台，C轴随B轴转动）---
+	const double C_spindle_deg = C_spindle_rad * 180.0 / M_PI;
+	const double C_table_deg   = C_table_rad * 180.0 / M_PI;
+
+	// --- Step 3: Pivot-induced translation（BC转台，运动链：先C_table再B）---
 	const Eigen::Matrix3d Rb = Eigen::AngleAxisd(signB * B_rad,
 	                                             Eigen::Vector3d::UnitY())
 	                               .toRotationMatrix();
-	const Eigen::Matrix3d Rc = Eigen::AngleAxisd(signC * C_rad,
+	const Eigen::Matrix3d Rc = Eigen::AngleAxisd(signC * C_table_rad,
 	                                             Eigen::Vector3d::UnitZ())
 	                               .toRotationMatrix();
 
@@ -8219,13 +8231,27 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	// --- Step 4: 真实平移补偿 = ICP平移 - pivot平移 ---
 	const Eigen::Vector3d delta_xyz = t - t_pivot;
 
+	// --- Step 5: 计算电极的补偿 ---
+
+	// 电极ICP矩阵的C轴旋转是以DownChuck为中心的，但机床实际旋转中心是W_machine
+	// 需要计算由于旋转中心不一致导致的位移补偿
+	const Eigen::Vector3d elec_pivot_displacement = DownChuck - U_machine;
+	const double          elec_C_rad              = elecOffset.C * M_PI / 180.0;
+	const Eigen::Matrix3d elec_Rc                 = Eigen::AngleAxisd(elec_C_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+	const Eigen::Vector3d elec_delta_xyz          = elec_pivot_displacement - elec_Rc * elec_pivot_displacement;
+
+	// 将位移补偿加到电极的XYZ补偿上
+	elecOffset.X += elec_delta_xyz.x();
+	elecOffset.Y += elec_delta_xyz.y();
+	elecOffset.Z += elec_delta_xyz.z();
+
 
 	compensation.x      = elecOffset.X-delta_xyz.x();
 	compensation.y = elecOffset.Y-delta_xyz.y();
 	compensation.z = elecOffset.Z-delta_xyz.z();
-	compensation.u = A_deg; // A轴补偿
+	compensation.u      = elecOffset.C + C_spindle_deg; // 主轴C轴角度 
 	compensation.v = B_deg; // B轴角度
-	compensation.w = elecOffset.C + C_deg; // C轴角度
+	compensation.w      = C_table_deg;                  // 转台C轴角度
 	compensation.result = true;
 
 	return compensation;
