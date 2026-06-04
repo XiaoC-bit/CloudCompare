@@ -8132,6 +8132,9 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 		return compensation;
 	}
 
+	//电极的补偿 XYZ C  有效值
+	PoseXYZABC elecOffset = extractXYZABC(T_electrode_icp);
+
 
 	// --- 机床参数 ---
 	const Eigen::Vector3d P_machine = V_machine;
@@ -8217,12 +8220,12 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	const Eigen::Vector3d delta_xyz = t - t_pivot;
 
 
-	compensation.x = delta_xyz.x();
-	compensation.y = delta_xyz.y();
-	compensation.z = delta_xyz.z();
+	compensation.x      = elecOffset.X-delta_xyz.x();
+	compensation.y = elecOffset.Y-delta_xyz.y();
+	compensation.z = elecOffset.Z-delta_xyz.z();
 	compensation.u = A_deg; // A轴补偿
 	compensation.v = B_deg; // B轴角度
-	compensation.w = C_deg; // C轴角度
+	compensation.w = elecOffset.C + C_deg; // C轴角度
 	compensation.result = true;
 
 	return compensation;
@@ -8504,40 +8507,8 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	//transformMatrix.block<3, 1>(0, 3) = probeResult.t;
 	transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
 
-	struct ElectrodeAngles
-	{
-		double A; // X轴旋转
-		double B; // Y轴旋转
-		double C; // Z轴旋转
-	};
-	ElectrodeAngles angles;
-	Eigen::Matrix3d R = probeResult.R;
-
-	// ZYX Euler分解：R = Rz(C) * Ry(B) * Rx(A)
-	// B = atan2(-R(2,0), sqrt(R(0,0)^2 + R(1,0)^2))
-	double sinB = -R(2, 0);
-	double cosB = std::sqrt(R(0, 0) * R(0, 0) + R(1, 0) * R(1, 0));
-
-	angles.B = std::atan2(sinB, cosB);
-
-	if (cosB > 1e-6)
-	{
-		angles.A = std::atan2(R(2, 1), R(2, 2));
-		angles.C = std::atan2(R(1, 0), R(0, 0));
-	}
-	else
-	{
-		// 万向锁：B≈±90°，A和C耦合，将所有偏转归入A
-		angles.A = std::atan2(-R(1, 2), R(1, 1));
-		angles.C = 0.0;
-	}
-
-	// 转换为角度
-	angles.A = angles.A * 180.0 / M_PI;
-	angles.B = angles.B * 180.0 / M_PI;
-	angles.C = angles.C * 180.0 / M_PI;
-
-	if(angles.A >= 0.01){
+	PoseXYZABC pose = extractXYZABC(transformMatrix);
+	if (pose.A > 0.01) {
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
@@ -8549,7 +8520,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		m_Status = MachineStatus::Idle;
 		return false;
 	}
-	if(angles.B >= 0.01){
+	if(pose.B > 0.01){
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
@@ -8616,4 +8587,42 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 
 	m_Status = MachineStatus::Idle;
 	return true;
+}
+
+
+PointCloudService::PoseXYZABC PointCloudService::extractXYZABC(const Eigen::Matrix4d& T)
+{
+	PoseXYZABC pose;
+
+	// 提取平移
+	pose.X = T(0, 3);
+	pose.Y = T(1, 3);
+	pose.Z = T(2, 3);
+
+	// 提取旋转矩阵
+	const auto R = T.block<3, 3>(0, 0);
+
+	// ZYX Euler分解：R = Rz(C)·Ry(B)·Rx(A)
+	pose.B = std::atan2(-R(2, 0), std::sqrt(R(0, 0) * R(0, 0) + R(1, 0) * R(1, 0)));
+
+	double cosB = std::cos(pose.B);
+	if (std::abs(cosB) > 1e-6)
+	{
+		pose.A = std::atan2(R(2, 1), R(2, 2));
+		pose.C = std::atan2(R(1, 0), R(0, 0));
+	}
+	else
+	{
+		// 万向锁（B≈±90°），A和C耦合，C归零
+		pose.A = std::atan2(-R(1, 2), R(1, 1));
+		pose.C = 0.0;
+	}
+
+	// 转换为角度
+	constexpr double RAD2DEG = 180.0 / M_PI;
+	pose.A *= RAD2DEG;
+	pose.B *= RAD2DEG;
+	pose.C *= RAD2DEG;
+
+	return pose;
 }

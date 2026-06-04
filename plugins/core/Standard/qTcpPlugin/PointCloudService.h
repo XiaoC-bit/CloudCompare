@@ -300,4 +300,12 @@ class PointCloudService : public QObject
 	                                  const std::vector<Eigen::Vector3d>& machine_points,
 	                                  CalibrationRigidTransform& transform);
 	static Eigen::Matrix4d           toMatrix4d(const CalibrationRigidTransform& tf);
+
+	struct PoseXYZABC
+	{
+		double X, Y, Z; // 平移 mm
+		double A, B, C; // 旋转 deg，ZYX顺序：R = Rz(C)·Ry(B)·Rx(A)
+	};
+
+	PoseXYZABC extractXYZABC(const Eigen::Matrix4d& T);
 };
