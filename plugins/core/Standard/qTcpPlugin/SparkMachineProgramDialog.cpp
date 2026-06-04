@@ -12,13 +12,18 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 
 SparkMachineProgramDialog::SparkMachineProgramDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
 	: MachineStatusDialog(app, pointCloudService, parent)
 {
 	setWindowTitle("创建火花机程序");
-	setFixedSize(550, 900);
+	setMinimumSize(800, 600);
+	resize(900, 650);
 	init();
+	loadConfig();
 }
 
 SparkMachineProgramDialog::~SparkMachineProgramDialog()
@@ -54,15 +59,28 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 		QComboBox:focus, QLineEdit:focus, QDoubleSpinBox:focus {
 			border: 1px solid #4a90d9;
 		}
+		QGroupBox {
+			font-weight: bold;
+		}
 	)");
 
-	QVBoxLayout* cardLayout = new QVBoxLayout(formCard);
-	cardLayout->setContentsMargins(16, 14, 16, 14);
-	cardLayout->setSpacing(12);
+	QHBoxLayout* mainCardLayout = new QHBoxLayout(formCard);
+	mainCardLayout->setContentsMargins(16, 14, 16, 14);
+	mainCardLayout->setSpacing(16);
+
+	// 左侧 - 基本信息
+	QVBoxLayout* leftLayout = new QVBoxLayout();
+	leftLayout->setSpacing(10);
+
+	QLabel* basicInfoLabel = new QLabel("基本信息", this);
+	QFont labelFont = basicInfoLabel->font();
+	labelFont.setBold(true);
+	basicInfoLabel->setFont(labelFont);
+	leftLayout->addWidget(basicInfoLabel);
 
 	QFormLayout* basicLayout = new QFormLayout();
 	basicLayout->setVerticalSpacing(10);
-	basicLayout->setHorizontalSpacing(16);
+	basicLayout->setHorizontalSpacing(12);
 	basicLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
 	QLabel* machineTypeLabel = new QLabel("机床类型：");
@@ -96,82 +114,60 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 	m_electrodeTypeEdit->setPlaceholderText("请输入电极类型");
 	basicLayout->addRow(electrodeTypeLabel, m_electrodeTypeEdit);
 
-	cardLayout->addLayout(basicLayout);
+	leftLayout->addLayout(basicLayout);
+	leftLayout->addStretch();
 
-	QGroupBox* uvwGroup = new QGroupBox("UVW旋转中心", this);
-	QFormLayout* uvwLayout = new QFormLayout(uvwGroup);
-	uvwLayout->setVerticalSpacing(8);
-	uvwLayout->setHorizontalSpacing(12);
+	// 右侧 - 坐标参数
+	QVBoxLayout* rightLayout = new QVBoxLayout();
+	rightLayout->setSpacing(8);
 
-	m_uvwCenterXSpin = new QDoubleSpinBox(this);
-	m_uvwCenterXSpin->setRange(-9999.999, 9999.999);
-	m_uvwCenterXSpin->setDecimals(3);
-	m_uvwCenterXSpin->setValue(0.0);
+	QLabel* coordLabel = new QLabel("坐标参数", this);
+	coordLabel->setFont(labelFont);
+	rightLayout->addWidget(coordLabel);
 
-	m_uvwCenterYSpin = new QDoubleSpinBox(this);
-	m_uvwCenterYSpin->setRange(-9999.999, 9999.999);
-	m_uvwCenterYSpin->setDecimals(3);
-	m_uvwCenterYSpin->setValue(0.0);
+	QGridLayout* coordGrid = new QGridLayout();
+	coordGrid->setSpacing(8);
 
-	m_uvwCenterZSpin = new QDoubleSpinBox(this);
-	m_uvwCenterZSpin->setRange(-9999.999, 9999.999);
-	m_uvwCenterZSpin->setDecimals(3);
-	m_uvwCenterZSpin->setValue(0.0);
+	auto createAxisGroup = [this, &coordGrid, &rightLayout](const QString& title, 
+		QDoubleSpinBox*& xSpin, QDoubleSpinBox*& ySpin, QDoubleSpinBox*& zSpin, int row) {
+		QGroupBox* group = new QGroupBox(title, this);
+		QFormLayout* layout = new QFormLayout(group);
+		layout->setVerticalSpacing(4);
+		layout->setContentsMargins(8, 4, 8, 4);
 
-	uvwLayout->addRow("X:", m_uvwCenterXSpin);
-	uvwLayout->addRow("Y:", m_uvwCenterYSpin);
-	uvwLayout->addRow("Z:", m_uvwCenterZSpin);
-	cardLayout->addWidget(uvwGroup);
+		xSpin = new QDoubleSpinBox(this);
+		xSpin->setRange(-9999.999, 9999.999);
+		xSpin->setDecimals(3);
+		xSpin->setValue(0.0);
 
-	QGroupBox* topChuckGroup = new QGroupBox("上卡盘中心", this);
-	QFormLayout* topChuckLayout = new QFormLayout(topChuckGroup);
-	topChuckLayout->setVerticalSpacing(8);
-	topChuckLayout->setHorizontalSpacing(12);
+		ySpin = new QDoubleSpinBox(this);
+		ySpin->setRange(-9999.999, 9999.999);
+		ySpin->setDecimals(3);
+		ySpin->setValue(0.0);
 
-	m_topChuckCenterXSpin = new QDoubleSpinBox(this);
-	m_topChuckCenterXSpin->setRange(-9999.999, 9999.999);
-	m_topChuckCenterXSpin->setDecimals(3);
-	m_topChuckCenterXSpin->setValue(0.0);
+		zSpin = new QDoubleSpinBox(this);
+		zSpin->setRange(-9999.999, 9999.999);
+		zSpin->setDecimals(3);
+		zSpin->setValue(0.0);
 
-	m_topChuckCenterYSpin = new QDoubleSpinBox(this);
-	m_topChuckCenterYSpin->setRange(-9999.999, 9999.999);
-	m_topChuckCenterYSpin->setDecimals(3);
-	m_topChuckCenterYSpin->setValue(0.0);
+		layout->addRow("X:", xSpin);
+		layout->addRow("Y:", ySpin);
+		layout->addRow("Z:", zSpin);
 
-	m_topChuckCenterZSpin = new QDoubleSpinBox(this);
-	m_topChuckCenterZSpin->setRange(-9999.999, 9999.999);
-	m_topChuckCenterZSpin->setDecimals(3);
-	m_topChuckCenterZSpin->setValue(0.0);
+		coordGrid->addWidget(group, row, 0);
+	};
 
-	topChuckLayout->addRow("X:", m_topChuckCenterXSpin);
-	topChuckLayout->addRow("Y:", m_topChuckCenterYSpin);
-	topChuckLayout->addRow("Z:", m_topChuckCenterZSpin);
-	cardLayout->addWidget(topChuckGroup);
+	createAxisGroup("U轴中心", m_uAxisCenterXSpin, m_uAxisCenterYSpin, m_uAxisCenterZSpin, 0);
+	createAxisGroup("V轴中心", m_vAxisCenterXSpin, m_vAxisCenterYSpin, m_vAxisCenterZSpin, 1);
+	createAxisGroup("W轴中心", m_wAxisCenterXSpin, m_wAxisCenterYSpin, m_wAxisCenterZSpin, 2);
+	createAxisGroup("上夹具中心", m_upChuckCenterXSpin, m_upChuckCenterYSpin, m_upChuckCenterZSpin, 3);
+	createAxisGroup("下夹具中心", m_downChuckCenterXSpin, m_downChuckCenterYSpin, m_downChuckCenterZSpin, 4);
 
-	QGroupBox* bottomChuckGroup = new QGroupBox("下卡盘中心", this);
-	QFormLayout* bottomChuckLayout = new QFormLayout(bottomChuckGroup);
-	bottomChuckLayout->setVerticalSpacing(8);
-	bottomChuckLayout->setHorizontalSpacing(12);
+	rightLayout->addLayout(coordGrid);
+	rightLayout->addStretch();
 
-	m_bottomChuckCenterXSpin = new QDoubleSpinBox(this);
-	m_bottomChuckCenterXSpin->setRange(-9999.999, 9999.999);
-	m_bottomChuckCenterXSpin->setDecimals(3);
-	m_bottomChuckCenterXSpin->setValue(0.0);
-
-	m_bottomChuckCenterYSpin = new QDoubleSpinBox(this);
-	m_bottomChuckCenterYSpin->setRange(-9999.999, 9999.999);
-	m_bottomChuckCenterYSpin->setDecimals(3);
-	m_bottomChuckCenterYSpin->setValue(0.0);
-
-	m_bottomChuckCenterZSpin = new QDoubleSpinBox(this);
-	m_bottomChuckCenterZSpin->setRange(-9999.999, 9999.999);
-	m_bottomChuckCenterZSpin->setDecimals(3);
-	m_bottomChuckCenterZSpin->setValue(0.0);
-
-	bottomChuckLayout->addRow("X:", m_bottomChuckCenterXSpin);
-	bottomChuckLayout->addRow("Y:", m_bottomChuckCenterYSpin);
-	bottomChuckLayout->addRow("Z:", m_bottomChuckCenterZSpin);
-	cardLayout->addWidget(bottomChuckGroup);
+	mainCardLayout->addLayout(leftLayout, 1);
+	mainCardLayout->addLayout(rightLayout, 1);
 
 	m_mainLayout->addWidget(formCard);
 
@@ -236,23 +232,36 @@ bool SparkMachineProgramDialog::performOperation()
 	}
 
 	QJsonObject edmParams;
-	QJsonObject uvwCenter;
-	uvwCenter["X"] = m_uvwCenterXSpin->value();
-	uvwCenter["Y"] = m_uvwCenterYSpin->value();
-	uvwCenter["Z"] = m_uvwCenterZSpin->value();
-	edmParams["UVW_Center"] = uvwCenter;
 
-	QJsonObject topChuckCenter;
-	topChuckCenter["X"] = m_topChuckCenterXSpin->value();
-	topChuckCenter["Y"] = m_topChuckCenterYSpin->value();
-	topChuckCenter["Z"] = m_topChuckCenterZSpin->value();
-	edmParams["TopChuck_Center"] = topChuckCenter;
+	QJsonArray uAxisCenter;
+	uAxisCenter.append(m_uAxisCenterXSpin->value());
+	uAxisCenter.append(m_uAxisCenterYSpin->value());
+	uAxisCenter.append(m_uAxisCenterZSpin->value());
+	edmParams["UAxisCenter"] = uAxisCenter;
 
-	QJsonObject bottomChuckCenter;
-	bottomChuckCenter["X"] = m_bottomChuckCenterXSpin->value();
-	bottomChuckCenter["Y"] = m_bottomChuckCenterYSpin->value();
-	bottomChuckCenter["Z"] = m_bottomChuckCenterZSpin->value();
-	edmParams["BottomChuck_Center"] = bottomChuckCenter;
+	QJsonArray vAxisCenter;
+	vAxisCenter.append(m_vAxisCenterXSpin->value());
+	vAxisCenter.append(m_vAxisCenterYSpin->value());
+	vAxisCenter.append(m_vAxisCenterZSpin->value());
+	edmParams["VAxisCenter"] = vAxisCenter;
+
+	QJsonArray wAxisCenter;
+	wAxisCenter.append(m_wAxisCenterXSpin->value());
+	wAxisCenter.append(m_wAxisCenterYSpin->value());
+	wAxisCenter.append(m_wAxisCenterZSpin->value());
+	edmParams["WAxisCenter"] = wAxisCenter;
+
+	QJsonArray upChuck;
+	upChuck.append(m_upChuckCenterXSpin->value());
+	upChuck.append(m_upChuckCenterYSpin->value());
+	upChuck.append(m_upChuckCenterZSpin->value());
+	edmParams["UpChuck"] = upChuck;
+
+	QJsonArray downChuck;
+	downChuck.append(m_downChuckCenterXSpin->value());
+	downChuck.append(m_downChuckCenterYSpin->value());
+	downChuck.append(m_downChuckCenterZSpin->value());
+	edmParams["DownChuck"] = downChuck;
 
 	return m_pointCloudService->executeSparkMachineProgram(
 		machineType,
@@ -268,10 +277,161 @@ bool SparkMachineProgramDialog::performOperation()
 void SparkMachineProgramDialog::onOperationCompleted(bool success)
 {
 	if (success) {
+		saveConfigToFile();
 		setProgressText("✅ 火花机程序创建完成");
 		accept();
 	}
 	else {
 		setProgressText(QString("❌ 火花机程序创建失败：%1").arg(m_lastError));
+	}
+}
+
+void SparkMachineProgramDialog::loadConfig()
+{
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configFile = appDir + "/config/SparkMachineProgramConfig.json";
+
+	QFile file(configFile);
+	if (!file.exists()) {
+		return;
+	}
+
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		return;
+	}
+
+	QByteArray data = file.readAll();
+	file.close();
+
+	QJsonParseError error;
+	QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+	if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+		return;
+	}
+
+	QJsonObject obj = doc.object();
+
+	if (obj.contains("machineType")) {
+		int index = m_machineTypeCombo->findData(obj["machineType"].toString());
+		if (index >= 0) {
+			m_machineTypeCombo->setCurrentIndex(index);
+		}
+	}
+
+	if (obj.contains("partRfid")) {
+		m_partRfidEdit->setText(obj["partRfid"].toString());
+	}
+
+	if (obj.contains("electrodeRfid")) {
+		m_electrodeRfidEdit->setText(obj["electrodeRfid"].toString());
+	}
+
+	if (obj.contains("partType")) {
+		m_partTypeEdit->setText(obj["partType"].toString());
+	}
+
+	if (obj.contains("electrodeType")) {
+		m_electrodeTypeEdit->setText(obj["electrodeType"].toString());
+	}
+
+	if (obj.contains("UAxisCenter") && obj["UAxisCenter"].isArray()) {
+		QJsonArray arr = obj["UAxisCenter"].toArray();
+		if (arr.size() >= 3) {
+			m_uAxisCenterXSpin->setValue(arr[0].toDouble());
+			m_uAxisCenterYSpin->setValue(arr[1].toDouble());
+			m_uAxisCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (obj.contains("VAxisCenter") && obj["VAxisCenter"].isArray()) {
+		QJsonArray arr = obj["VAxisCenter"].toArray();
+		if (arr.size() >= 3) {
+			m_vAxisCenterXSpin->setValue(arr[0].toDouble());
+			m_vAxisCenterYSpin->setValue(arr[1].toDouble());
+			m_vAxisCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (obj.contains("WAxisCenter") && obj["WAxisCenter"].isArray()) {
+		QJsonArray arr = obj["WAxisCenter"].toArray();
+		if (arr.size() >= 3) {
+			m_wAxisCenterXSpin->setValue(arr[0].toDouble());
+			m_wAxisCenterYSpin->setValue(arr[1].toDouble());
+			m_wAxisCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (obj.contains("UpChuck") && obj["UpChuck"].isArray()) {
+		QJsonArray arr = obj["UpChuck"].toArray();
+		if (arr.size() >= 3) {
+			m_upChuckCenterXSpin->setValue(arr[0].toDouble());
+			m_upChuckCenterYSpin->setValue(arr[1].toDouble());
+			m_upChuckCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (obj.contains("DownChuck") && obj["DownChuck"].isArray()) {
+		QJsonArray arr = obj["DownChuck"].toArray();
+		if (arr.size() >= 3) {
+			m_downChuckCenterXSpin->setValue(arr[0].toDouble());
+			m_downChuckCenterYSpin->setValue(arr[1].toDouble());
+			m_downChuckCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+}
+
+void SparkMachineProgramDialog::saveConfigToFile()
+{
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/config";
+	QDir dir(configDir);
+	if (!dir.exists()) {
+		dir.mkpath(configDir);
+	}
+	QString configFile = configDir + "/SparkMachineProgramConfig.json";
+
+	QJsonObject obj;
+
+	obj["machineType"] = m_machineTypeCombo->currentData().toString();
+	obj["partRfid"] = m_partRfidEdit->text();
+	obj["electrodeRfid"] = m_electrodeRfidEdit->text();
+	obj["partType"] = m_partTypeEdit->text();
+	obj["electrodeType"] = m_electrodeTypeEdit->text();
+
+	QJsonArray uAxisCenter;
+	uAxisCenter.append(m_uAxisCenterXSpin->value());
+	uAxisCenter.append(m_uAxisCenterYSpin->value());
+	uAxisCenter.append(m_uAxisCenterZSpin->value());
+	obj["UAxisCenter"] = uAxisCenter;
+
+	QJsonArray vAxisCenter;
+	vAxisCenter.append(m_vAxisCenterXSpin->value());
+	vAxisCenter.append(m_vAxisCenterYSpin->value());
+	vAxisCenter.append(m_vAxisCenterZSpin->value());
+	obj["VAxisCenter"] = vAxisCenter;
+
+	QJsonArray wAxisCenter;
+	wAxisCenter.append(m_wAxisCenterXSpin->value());
+	wAxisCenter.append(m_wAxisCenterYSpin->value());
+	wAxisCenter.append(m_wAxisCenterZSpin->value());
+	obj["WAxisCenter"] = wAxisCenter;
+
+	QJsonArray upChuck;
+	upChuck.append(m_upChuckCenterXSpin->value());
+	upChuck.append(m_upChuckCenterYSpin->value());
+	upChuck.append(m_upChuckCenterZSpin->value());
+	obj["UpChuck"] = upChuck;
+
+	QJsonArray downChuck;
+	downChuck.append(m_downChuckCenterXSpin->value());
+	downChuck.append(m_downChuckCenterYSpin->value());
+	downChuck.append(m_downChuckCenterZSpin->value());
+	obj["DownChuck"] = downChuck;
+
+	QJsonDocument doc(obj);
+	QFile file(configFile);
+	if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		file.write(doc.toJson(QJsonDocument::Indented));
+		file.close();
 	}
 }

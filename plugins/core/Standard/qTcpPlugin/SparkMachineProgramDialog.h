@@ -27,23 +27,36 @@ private:
 	QLineEdit* m_partRfidEdit;
 	QLineEdit* m_electrodeRfidEdit;
 	
-	// UVW旋转中心
-	QDoubleSpinBox* m_uvwCenterXSpin;
-	QDoubleSpinBox* m_uvwCenterYSpin;
-	QDoubleSpinBox* m_uvwCenterZSpin;
+	// U轴中心
+	QDoubleSpinBox* m_uAxisCenterXSpin;
+	QDoubleSpinBox* m_uAxisCenterYSpin;
+	QDoubleSpinBox* m_uAxisCenterZSpin;
 	
-	// 上卡盘中心
-	QDoubleSpinBox* m_topChuckCenterXSpin;
-	QDoubleSpinBox* m_topChuckCenterYSpin;
-	QDoubleSpinBox* m_topChuckCenterZSpin;
+	// V轴中心
+	QDoubleSpinBox* m_vAxisCenterXSpin;
+	QDoubleSpinBox* m_vAxisCenterYSpin;
+	QDoubleSpinBox* m_vAxisCenterZSpin;
 	
-	// 下卡盘中心
-	QDoubleSpinBox* m_bottomChuckCenterXSpin;
-	QDoubleSpinBox* m_bottomChuckCenterYSpin;
-	QDoubleSpinBox* m_bottomChuckCenterZSpin;
+	// W轴中心
+	QDoubleSpinBox* m_wAxisCenterXSpin;
+	QDoubleSpinBox* m_wAxisCenterYSpin;
+	QDoubleSpinBox* m_wAxisCenterZSpin;
+	
+	// 上夹具中心
+	QDoubleSpinBox* m_upChuckCenterXSpin;
+	QDoubleSpinBox* m_upChuckCenterYSpin;
+	QDoubleSpinBox* m_upChuckCenterZSpin;
+	
+	// 下夹具中心
+	QDoubleSpinBox* m_downChuckCenterXSpin;
+	QDoubleSpinBox* m_downChuckCenterYSpin;
+	QDoubleSpinBox* m_downChuckCenterZSpin;
 	
 	QLineEdit* m_partTypeEdit;
 	QLineEdit* m_electrodeTypeEdit;
 	
 	QString m_lastError;
+	
+	void loadConfig();
+	void saveConfigToFile();
 };

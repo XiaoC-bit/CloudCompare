@@ -7954,25 +7954,55 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	// RTCP 补偿量计算 (摇篮式五轴: 工作台摆动型) 
 	// ====================== 
 
-	// 从edmParameters中获取BC旋转中心
-	Eigen::Vector3d P_machine(0, 0, 0); // B轴旋转中心
-	Eigen::Vector3d Q_machine(0, 0, 0); // C轴旋转中心
+	// 从edmParameters中获取UVW旋转中心
+	Eigen::Vector3d U_machine(0, 0, 0); // U轴旋转中心
+	Eigen::Vector3d V_machine(0, 0, 0); // V轴旋转中心
+	Eigen::Vector3d W_machine(0, 0, 0); // W轴旋转中心
+	Eigen::Vector3d UpChuck(0, 0, 0);   // 上夹具中心
+	Eigen::Vector3d DownChuck(0, 0, 0);  // 下夹具中心
 
-	if (edmParameters.contains("BAxisCenter") && edmParameters["BAxisCenter"].isArray()) {
-		QJsonArray bAxisCenter = edmParameters["BAxisCenter"].toArray();
-		if (bAxisCenter.size() >= 3) {
-			P_machine.x() = bAxisCenter[0].toDouble();
-			P_machine.y() = bAxisCenter[1].toDouble();
-			P_machine.z() = bAxisCenter[2].toDouble();
+	if (edmParameters.contains("UAxisCenter") && edmParameters["UAxisCenter"].isArray()) {
+		QJsonArray uAxisCenter = edmParameters["UAxisCenter"].toArray();
+		if (uAxisCenter.size() >= 3) {
+			U_machine.x() = uAxisCenter[0].toDouble();
+			U_machine.y() = uAxisCenter[1].toDouble();
+			U_machine.z() = uAxisCenter[2].toDouble();
 		}
 	}
 
-	if (edmParameters.contains("CAxisCenter") && edmParameters["CAxisCenter"].isArray()) {
-		QJsonArray cAxisCenter = edmParameters["CAxisCenter"].toArray();
-		if (cAxisCenter.size() >= 3) {
-			Q_machine.x() = cAxisCenter[0].toDouble();
-			Q_machine.y() = cAxisCenter[1].toDouble();
-			Q_machine.z() = cAxisCenter[2].toDouble();
+	if (edmParameters.contains("VAxisCenter") && edmParameters["VAxisCenter"].isArray()) {
+		QJsonArray vAxisCenter = edmParameters["VAxisCenter"].toArray();
+		if (vAxisCenter.size() >= 3) {
+			V_machine.x() = vAxisCenter[0].toDouble();
+			V_machine.y() = vAxisCenter[1].toDouble();
+			V_machine.z() = vAxisCenter[2].toDouble();
+		}
+	}
+
+	if (edmParameters.contains("WAxisCenter") && edmParameters["WAxisCenter"].isArray()) {
+		QJsonArray wAxisCenter = edmParameters["WAxisCenter"].toArray();
+		if (wAxisCenter.size() >= 3) {
+			W_machine.x() = wAxisCenter[0].toDouble();
+			W_machine.y() = wAxisCenter[1].toDouble();
+			W_machine.z() = wAxisCenter[2].toDouble();
+		}
+	}
+
+	if (edmParameters.contains("UpChuck") && edmParameters["UpChuck"].isArray()) {
+		QJsonArray upChuckCenter = edmParameters["UpChuck"].toArray();
+		if (upChuckCenter.size() >= 3) {
+			UpChuck.x() = upChuckCenter[0].toDouble();
+			UpChuck.y() = upChuckCenter[1].toDouble();
+			UpChuck.z() = upChuckCenter[2].toDouble();
+		}
+	}
+
+	if (edmParameters.contains("DownChuck") && edmParameters["DownChuck"].isArray()) {
+		QJsonArray downChuckCenter = edmParameters["DownChuck"].toArray();
+		if (downChuckCenter.size() >= 3) {
+			DownChuck.x() = downChuckCenter[0].toDouble();
+			DownChuck.y() = downChuckCenter[1].toDouble();
+			DownChuck.z() = downChuckCenter[2].toDouble();
 		}
 	}
 
@@ -8082,8 +8112,8 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	//// 总 pivot 平移（Q_actual 已在机床基坐标系，直接叠加）
 	// const Eigen::Vector3d t_pivot = t_pivotB + t_pivotC;
 
-	const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
-	const Eigen::Vector3d t_pivotC = Q_machine - Rc * Q_machine;
+	const Eigen::Vector3d t_pivotB = {0, 0, 0}; //= P_machine - Rb * P_machine;
+	const Eigen::Vector3d t_pivotC = {0, 0, 0}; //= Q_machine - Rc * Q_machine;
 	// M_real * O 展开：
 	const Eigen::Vector3d t_pivot = t_pivotB + Rb * t_pivotC;
 
