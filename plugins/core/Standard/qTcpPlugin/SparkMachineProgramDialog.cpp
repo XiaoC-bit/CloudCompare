@@ -349,7 +349,6 @@ void SparkMachineProgramDialog::onOperationCompleted(bool success)
 	if (success) {
 		saveConfigToFile();
 		setProgressText("✅ 火花机程序创建完成");
-		accept();
 	}
 	else {
 		setProgressText(QString("❌ 火花机程序创建失败：%1").arg(m_lastError));
@@ -404,11 +403,18 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
-	if (obj.contains("electrodeType")) {
-		QString electrodeType = obj["electrodeType"].toString();
-		int index = m_electrodeTypeCombo->findText(electrodeType);
-		if (index >= 0) {
-			m_electrodeTypeCombo->setCurrentIndex(index);
+	if (m_partTypeCombo->count() > 0) {
+		QString currentPartType = m_partTypeCombo->currentText();
+		if (!currentPartType.isEmpty()) {
+			loadElectrodesForPart(currentPartType);
+			
+			if (obj.contains("electrodeType")) {
+				QString electrodeType = obj["electrodeType"].toString();
+				int index = m_electrodeTypeCombo->findText(electrodeType);
+				if (index >= 0) {
+					m_electrodeTypeCombo->setCurrentIndex(index);
+				}
+			}
 		}
 	}
 
