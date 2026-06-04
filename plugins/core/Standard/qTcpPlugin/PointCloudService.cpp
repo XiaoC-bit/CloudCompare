@@ -6181,6 +6181,11 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 		    g54X,
 			g54Y
 		);
+
+		if (!compensation.result) {
+			errorMessage = compensation.errMsg;
+			return false;
+		}
 		 
 		//只有一个跑位  i暂时没有使用
 		programContent.replace(QString("{OFFSET_X}").arg(i + 1), QString::number(compensation.x));
@@ -8006,6 +8011,10 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			U_machine.y() = uAxisCenter[1].toDouble();
 			U_machine.z() = uAxisCenter[2].toDouble();
 		}
+		else {
+			compensation.errMsg = "UAxisCenter array must have exactly 3 elements";
+			return compensation;
+		}
 	}
 
 	if (edmParameters.contains("VAxisCenter") && edmParameters["VAxisCenter"].isArray()) {
@@ -8014,6 +8023,9 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			V_machine.x() = vAxisCenter[0].toDouble();
 			V_machine.y() = vAxisCenter[1].toDouble();
 			V_machine.z() = vAxisCenter[2].toDouble();
+		} else {
+			compensation.errMsg = "VAxisCenter array must have exactly 3 elements";
+			return compensation;
 		}
 	}
 
@@ -8023,6 +8035,9 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			W_machine.x() = wAxisCenter[0].toDouble();
 			W_machine.y() = wAxisCenter[1].toDouble();
 			W_machine.z() = wAxisCenter[2].toDouble();
+		} else {
+			compensation.errMsg = "WAxisCenter array must have exactly 3 elements";
+			return compensation;
 		}
 	}
 
@@ -8032,6 +8047,9 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			UpChuck.x() = upChuckCenter[0].toDouble();
 			UpChuck.y() = upChuckCenter[1].toDouble();
 			UpChuck.z() = upChuckCenter[2].toDouble();
+		} else {
+			compensation.errMsg = "UpChuck array must have exactly 3 elements";
+			return compensation;
 		}
 	}
 
@@ -8041,21 +8059,15 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			DownChuck.x() = downChuckCenter[0].toDouble();
 			DownChuck.y() = downChuckCenter[1].toDouble();
 			DownChuck.z() = downChuckCenter[2].toDouble();
+		} else {
+			compensation.errMsg = "DownChuck array must have exactly 3 elements";
+			return compensation;
 		}
-	}
-
-	// G54（工件原点）在机床坐标系
-	// 假设工件检测结果中包含G54信息
-	Eigen::Vector3d P_workpiece(0, 0, 0);
-	if (partInspectResult.contains("ZeroPos")) {
-		QJsonObject g54 = partInspectResult["ZeroPos"].toObject();
-		if (g54.contains("X")) P_workpiece.x() = g54["X"].toDouble();
-		if (g54.contains("Y")) P_workpiece.y() = g54["Y"].toDouble();
-		if (g54.contains("Z")) P_workpiece.z() = g54["Z"].toDouble();
 	}
 
 	// 提取 ICP 矩阵结果
 	Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity();
+	bool hasIcpMatrix = false;
 	if (partInspectResult.contains("InspectResult")) {
 		QJsonObject inspectResult = partInspectResult["InspectResult"].toObject();
 		if (inspectResult.contains("InspectInfo")) {
@@ -8071,6 +8083,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 								for (int i = 0; i < 4; i++) {
 									QJsonArray row = icpMatrixArray[i].toArray();
 									if (row.size() == 4) {
+										hasIcpMatrix = true;
 										for (int j = 0; j < 4; j++) {
 											T_icp(i, j) = row[j].toDouble();
 										}
@@ -8084,7 +8097,13 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			}
 		}
 	}
+	if (!hasIcpMatrix) {
+		compensation.errMsg = "No ICP matrix found in partInspectResult";
+		return compensation;
+	}
 
+
+	hasIcpMatrix = false;
 	Eigen::Matrix4d T_electrode_icp = Eigen::Matrix4d::Identity();
 	if (electrodeInspectResult.contains("InspectResult")) {
 		QJsonObject inspectResult = electrodeInspectResult["InspectResult"].toObject();
@@ -8096,6 +8115,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 					for (int i = 0; i < 4; i++) {
 						QJsonArray row = icpMatrixArray[i].toArray();
 						if (row.size() == 4) {
+							hasIcpMatrix = true;
 							for (int j = 0; j < 4; j++) {
 								T_electrode_icp(i, j) = row[j].toDouble();
 							}
@@ -8105,7 +8125,19 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			}
 		}
 	}
+	if (!hasIcpMatrix) {
+		compensation.errMsg = "No ICP matrix found in electrodeInspectResult";
+		return compensation;
+	}
 
+
+	// --- 机床参数 ---
+	const Eigen::Vector3d P_machine = V_machine;
+	const Eigen::Vector3d Q_machine = W_machine;
+
+	// 工件坐标系原点（G54）在机床坐标系下的坐标
+	// 工件坐标系相对机床坐标系只有纯平移，无旋转
+	const Eigen::Vector3d P_workpiece = DownChuck;
 
 	const double signB = 1.0;
 	const double signC = 1.0;
@@ -8174,8 +8206,8 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	//// 总 pivot 平移（Q_actual 已在机床基坐标系，直接叠加）
 	// const Eigen::Vector3d t_pivot = t_pivotB + t_pivotC;
 
-	const Eigen::Vector3d t_pivotB = {0, 0, 0}; //= P_machine - Rb * P_machine;
-	const Eigen::Vector3d t_pivotC = {0, 0, 0}; //= Q_machine - Rc * Q_machine;
+	const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
+	const Eigen::Vector3d t_pivotC = Q_machine - Rc * Q_machine;
 	// M_real * O 展开：
 	const Eigen::Vector3d t_pivot = t_pivotB + Rb * t_pivotC;
 

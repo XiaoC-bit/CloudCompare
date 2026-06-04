@@ -270,6 +270,15 @@ class PointCloudService : public QObject
 		double x, y, z, u, v, w;
 		double spinX;
 		double spinY;
+		bool   result;
+		QString errMsg;
+		RTCPCompensation()
+		{
+			x = y = z = u = v = w = 0.0;
+			spinX = spinY = 0.0;
+			result = false;
+			errMsg = "";
+		}
 	};
 	RTCPCompensation computeRTCPCompensation(
 		const QJsonObject& partInspectResult,
