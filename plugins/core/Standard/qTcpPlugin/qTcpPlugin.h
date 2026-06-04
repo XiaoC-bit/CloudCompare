@@ -35,6 +35,7 @@ private slots:
 	void showAcquirePcdDialog();
 	void showCalibrationResultDialog();
 	void showEdmProgramDialog();
+	void showSparkMachineProgramDialog();
 	void toggleLogDock();
 	void onLogDockVisibilityChanged(bool visible);
 
@@ -53,6 +54,7 @@ private slots:
 	QAction*           m_acquirePcdAction;
 	QAction*           m_calibrationResultAction;
 	QAction*           m_edmProgramAction;
+	QAction*           m_sparkMachineProgramAction;
 	QAction*           m_toggleLogDockAction;
 private:
     CcTcpServer*       m_server;

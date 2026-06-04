@@ -81,6 +81,17 @@ class PointCloudService : public QObject
 	// 标定结果通过getRingCalibrationResult()获取
 	bool executeRingCalibration();
 
+	// 执行火花机程序生成（供SparkMachineProgramDialog直接调用）
+	// 返回值：true表示成功，false表示失败
+	// 失败原因通过errorMessage输出
+	bool executeSparkMachineProgram(const QString& machineType,
+									const QString& partType,
+									const QString& electrodeType,
+									const QString& partRfid,
+									const QString& electrodeRfid,
+									const QJsonObject& edmParameters,
+									QString& errorMessage);
+
 	// 获取测头标定结果
 	QJsonObject getProbeCalibrationResult() const { return m_probeCalibrationResult; }
 

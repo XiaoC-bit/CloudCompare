@@ -17,6 +17,7 @@
 #include "AcquirePcdDialog.h"
 #include "CalibrationResultDialog.h"
 #include "EdmProgramDialog.h"
+#include "SparkMachineProgramDialog.h"
 #include <ccMainAppInterface.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -41,6 +42,7 @@ qTcpPlugin::qTcpPlugin(QObject* parent)
     , m_calibrationResultAction(nullptr)
     , m_toggleLogDockAction(nullptr)
 	, m_edmProgramAction(nullptr)
+	, m_sparkMachineProgramAction(nullptr)
     , m_server(nullptr)
     , m_dispatcher(nullptr)
     , m_pointCloudService(nullptr)
@@ -154,6 +156,12 @@ QList<QAction*> qTcpPlugin::getActions()
 		connect(m_edmProgramAction, &QAction::triggered, this, &qTcpPlugin::showEdmProgramDialog);
 	}
 
+	if (!m_sparkMachineProgramAction)
+	{
+		m_sparkMachineProgramAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/test.png"), "创建火花机程序", this);
+		connect(m_sparkMachineProgramAction, &QAction::triggered, this, &qTcpPlugin::showSparkMachineProgramDialog);
+	}
+
 	if (!m_toggleLogDockAction)
 	{
 		m_toggleLogDockAction = new QAction(QIcon(":/CC/plugin/qTcpPlugin/res/log.png") ,"显示日志窗口", this);
@@ -163,7 +171,7 @@ QList<QAction*> qTcpPlugin::getActions()
 	}
 
 	updateActions();
-	return {m_ringCalibrationAction, m_probeCalibrationAction, m_calibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_edmProgramAction, m_toggleLogDockAction};
+	return {m_ringCalibrationAction, m_probeCalibrationAction, m_calibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_edmProgramAction, m_sparkMachineProgramAction, m_toggleLogDockAction};
 }
 
 void qTcpPlugin::startServer()
@@ -422,6 +430,12 @@ void qTcpPlugin::showCalibrationResultDialog()
 void qTcpPlugin::showEdmProgramDialog()
 {
 	EdmProgramDialog dialog(m_app, m_pointCloudService, nullptr);
+	dialog.exec();
+}
+
+void qTcpPlugin::showSparkMachineProgramDialog()
+{
+	SparkMachineProgramDialog dialog(m_app, m_pointCloudService, nullptr);
 	dialog.exec();
 }
 

@@ -57,6 +57,8 @@ if( PLUGIN_STANDARD_QTCP )
 		ProbeFit6DOF_BC.cpp
 		AcquirePcdDialog.h
 		AcquirePcdDialog.cpp
+		SparkMachineProgramDialog.h
+		SparkMachineProgramDialog.cpp
 	)
 
 	target_compile_features( ${PROJECT_NAME} PRIVATE cxx_std_17 )
