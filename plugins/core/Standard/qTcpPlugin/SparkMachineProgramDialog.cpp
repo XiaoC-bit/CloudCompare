@@ -333,6 +333,57 @@ bool SparkMachineProgramDialog::performOperation()
 	edmParams["DownChuck"] = downChuck;
 
 	QJsonArray electrodePos;
+	
+	QString posName = electrodeType;
+	
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configFile = appDir + "/PartConfig/" + partType + ".json";
+	QFile file(configFile);
+	if (file.exists() && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QByteArray data = file.readAll();
+		file.close();
+
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+		if (error.error == QJsonParseError::NoError && doc.isObject()) {
+			QJsonObject obj = doc.object();
+			if (obj.contains("holePositions") && obj["holePositions"].isArray()) {
+				QJsonArray holePositions = obj["holePositions"].toArray();
+				for (const QJsonValue& val : holePositions) {
+					QJsonObject holePos = val.toObject();
+					if (holePos.contains("name") && holePos["name"].toString() == electrodeType) {
+						if (holePos.contains("id")) {
+							posName = holePos["id"].toString();
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	QJsonObject posObj;
+	posObj["PosName"] = posName;
+	
+	QJsonArray beginArray;
+	beginArray.append(0.0);
+	beginArray.append(0.0);
+	beginArray.append(0.0);
+	beginArray.append(0.0);
+	beginArray.append(0.0);
+	beginArray.append(0.0);
+	posObj["Begin"] = beginArray;
+
+	QJsonArray endArray;
+	endArray.append(0.0);
+	endArray.append(0.0);
+	endArray.append(0.0);
+	endArray.append(0.0);
+	endArray.append(0.0);
+	endArray.append(0.0);
+	posObj["End"] = endArray;
+
+	electrodePos.append(posObj);
 
 	return m_pointCloudService->executeSparkMachineProgram(
 		machineType,

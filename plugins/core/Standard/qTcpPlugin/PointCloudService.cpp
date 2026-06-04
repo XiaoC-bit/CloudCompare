@@ -6110,17 +6110,18 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 		QJsonDocument partDoc = QJsonDocument::fromJson(partData, &partParseError);
 		if (partParseError.error == QJsonParseError::NoError && partDoc.isObject()) {
 			partInspectResult = partDoc.object();
-			if (!partInspectResult.contains("partInspectResult")) {
-				errorMessage = QString("PartResult file %1 missing 'partInspectResult' field").arg(partResultFile);
+			if (!partInspectResult.contains("InspectResult")) {
+				errorMessage = QString("PartResult file %1 missing 'InspectResult' field").arg(partResultFile);
 				return false;
 			}
-			QJsonObject partInspectResultObj = partInspectResult.value("partInspectResult").toObject();
+			QJsonObject partInspectResultObj = partInspectResult.value("InspectResult").toObject();
 			if (!partInspectResultObj.contains("Result")) {
 				errorMessage = QString("PartResult file %1 missing 'Result' field").arg(partResultFile);
 				return false;
 			}
-			bool result = partInspectResultObj.value("Result").toBool();
-			if (!result) {
+			QString result = partInspectResultObj.value("Result").toString();
+			if (result != "OK")
+			{
 				QString errMsg = partInspectResultObj.contains("Ret_Err") ? partInspectResultObj["Ret_Err"].toString() : "Part inspection failed";
 				errorMessage = QString("Part inspection failed: %1").arg(errMsg);
 				return false;
