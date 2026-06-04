@@ -8504,6 +8504,65 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	//transformMatrix.block<3, 1>(0, 3) = probeResult.t;
 	transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
 
+	struct ElectrodeAngles
+	{
+		double A; // X轴旋转
+		double B; // Y轴旋转
+		double C; // Z轴旋转
+	};
+	ElectrodeAngles angles;
+	Eigen::Matrix3d R = probeResult.R;
+
+	// ZYX Euler分解：R = Rz(C) * Ry(B) * Rx(A)
+	// B = atan2(-R(2,0), sqrt(R(0,0)^2 + R(1,0)^2))
+	double sinB = -R(2, 0);
+	double cosB = std::sqrt(R(0, 0) * R(0, 0) + R(1, 0) * R(1, 0));
+
+	angles.B = std::atan2(sinB, cosB);
+
+	if (cosB > 1e-6)
+	{
+		angles.A = std::atan2(R(2, 1), R(2, 2));
+		angles.C = std::atan2(R(1, 0), R(0, 0));
+	}
+	else
+	{
+		// 万向锁：B≈±90°，A和C耦合，将所有偏转归入A
+		angles.A = std::atan2(-R(1, 2), R(1, 1));
+		angles.C = 0.0;
+	}
+
+	// 转换为角度
+	angles.A = angles.A * 180.0 / M_PI;
+	angles.B = angles.B * 180.0 / M_PI;
+	angles.C = angles.C * 180.0 / M_PI;
+
+	if(angles.A >= 0.01){
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          =  QString("A-axis angle exceeds 1% threshold, considering it as an error.");
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	if(angles.B >= 0.01){
+		m_Status = MachineStatus::Idle;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"]           = "NG";
+		obj["Ret_Err"]          =  QString("B-axis angle exceeds 1% threshold, considering it as an error.");
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	
+
 	// 存储变换矩阵
 	QJsonArray matrixArray;
 	for (int i = 0; i < 4; ++i)
