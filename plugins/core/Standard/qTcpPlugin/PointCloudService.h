@@ -267,13 +267,17 @@ class PointCloudService : public QObject
     QVector<QVector3D> getCalibrationPositionsFromFile(QString* errorMessage = nullptr) const;
 	struct RTCPCompensation {
 		double x, y, z, u, v, w;
+		double spinX;
+		double spinY;
 	};
 	RTCPCompensation computeRTCPCompensation(
 		const QJsonObject& partInspectResult,
 		const QJsonObject& electrodeInspectResult,
 		const QJsonObject& edmParameters,
 		const QJsonArray& beginPos,
-		const QJsonArray& endPos);
+		const QJsonArray& endPos,
+		const double &g54X,
+		const double &g54Y);
 
 
 	bool ensureConnected(QString* errorMessage, int connectTimeout);

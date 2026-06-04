@@ -6173,9 +6173,11 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 			electrodeInspectResult,
 			edmParameters,
 			begin,
-			end
+			end,
+		    g54X,
+			g54Y
 		);
-
+		 
 		//只有一个跑位  i暂时没有使用
 		programContent.replace(QString("{OFFSET_X}").arg(i + 1), QString::number(compensation.x));
 		programContent.replace(QString("{OFFSET_Y}").arg(i + 1), QString::number(compensation.y));
@@ -6185,8 +6187,8 @@ bool PointCloudService::executeSparkMachineProgram(const QString& machineType,
 		programContent.replace(QString("{OFFSET_W}").arg(i + 1), QString::number(compensation.w));
 
 		//卡盘中心相对于程序中使用坐标系的位置
-		programContent.replace(QString("{SPIN_X}").arg(i + 1), QString::number(compensation.v));
-		programContent.replace(QString("{SPIN_Y}").arg(i + 1), QString::number(compensation.w));
+		programContent.replace(QString("{SPIN_X}").arg(i + 1), QString::number(compensation.spinX));
+		programContent.replace(QString("{SPIN_Y}").arg(i + 1), QString::number(compensation.spinY));
 		 
 	}
 
@@ -7968,7 +7970,9 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	const QJsonObject& electrodeInspectResult,
 	const QJsonObject& edmParameters,
 	const QJsonArray& beginPos,
-	const QJsonArray& endPos)
+	const QJsonArray& endPos,
+	const double &g54X,
+	const double &g54Y)
 {
 	RTCPCompensation compensation;
 	// 初始化补偿值为0
