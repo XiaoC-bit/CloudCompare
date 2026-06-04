@@ -20,8 +20,8 @@ SparkMachineProgramDialog::SparkMachineProgramDialog(ccMainAppInterface* app, Po
 	: MachineStatusDialog(app, pointCloudService, parent)
 {
 	setWindowTitle("创建火花机程序");
-	setMinimumSize(800, 600);
-	resize(900, 650);
+	setMinimumSize(1000, 700);
+	resize(1100, 750);
 	init();
 	loadConfig();
 }
@@ -49,6 +49,10 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 			border: 1px solid #d0d0d0;
 			border-radius: 4px;
 		}
+		QLabel {
+			border: none;
+			background: transparent;
+		}
 		QComboBox, QLineEdit, QDoubleSpinBox {
 			background-color: #ffffff;
 			border: 1px solid #d0d0d0;
@@ -61,6 +65,17 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 		}
 		QGroupBox {
 			font-weight: bold;
+			margin-top: 6px;
+			padding-top: 14px;
+			border: 1px solid #c8c8c8;
+			border-radius: 4px;
+		}
+		QGroupBox::title {
+			subcontrol-origin: margin;
+			subcontrol-position: top left;
+			left: 8px;
+			top: 2px;
+			padding: 0 4px;
 		}
 	)");
 
@@ -126,48 +141,55 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 	rightLayout->addWidget(coordLabel);
 
 	QGridLayout* coordGrid = new QGridLayout();
-	coordGrid->setSpacing(8);
+	coordGrid->setSpacing(12);
+	coordGrid->setColumnStretch(0, 1);
+	coordGrid->setColumnStretch(1, 1);
 
-	auto createAxisGroup = [this, &coordGrid, &rightLayout](const QString& title, 
-		QDoubleSpinBox*& xSpin, QDoubleSpinBox*& ySpin, QDoubleSpinBox*& zSpin, int row) {
+	auto createAxisGroup = [this, &coordGrid](const QString& title,
+		QDoubleSpinBox*& xSpin, QDoubleSpinBox*& ySpin, QDoubleSpinBox*& zSpin, int row, int col) {
 		QGroupBox* group = new QGroupBox(title, this);
 		QFormLayout* layout = new QFormLayout(group);
-		layout->setVerticalSpacing(4);
-		layout->setContentsMargins(8, 4, 8, 4);
+		layout->setVerticalSpacing(8);
+		layout->setHorizontalSpacing(10);
+		layout->setContentsMargins(12, 20, 12, 10);
+		layout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
 		xSpin = new QDoubleSpinBox(this);
 		xSpin->setRange(-9999.999, 9999.999);
 		xSpin->setDecimals(3);
 		xSpin->setValue(0.0);
+		xSpin->setMinimumWidth(110);
 
 		ySpin = new QDoubleSpinBox(this);
 		ySpin->setRange(-9999.999, 9999.999);
 		ySpin->setDecimals(3);
 		ySpin->setValue(0.0);
+		ySpin->setMinimumWidth(110);
 
 		zSpin = new QDoubleSpinBox(this);
 		zSpin->setRange(-9999.999, 9999.999);
 		zSpin->setDecimals(3);
 		zSpin->setValue(0.0);
+		zSpin->setMinimumWidth(110);
 
 		layout->addRow("X:", xSpin);
 		layout->addRow("Y:", ySpin);
 		layout->addRow("Z:", zSpin);
 
-		coordGrid->addWidget(group, row, 0);
+		coordGrid->addWidget(group, row, col);
 	};
 
-	createAxisGroup("U轴中心", m_uAxisCenterXSpin, m_uAxisCenterYSpin, m_uAxisCenterZSpin, 0);
-	createAxisGroup("V轴中心", m_vAxisCenterXSpin, m_vAxisCenterYSpin, m_vAxisCenterZSpin, 1);
-	createAxisGroup("W轴中心", m_wAxisCenterXSpin, m_wAxisCenterYSpin, m_wAxisCenterZSpin, 2);
-	createAxisGroup("上夹具中心", m_upChuckCenterXSpin, m_upChuckCenterYSpin, m_upChuckCenterZSpin, 3);
-	createAxisGroup("下夹具中心", m_downChuckCenterXSpin, m_downChuckCenterYSpin, m_downChuckCenterZSpin, 4);
+	createAxisGroup("U轴中心", m_uAxisCenterXSpin, m_uAxisCenterYSpin, m_uAxisCenterZSpin, 0, 0);
+	createAxisGroup("V轴中心", m_vAxisCenterXSpin, m_vAxisCenterYSpin, m_vAxisCenterZSpin, 0, 1);
+	createAxisGroup("W轴中心", m_wAxisCenterXSpin, m_wAxisCenterYSpin, m_wAxisCenterZSpin, 1, 0);
+	createAxisGroup("上夹具中心", m_upChuckCenterXSpin, m_upChuckCenterYSpin, m_upChuckCenterZSpin, 1, 1);
+	createAxisGroup("下夹具中心", m_downChuckCenterXSpin, m_downChuckCenterYSpin, m_downChuckCenterZSpin, 2, 0);
 
 	rightLayout->addLayout(coordGrid);
 	rightLayout->addStretch();
 
-	mainCardLayout->addLayout(leftLayout, 1);
-	mainCardLayout->addLayout(rightLayout, 1);
+	mainCardLayout->addLayout(leftLayout, 2);
+	mainCardLayout->addLayout(rightLayout, 3);
 
 	m_mainLayout->addWidget(formCard);
 
@@ -263,6 +285,7 @@ bool SparkMachineProgramDialog::performOperation()
 	downChuck.append(m_downChuckCenterZSpin->value());
 	edmParams["DownChuck"] = downChuck;
 
+	return true;
 	return m_pointCloudService->executeSparkMachineProgram(
 		machineType,
 		partType,
