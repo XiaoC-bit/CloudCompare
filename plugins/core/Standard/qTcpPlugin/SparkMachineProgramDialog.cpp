@@ -15,6 +15,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QMap>
+#include <QFrame>
 
 SparkMachineProgramDialog::SparkMachineProgramDialog(ccMainAppInterface* app, PointCloudService* pointCloudService, QWidget* parent)
 	: MachineStatusDialog(app, pointCloudService, parent)
@@ -23,6 +25,7 @@ SparkMachineProgramDialog::SparkMachineProgramDialog(ccMainAppInterface* app, Po
 	setMinimumSize(1000, 700);
 	resize(1100, 750);
 	init();
+	loadPartTypes();
 	loadConfig();
 }
 
@@ -119,15 +122,55 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 
 	QLabel* partTypeLabel = new QLabel("工件类型：");
 	partTypeLabel->setStyleSheet("border: none; background: transparent;");
-	m_partTypeEdit = new QLineEdit(this);
-	m_partTypeEdit->setPlaceholderText("请输入工件类型");
-	basicLayout->addRow(partTypeLabel, m_partTypeEdit);
+	m_partTypeCombo = new QComboBox(this);
+	m_partTypeCombo->setStyleSheet(R"(
+		QComboBox {
+			background-color: #ffffff;
+			border: 1px solid #d0d0d0;
+			border-radius: 3px;
+			padding: 2px 6px;
+			min-height: 26px;
+		}
+		QComboBox:focus {
+			border: 1px solid #4a90d9;
+		}
+		QComboBox QAbstractItemView {
+			border: 1px solid #d0d0d0;
+			outline: none;
+		}
+		QComboBox QAbstractItemView::item {
+			min-height: 26px;
+			padding: 0 8px;
+		}
+	)");
+	basicLayout->addRow(partTypeLabel, m_partTypeCombo);
 
 	QLabel* electrodeTypeLabel = new QLabel("电极类型：");
 	electrodeTypeLabel->setStyleSheet("border: none; background: transparent;");
-	m_electrodeTypeEdit = new QLineEdit(this);
-	m_electrodeTypeEdit->setPlaceholderText("请输入电极类型");
-	basicLayout->addRow(electrodeTypeLabel, m_electrodeTypeEdit);
+	m_electrodeTypeCombo = new QComboBox(this);
+	m_electrodeTypeCombo->setStyleSheet(R"(
+		QComboBox {
+			background-color: #ffffff;
+			border: 1px solid #d0d0d0;
+			border-radius: 3px;
+			padding: 2px 6px;
+			min-height: 26px;
+		}
+		QComboBox:focus {
+			border: 1px solid #4a90d9;
+		}
+		QComboBox QAbstractItemView {
+			border: 1px solid #d0d0d0;
+			outline: none;
+		}
+		QComboBox QAbstractItemView::item {
+			min-height: 26px;
+			padding: 0 8px;
+		}
+	)");
+	basicLayout->addRow(electrodeTypeLabel, m_electrodeTypeCombo);
+
+	connect(m_partTypeCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(onPartTypeChanged(int)));
 
 	leftLayout->addLayout(basicLayout);
 	leftLayout->addStretch();
@@ -218,6 +261,10 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 	buttonLayout->addWidget(startButton);
 
 	m_mainLayout->addLayout(buttonLayout);
+
+	if (m_partTypeCombo->count() > 0) {
+		loadElectrodesForPart(m_partTypeCombo->itemText(0));
+	}
 }
 
 void SparkMachineProgramDialog::onOperationStarted()
@@ -230,8 +277,8 @@ bool SparkMachineProgramDialog::performOperation()
 	QString machineType = m_machineTypeCombo->currentData().toString();
 	QString partRfid = m_partRfidEdit->text().trimmed();
 	QString electrodeRfid = m_electrodeRfidEdit->text().trimmed();
-	QString partType = m_partTypeEdit->text().trimmed();
-	QString electrodeType = m_electrodeTypeEdit->text().trimmed();
+	QString partType = m_partTypeCombo->currentText().trimmed();
+	QString electrodeType = m_electrodeTypeCombo->currentText().trimmed();
 
 	if (partRfid.isEmpty()) {
 		m_lastError = "请输入工件RFID";
@@ -244,12 +291,12 @@ bool SparkMachineProgramDialog::performOperation()
 	}
 
 	if (partType.isEmpty()) {
-		m_lastError = "请输入工件类型";
+		m_lastError = "请选择工件类型";
 		return false;
 	}
 
-	if (electrodeType.isEmpty()) {
-		m_lastError = "请输入电极类型";
+	if (electrodeType.isEmpty() || electrodeType == "无可用电极") {
+		m_lastError = "请选择电极类型";
 		return false;
 	}
 
@@ -350,11 +397,19 @@ void SparkMachineProgramDialog::loadConfig()
 	}
 
 	if (obj.contains("partType")) {
-		m_partTypeEdit->setText(obj["partType"].toString());
+		QString partType = obj["partType"].toString();
+		int index = m_partTypeCombo->findText(partType);
+		if (index >= 0) {
+			m_partTypeCombo->setCurrentIndex(index);
+		}
 	}
 
 	if (obj.contains("electrodeType")) {
-		m_electrodeTypeEdit->setText(obj["electrodeType"].toString());
+		QString electrodeType = obj["electrodeType"].toString();
+		int index = m_electrodeTypeCombo->findText(electrodeType);
+		if (index >= 0) {
+			m_electrodeTypeCombo->setCurrentIndex(index);
+		}
 	}
 
 	if (obj.contains("UAxisCenter") && obj["UAxisCenter"].isArray()) {
@@ -418,8 +473,8 @@ void SparkMachineProgramDialog::saveConfigToFile()
 	obj["machineType"] = m_machineTypeCombo->currentData().toString();
 	obj["partRfid"] = m_partRfidEdit->text();
 	obj["electrodeRfid"] = m_electrodeRfidEdit->text();
-	obj["partType"] = m_partTypeEdit->text();
-	obj["electrodeType"] = m_electrodeTypeEdit->text();
+	obj["partType"] = m_partTypeCombo->currentText();
+	obj["electrodeType"] = m_electrodeTypeCombo->currentText();
 
 	QJsonArray uAxisCenter;
 	uAxisCenter.append(m_uAxisCenterXSpin->value());
@@ -457,4 +512,85 @@ void SparkMachineProgramDialog::saveConfigToFile()
 		file.write(doc.toJson(QJsonDocument::Indented));
 		file.close();
 	}
+}
+
+void SparkMachineProgramDialog::loadPartTypes()
+{
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configDir = appDir + "/PartConfig";
+	QDir dir(configDir);
+
+	m_partElectrodeMap.clear();
+	m_partTypeCombo->clear();
+
+	if (!dir.exists()) {
+		return;
+	}
+
+	QStringList filters;
+	filters << "*.json";
+	dir.setNameFilters(filters);
+
+	QStringList files = dir.entryList(filters, QDir::Files);
+	if (files.isEmpty()) {
+		return;
+	}
+
+	for (const QString& file : files) {
+		QString partName = file.left(file.lastIndexOf('.'));
+		QString filePath = dir.filePath(file);
+
+		QFile jsonFile(filePath);
+		if (!jsonFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+			continue;
+		}
+
+		QByteArray data = jsonFile.readAll();
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+
+		if (error.error != QJsonParseError::NoError) {
+			continue;
+		}
+
+		QStringList electrodes;
+		QJsonArray electrodesArray = doc["holePositions"].toArray();
+		for (const QJsonValue& val : electrodesArray) {
+			QJsonObject obj = val.toObject();
+			electrodes.append(obj["id"].toString());
+		}
+
+		m_partTypeCombo->addItem(partName);
+		m_partElectrodeMap[partName] = electrodes;
+	}
+}
+
+void SparkMachineProgramDialog::loadElectrodesForPart(const QString& partName)
+{
+	m_electrodeTypeCombo->clear();
+
+	if (m_partElectrodeMap.contains(partName)) {
+		QStringList electrodes = m_partElectrodeMap[partName];
+		if (electrodes.isEmpty()) {
+			m_electrodeTypeCombo->addItem("无可用电极");
+			m_electrodeTypeCombo->setEnabled(false);
+		} else {
+			m_electrodeTypeCombo->addItems(electrodes);
+			m_electrodeTypeCombo->setEnabled(true);
+		}
+	} else {
+		m_electrodeTypeCombo->addItem("无可用电极");
+		m_electrodeTypeCombo->setEnabled(false);
+	}
+}
+
+void SparkMachineProgramDialog::onPartTypeChanged(int index)
+{
+	QString partName = m_partTypeCombo->itemText(index);
+	loadElectrodesForPart(partName);
+}
+
+void SparkMachineProgramDialog::updateUIState()
+{
+	MachineStatusDialog::updateUIState();
 }

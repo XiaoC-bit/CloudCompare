@@ -1,12 +1,14 @@
 #pragma once
 
 #include "MachineStatusDialog.h"
+#include <QMap>
 
 class QComboBox;
 class QLineEdit;
 class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
+class QFrame;
 
 class SparkMachineProgramDialog : public MachineStatusDialog
 {
@@ -21,6 +23,10 @@ protected:
 	void onOperationStarted() override;
 	bool performOperation() override;
 	void onOperationCompleted(bool success) override;
+	void updateUIState() override;
+
+private slots:
+	void onPartTypeChanged(int index);
 
 private:
 	QComboBox* m_machineTypeCombo;
@@ -52,11 +58,15 @@ private:
 	QDoubleSpinBox* m_downChuckCenterYSpin;
 	QDoubleSpinBox* m_downChuckCenterZSpin;
 	
-	QLineEdit* m_partTypeEdit;
-	QLineEdit* m_electrodeTypeEdit;
+	QComboBox* m_partTypeCombo;
+	QComboBox* m_electrodeTypeCombo;
+	
+	QMap<QString, QStringList> m_partElectrodeMap;
 	
 	QString m_lastError;
 	
+	void loadPartTypes();
+	void loadElectrodesForPart(const QString& partName);
 	void loadConfig();
 	void saveConfigToFile();
 };

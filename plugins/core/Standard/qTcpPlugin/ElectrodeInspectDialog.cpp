@@ -257,10 +257,10 @@ void ElectrodeInspectDialog::loadPartTypes()
 		}
 
 		QStringList electrodes;
-		QJsonArray electrodesArray = doc["electrodes"].toArray();
+		QJsonArray electrodesArray = doc["holePositions"].toArray();
 		for (const QJsonValue& val : electrodesArray) {
 			QJsonObject obj = val.toObject();
-			electrodes.append(obj["electrodeName"].toString());
+			electrodes.append(obj["id"].toString());
 		}
 
 		m_partTypeCombo->addItem(partName);
