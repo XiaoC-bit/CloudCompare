@@ -8147,71 +8147,86 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	const double signB = 1.0;
 	const double signC = 1.0;
 
-	// --- Step 1: 将工件坐标系下的 T_icp 转换到机床坐标系 ---
-	// T_he 退化为纯平移矩阵，R 部分为 I
-	// T_machine = Trans(P_workpiece) * T_icp * Trans(-P_workpiece)
-	// => R_machine = R_icp
-	// => t_machine = t_icp + (I - R_icp) * P_workpiece
-	const Eigen::Matrix3d R = T_icp.block<3, 3>(0, 0);
-
-	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3)
-	                          + (Eigen::Matrix3d::Identity() - R) * P_workpiece;
-
-	// --- Step 2: ZYZ分解，R = Rz(C_spindle)·Ry(B_table)·Rz(C_table) ---
+	// --- Step 1 (ZYZ分解): R = Rz(C_spindle)·Ry(B_table)·Rz(C_table) ---
 	// 对应CBC机床：主轴C → 转台B → 转台C
 	//
 	// R(2,2) =  cosB
-	// R(2,0) = -sinB·cosC_spindle
-	// R(2,1) = -sinB·sinC_spindle
-	// R(0,2) =  sinB·cosC_table
-	// R(1,2) =  sinB·sinC_table
+	// R(2,0) = -sinB·cosC_table
+	// R(2,1) = sinB·sinC_table
+	// R(0,2) =  sinB·cosC_spindle
+	// R(1,2) =  sinB·sinC_spindle
+
+	const Eigen::Matrix3d R = T_icp.block<3, 3>(0, 0);
 
 	constexpr double GIMBAL_LOCK_THRESHOLD = 1e-2;
 
 	const double cosB     = R(2, 2);
 	const double sinB_val = std::sqrt(R(2, 0) * R(2, 0) + R(2, 1) * R(2, 1)); // ≥0
 
-	const double B_rad = std::atan2(sinB_val, cosB); // 取[0,π)，与ZYZ约定一致
-	const double B_deg = B_rad * 180.0 / M_PI;
-
-	double C_spindle_rad = 0.0; // 主轴C
-	double C_table_rad   = 0.0; // 转台C
+	// --- 解1: B ∈ [0, π) ---
+	const double B_rad1         = std::atan2(sinB_val, cosB);
+	double       C_spindle_rad1 = 0.0;
+	double       C_table_rad1   = 0.0;
 
 	if (sinB_val > GIMBAL_LOCK_THRESHOLD)
 	{
-		// 正常情况
-		// C_spindle：从R第三行提取
-		C_spindle_rad = std::atan2(R(2, 1), -R(2, 0)); // atan2(-sinB·sinC, -(-sinB·cosC))
-		// C_table：从R第三列提取
-		C_table_rad = std::atan2(R(1, 2), R(0, 2)); // atan2(sinB·sinC_t, sinB·cosC_t)
+		C_table_rad1   = std::atan2(R(2, 1), -R(2, 0));
+		C_spindle_rad1 = std::atan2(R(1, 2), R(0, 2));
 	}
 	else
 	{
-		// 万向锁：B≈0°或180°，C_spindle与C_table耦合，只能恢复它们的和/差
-		// 约定C_table=0，所有旋转归入C_spindle
 		if (cosB > 0)
-		{
-			// B≈0：R ≈ Rz(C_spindle + C_table)
-			C_spindle_rad = std::atan2(R(1, 0), R(0, 0));
-		}
+			C_spindle_rad1 = std::atan2(R(1, 0), R(0, 0));
 		else
-		{
-			// B≈180：R ≈ Rz(C_spindle - C_table)·diag(1,1,-1)
-			C_spindle_rad = std::atan2(-R(1, 0), -R(0, 0));
-		}
-		C_table_rad = 0.0;
+			C_spindle_rad1 = std::atan2(-R(1, 0), -R(0, 0));
+		C_table_rad1 = 0.0;
 	}
 
+	// --- 解2: B ∈ (-π, 0]，即取 -B，Cs和Ct各加π ---
+	const double B_rad2         = -B_rad1;
+	// 解1 Cs∈(-π,π]，解2只需把符号翻转后再±π保持在范围内
+	const double C_spindle_rad2 = C_spindle_rad1 + (C_spindle_rad1 >= 0 ? -M_PI : M_PI);
+	const double C_table_rad2   = C_table_rad1 + (C_table_rad1 >= 0 ? -M_PI : M_PI);
+
+
+
+	// --- 选取 |Cs| + |B| + |Ct| 最小的那组 ---
+	const double cost1 = std::abs(B_rad1) + std::abs(C_spindle_rad1) + std::abs(C_table_rad1);
+	const double cost2 = std::abs(B_rad2) + std::abs(C_spindle_rad2) + std::abs(C_table_rad2);
+
+	double B_rad, C_spindle_rad, C_table_rad;
+	if (cost1 <= cost2)
+	{
+		B_rad         = B_rad1;
+		C_spindle_rad = C_spindle_rad1;
+		C_table_rad   = C_table_rad1;
+	}
+	else
+	{
+		B_rad         = B_rad2;
+		C_spindle_rad = C_spindle_rad2;
+		C_table_rad   = C_table_rad2;
+	}
+
+	const double B_deg         = B_rad * 180.0 / M_PI;
 	const double C_spindle_deg = C_spindle_rad * 180.0 / M_PI;
 	const double C_table_deg   = C_table_rad * 180.0 / M_PI;
 
-	// --- Step 3: Pivot-induced translation（BC转台，运动链：先C_table再B）---
+	// --- Step 2 & 3: 构造 Rb、Rc，令 R_bc = Rb·Rc，并将工件坐标系下的 T_icp 转换到机床坐标系 ---
+	// R_bc = Ry(B)·Rz(C_table)，只保留 BC 转台旋转部分（去掉主轴C）
+	// t_machine = t_icp + (I - R_bc) * P_workpiece
 	const Eigen::Matrix3d Rb = Eigen::AngleAxisd(signB * B_rad,
 	                                             Eigen::Vector3d::UnitY())
 	                               .toRotationMatrix();
 	const Eigen::Matrix3d Rc = Eigen::AngleAxisd(signC * C_table_rad,
 	                                             Eigen::Vector3d::UnitZ())
 	                               .toRotationMatrix();
+	const Eigen::Matrix3d R_bc = Rb * Rc;
+
+	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3)
+	                          + (Eigen::Matrix3d::Identity() - R_bc) * P_workpiece;
+
+	// --- Step 3: Pivot-induced translation（BC转台，运动链：先C_table再B）---
 
 	//// B轴固定，绕 P_machine 旋转
 	// const Eigen::Vector3d t_pivotB = P_machine - Rb * P_machine;
@@ -8238,7 +8253,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	// 电极ICP矩阵的C轴旋转是以DownChuck为中心的，但机床实际旋转中心是W_machine
 	// 需要计算由于旋转中心不一致导致的位移补偿
 	const Eigen::Vector3d elec_pivot_displacement = UpChuck - U_machine;
-	const double          elec_C_rad              = elecOffset.C * M_PI / 180.0;
+	const double          elec_C_rad              = (elecOffset.C + C_spindle_deg) * M_PI / 180.0;
 	const Eigen::Matrix3d elec_Rc                 = Eigen::AngleAxisd(elec_C_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix();
 	const Eigen::Vector3d elec_delta_xyz          = elec_pivot_displacement - elec_Rc * elec_pivot_displacement;
 
