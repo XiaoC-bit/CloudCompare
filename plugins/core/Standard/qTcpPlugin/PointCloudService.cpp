@@ -8153,7 +8153,9 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	// => R_machine = R_icp
 	// => t_machine = t_icp + (I - R_icp) * P_workpiece
 	const Eigen::Matrix3d R = T_icp.block<3, 3>(0, 0);
-	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3);
+
+	const Eigen::Vector3d t = T_icp.block<3, 1>(0, 3)
+	                          + (Eigen::Matrix3d::Identity() - R) * P_workpiece;
 
 	// --- Step 2: ZYZ分解，R = Rz(C_spindle)·Ry(B_table)·Rz(C_table) ---
 	// 对应CBC机床：主轴C → 转台B → 转台C
@@ -8235,7 +8237,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 
 	// 电极ICP矩阵的C轴旋转是以DownChuck为中心的，但机床实际旋转中心是W_machine
 	// 需要计算由于旋转中心不一致导致的位移补偿
-	const Eigen::Vector3d elec_pivot_displacement = DownChuck - U_machine;
+	const Eigen::Vector3d elec_pivot_displacement = UpChuck - U_machine;
 	const double          elec_C_rad              = elecOffset.C * M_PI / 180.0;
 	const Eigen::Matrix3d elec_Rc                 = Eigen::AngleAxisd(elec_C_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix();
 	const Eigen::Vector3d elec_delta_xyz          = elec_pivot_displacement - elec_Rc * elec_pivot_displacement;
