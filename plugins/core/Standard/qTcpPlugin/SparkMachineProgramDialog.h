@@ -27,11 +27,16 @@ protected:
 
 private slots:
 	void onPartTypeChanged(int index);
+	void onMachineTypeChanged(int index);
+	void onMachineNameChanged(int index);
 
 private:
 	QComboBox* m_machineTypeCombo;
+	QComboBox* m_machineNameCombo;
 	QLineEdit* m_partRfidEdit;
 	QLineEdit* m_electrodeRfidEdit;
+	
+	QMap<QString, QStringList> m_machineNameMap;
 	
 	// U轴中心
 	QDoubleSpinBox* m_uAxisCenterXSpin;
@@ -69,4 +74,7 @@ private:
 	void loadElectrodesForPart(const QString& partName);
 	void loadConfig();
 	void saveConfigToFile();
+	void updateMachineNames();
+	void loadMachineParams();
+
 };

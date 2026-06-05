@@ -171,7 +171,7 @@ QList<QAction*> qTcpPlugin::getActions()
 	}
 
 	updateActions();
-	return {m_ringCalibrationAction, m_probeCalibrationAction, m_calibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction, m_edmProgramAction, m_sparkMachineProgramAction, m_toggleLogDockAction};
+	return {m_ringCalibrationAction, m_probeCalibrationAction, m_calibrationAction, m_partInspectAction, m_electrodeInspectAction, m_partElectrodeConfigAction, m_acquirePcdAction, m_calibrationResultAction,  m_sparkMachineProgramAction, m_toggleLogDockAction};
 }
 
 void qTcpPlugin::startServer()

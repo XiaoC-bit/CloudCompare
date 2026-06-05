@@ -102,13 +102,43 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 	basicLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
 	QLabel* machineTypeLabel = new QLabel("机床类型：");
-	machineTypeLabel->setStyleSheet("border: none; background: transparent;");
-	m_machineTypeCombo = new QComboBox(this);
-	m_machineTypeCombo->addItem("DIMENG", "DIMENG");
-	m_machineTypeCombo->addItem("ONA", "ONA");
-	basicLayout->addRow(machineTypeLabel, m_machineTypeCombo);
+		machineTypeLabel->setStyleSheet("border: none; background: transparent;");
+		m_machineTypeCombo = new QComboBox(this);
+		m_machineTypeCombo->addItem("DIMENG", "DIMENG");
+		m_machineTypeCombo->addItem("ONA", "ONA");
+		basicLayout->addRow(machineTypeLabel, m_machineTypeCombo);
 
-	QLabel* partRfidLabel = new QLabel("工件RFID：");
+		QLabel* machineNameLabel = new QLabel("机床名称：");
+		machineNameLabel->setStyleSheet("border: none; background: transparent;");
+		m_machineNameCombo = new QComboBox(this);
+		m_machineNameCombo->setStyleSheet(R"(
+			QComboBox {
+				background-color: #ffffff;
+				border: 1px solid #d0d0d0;
+				border-radius: 3px;
+				padding: 2px 6px;
+				min-height: 26px;
+			}
+			QComboBox:focus {
+				border: 1px solid #4a90d9;
+			}
+			QComboBox QAbstractItemView {
+				border: 1px solid #d0d0d0;
+				outline: none;
+			}
+			QComboBox QAbstractItemView::item {
+				min-height: 26px;
+				padding: 0 8px;
+			}
+		)");
+		basicLayout->addRow(machineNameLabel, m_machineNameCombo);
+
+		m_machineNameMap["DIMENG"] = QStringList() << "DIMENG-001" << "DIMENG-002" << "DIMENG-003" << "DIMENG-004" << "DIMENG-005";
+		m_machineNameMap["ONA"] = QStringList() << "ONA-001" << "ONA-002" << "ONA-003" << "ONA-004" << "ONA-005";
+
+		updateMachineNames();
+
+		QLabel* partRfidLabel = new QLabel("工件RFID：");
 	partRfidLabel->setStyleSheet("border: none; background: transparent;");
 	m_partRfidEdit = new QLineEdit(this);
 	m_partRfidEdit->setPlaceholderText("请输入工件RFID编号");
@@ -171,8 +201,10 @@ void SparkMachineProgramDialog::setupAdditionalUI()
 	basicLayout->addRow(electrodeTypeLabel, m_electrodeTypeCombo);
 
 	connect(m_partTypeCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(onPartTypeChanged(int)));
+		connect(m_machineTypeCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(onMachineTypeChanged(int)));
+		connect(m_machineNameCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(onMachineNameChanged(int)));
 
-	leftLayout->addLayout(basicLayout);
+		leftLayout->addLayout(basicLayout);
 	leftLayout->addStretch();
 
 	// 右侧 - 坐标参数
@@ -440,6 +472,16 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
+	updateMachineNames();
+
+	if (obj.contains("machineName")) {
+		QString machineName = obj["machineName"].toString();
+		int index = m_machineNameCombo->findText(machineName);
+		if (index >= 0) {
+			m_machineNameCombo->setCurrentIndex(index);
+		}
+	}
+
 	if (obj.contains("partRfid")) {
 		m_partRfidEdit->setText(obj["partRfid"].toString());
 	}
@@ -471,8 +513,20 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
-	if (obj.contains("UAxisCenter") && obj["UAxisCenter"].isArray()) {
-		QJsonArray arr = obj["UAxisCenter"].toArray();
+	QString currentMachineName = m_machineNameCombo->currentText();
+	QJsonObject machineParams;
+
+	if (obj.contains("machines") && obj["machines"].isObject()) {
+		QJsonObject machinesObj = obj["machines"].toObject();
+		if (machinesObj.contains(currentMachineName)) {
+			machineParams = machinesObj[currentMachineName].toObject();
+		}
+	} else {
+		machineParams = obj;
+	}
+
+	if (machineParams.contains("UAxisCenter") && machineParams["UAxisCenter"].isArray()) {
+		QJsonArray arr = machineParams["UAxisCenter"].toArray();
 		if (arr.size() >= 3) {
 			m_uAxisCenterXSpin->setValue(arr[0].toDouble());
 			m_uAxisCenterYSpin->setValue(arr[1].toDouble());
@@ -480,8 +534,8 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
-	if (obj.contains("VAxisCenter") && obj["VAxisCenter"].isArray()) {
-		QJsonArray arr = obj["VAxisCenter"].toArray();
+	if (machineParams.contains("VAxisCenter") && machineParams["VAxisCenter"].isArray()) {
+		QJsonArray arr = machineParams["VAxisCenter"].toArray();
 		if (arr.size() >= 3) {
 			m_vAxisCenterXSpin->setValue(arr[0].toDouble());
 			m_vAxisCenterYSpin->setValue(arr[1].toDouble());
@@ -489,8 +543,8 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
-	if (obj.contains("WAxisCenter") && obj["WAxisCenter"].isArray()) {
-		QJsonArray arr = obj["WAxisCenter"].toArray();
+	if (machineParams.contains("WAxisCenter") && machineParams["WAxisCenter"].isArray()) {
+		QJsonArray arr = machineParams["WAxisCenter"].toArray();
 		if (arr.size() >= 3) {
 			m_wAxisCenterXSpin->setValue(arr[0].toDouble());
 			m_wAxisCenterYSpin->setValue(arr[1].toDouble());
@@ -498,8 +552,8 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
-	if (obj.contains("UpChuck") && obj["UpChuck"].isArray()) {
-		QJsonArray arr = obj["UpChuck"].toArray();
+	if (machineParams.contains("UpChuck") && machineParams["UpChuck"].isArray()) {
+		QJsonArray arr = machineParams["UpChuck"].toArray();
 		if (arr.size() >= 3) {
 			m_upChuckCenterXSpin->setValue(arr[0].toDouble());
 			m_upChuckCenterYSpin->setValue(arr[1].toDouble());
@@ -507,8 +561,8 @@ void SparkMachineProgramDialog::loadConfig()
 		}
 	}
 
-	if (obj.contains("DownChuck") && obj["DownChuck"].isArray()) {
-		QJsonArray arr = obj["DownChuck"].toArray();
+	if (machineParams.contains("DownChuck") && machineParams["DownChuck"].isArray()) {
+		QJsonArray arr = machineParams["DownChuck"].toArray();
 		if (arr.size() >= 3) {
 			m_downChuckCenterXSpin->setValue(arr[0].toDouble());
 			m_downChuckCenterYSpin->setValue(arr[1].toDouble());
@@ -529,41 +583,63 @@ void SparkMachineProgramDialog::saveConfigToFile()
 
 	QJsonObject obj;
 
+	QFile existingFile(configFile);
+	if (existingFile.exists() && existingFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		QByteArray data = existingFile.readAll();
+		existingFile.close();
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+		if (error.error == QJsonParseError::NoError && doc.isObject()) {
+			obj = doc.object();
+		}
+	}
+
 	obj["machineType"] = m_machineTypeCombo->currentData().toString();
+	obj["machineName"] = m_machineNameCombo->currentText();
 	obj["partRfid"] = m_partRfidEdit->text();
 	obj["electrodeRfid"] = m_electrodeRfidEdit->text();
 	obj["partType"] = m_partTypeCombo->currentText();
 	obj["electrodeType"] = m_electrodeTypeCombo->currentText();
 
+	QJsonObject machinesObj;
+	if (obj.contains("machines") && obj["machines"].isObject()) {
+		machinesObj = obj["machines"].toObject();
+	}
+
+	QJsonObject currentMachineParams;
+
 	QJsonArray uAxisCenter;
 	uAxisCenter.append(m_uAxisCenterXSpin->value());
 	uAxisCenter.append(m_uAxisCenterYSpin->value());
 	uAxisCenter.append(m_uAxisCenterZSpin->value());
-	obj["UAxisCenter"] = uAxisCenter;
+	currentMachineParams["UAxisCenter"] = uAxisCenter;
 
 	QJsonArray vAxisCenter;
 	vAxisCenter.append(m_vAxisCenterXSpin->value());
 	vAxisCenter.append(m_vAxisCenterYSpin->value());
 	vAxisCenter.append(m_vAxisCenterZSpin->value());
-	obj["VAxisCenter"] = vAxisCenter;
+	currentMachineParams["VAxisCenter"] = vAxisCenter;
 
 	QJsonArray wAxisCenter;
 	wAxisCenter.append(m_wAxisCenterXSpin->value());
 	wAxisCenter.append(m_wAxisCenterYSpin->value());
 	wAxisCenter.append(m_wAxisCenterZSpin->value());
-	obj["WAxisCenter"] = wAxisCenter;
+	currentMachineParams["WAxisCenter"] = wAxisCenter;
 
 	QJsonArray upChuck;
 	upChuck.append(m_upChuckCenterXSpin->value());
 	upChuck.append(m_upChuckCenterYSpin->value());
 	upChuck.append(m_upChuckCenterZSpin->value());
-	obj["UpChuck"] = upChuck;
+	currentMachineParams["UpChuck"] = upChuck;
 
 	QJsonArray downChuck;
 	downChuck.append(m_downChuckCenterXSpin->value());
 	downChuck.append(m_downChuckCenterYSpin->value());
 	downChuck.append(m_downChuckCenterZSpin->value());
-	obj["DownChuck"] = downChuck;
+	currentMachineParams["DownChuck"] = downChuck;
+
+	machinesObj[m_machineNameCombo->currentText()] = currentMachineParams;
+	obj["machines"] = machinesObj;
 
 	QJsonDocument doc(obj);
 	QFile file(configFile);
@@ -652,4 +728,119 @@ void SparkMachineProgramDialog::onPartTypeChanged(int index)
 void SparkMachineProgramDialog::updateUIState()
 {
 	MachineStatusDialog::updateUIState();
+}
+
+void SparkMachineProgramDialog::updateMachineNames()
+{
+	m_machineNameCombo->clear();
+	QString machineType = m_machineTypeCombo->currentData().toString();
+	if (m_machineNameMap.contains(machineType)) {
+		m_machineNameCombo->addItems(m_machineNameMap[machineType]);
+	}
+}
+
+void SparkMachineProgramDialog::onMachineTypeChanged(int index)
+{
+	Q_UNUSED(index);
+	updateMachineNames();
+}
+
+void SparkMachineProgramDialog::onMachineNameChanged(int index)
+{
+	Q_UNUSED(index);
+	loadMachineParams();
+}
+
+void SparkMachineProgramDialog::loadMachineParams()
+{
+	m_uAxisCenterXSpin->setValue(0.0);
+	m_uAxisCenterYSpin->setValue(0.0);
+	m_uAxisCenterZSpin->setValue(0.0);
+	m_vAxisCenterXSpin->setValue(0.0);
+	m_vAxisCenterYSpin->setValue(0.0);
+	m_vAxisCenterZSpin->setValue(0.0);
+	m_wAxisCenterXSpin->setValue(0.0);
+	m_wAxisCenterYSpin->setValue(0.0);
+	m_wAxisCenterZSpin->setValue(0.0);
+	m_upChuckCenterXSpin->setValue(0.0);
+	m_upChuckCenterYSpin->setValue(0.0);
+	m_upChuckCenterZSpin->setValue(0.0);
+	m_downChuckCenterXSpin->setValue(0.0);
+	m_downChuckCenterYSpin->setValue(0.0);
+	m_downChuckCenterZSpin->setValue(0.0);
+
+	QString appDir = QCoreApplication::applicationDirPath();
+	QString configFile = appDir + "/config/SparkMachineProgramConfig.json";
+
+	QFile file(configFile);
+	if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		return;
+	}
+
+	QByteArray data = file.readAll();
+	file.close();
+
+	QJsonParseError error;
+	QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+	if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+		return;
+	}
+
+	QJsonObject obj = doc.object();
+	if (!obj.contains("machines") || !obj["machines"].isObject()) {
+		return;
+	}
+
+	QJsonObject machinesObj = obj["machines"].toObject();
+	QString currentMachineName = m_machineNameCombo->currentText();
+	if (!machinesObj.contains(currentMachineName)) {
+		return;
+	}
+
+	QJsonObject machineParams = machinesObj[currentMachineName].toObject();
+
+	if (machineParams.contains("UAxisCenter") && machineParams["UAxisCenter"].isArray()) {
+		QJsonArray arr = machineParams["UAxisCenter"].toArray();
+		if (arr.size() >= 3) {
+			m_uAxisCenterXSpin->setValue(arr[0].toDouble());
+			m_uAxisCenterYSpin->setValue(arr[1].toDouble());
+			m_uAxisCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (machineParams.contains("VAxisCenter") && machineParams["VAxisCenter"].isArray()) {
+		QJsonArray arr = machineParams["VAxisCenter"].toArray();
+		if (arr.size() >= 3) {
+			m_vAxisCenterXSpin->setValue(arr[0].toDouble());
+			m_vAxisCenterYSpin->setValue(arr[1].toDouble());
+			m_vAxisCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (machineParams.contains("WAxisCenter") && machineParams["WAxisCenter"].isArray()) {
+		QJsonArray arr = machineParams["WAxisCenter"].toArray();
+		if (arr.size() >= 3) {
+			m_wAxisCenterXSpin->setValue(arr[0].toDouble());
+			m_wAxisCenterYSpin->setValue(arr[1].toDouble());
+			m_wAxisCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (machineParams.contains("UpChuck") && machineParams["UpChuck"].isArray()) {
+		QJsonArray arr = machineParams["UpChuck"].toArray();
+		if (arr.size() >= 3) {
+			m_upChuckCenterXSpin->setValue(arr[0].toDouble());
+			m_upChuckCenterYSpin->setValue(arr[1].toDouble());
+			m_upChuckCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
+
+	if (machineParams.contains("DownChuck") && machineParams["DownChuck"].isArray()) {
+		QJsonArray arr = machineParams["DownChuck"].toArray();
+		if (arr.size() >= 3) {
+			m_downChuckCenterXSpin->setValue(arr[0].toDouble());
+			m_downChuckCenterYSpin->setValue(arr[1].toDouble());
+			m_downChuckCenterZSpin->setValue(arr[2].toDouble());
+		}
+	}
 }
