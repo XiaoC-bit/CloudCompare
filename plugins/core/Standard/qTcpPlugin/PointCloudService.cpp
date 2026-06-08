@@ -6508,8 +6508,8 @@ bool PointCloudService::executeProbeCalibration()
 
 	// 从机床下载旋转中心测量结果文件
 	QString cncPath   = "/h/lnc8/prog/";
-	QString cncFile   = "O1836";
-	QString localFile = appDir + "/Temp/O1836.res";
+	QString cncFile   = "O1236";
+	QString localFile = appDir + "/Temp/BlockProbe.res";
 
 	if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 	{
@@ -6540,16 +6540,35 @@ bool PointCloudService::executeProbeCalibration()
 
 	// 解析文件内容：B-0.029 X-52.059 Y-82.687 Z-173.462
 	double centerX1 = 0.0, centerX2 = 0.0, centerY = 0.0, centerZ = 0.0;
-	QRegularExpression regex(R"(B([-\d.]+)\s+X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
-	QRegularExpressionMatch match = regex.match(content);
-	if (match.hasMatch())
+	bool parseSuccess = true;
+
+	// 解析 B 值
+	QRegularExpression bRegex(R"(B([-\d.]+))");
+	QRegularExpressionMatch bMatch = bRegex.match(content);
+	if (bMatch.hasMatch())
 	{
-		centerX1 = match.captured(1).toDouble(); // B值
-		centerX2 = match.captured(2).toDouble(); // X值
-		centerY  = match.captured(3).toDouble(); // Y值
-		centerZ  = match.captured(4).toDouble(); // Z值
+		centerX1 = bMatch.captured(1).toDouble(); // B值
 	}
 	else
+	{
+		parseSuccess = false;
+	}
+
+	// 解析 X-Y-Z 值
+	QRegularExpression xyzRegex(R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
+	QRegularExpressionMatch xyzMatch = xyzRegex.match(content);
+	if (xyzMatch.hasMatch())
+	{
+		centerX2 = xyzMatch.captured(1).toDouble(); // X值
+		centerY  = xyzMatch.captured(2).toDouble(); // Y值
+		centerZ  = xyzMatch.captured(3).toDouble(); // Z值
+	}
+	else
+	{
+		parseSuccess = false;
+	}
+
+	if (!parseSuccess)
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
@@ -6560,11 +6579,23 @@ bool PointCloudService::executeProbeCalibration()
 		return false;
 	}
 
+	// 解析卡盘中心：TX-52.059 TY-82.687 TZ-173.462
+	double chuckX = 0.0, chuckY = 0.0, chuckZ = 0.0;
+	QRegularExpression chuckRegex(R"(TX([-\d.]+).*?TY([-\d.]+).*?TZ([-\d.]+))", QRegularExpression::DotMatchesEverythingOption);
+	QRegularExpressionMatch chuckMatch = chuckRegex.match(content);
+	if (chuckMatch.hasMatch())
+	{
+		chuckX = chuckMatch.captured(1).toDouble(); // TX值
+		chuckY = chuckMatch.captured(2).toDouble(); // TY值
+		chuckZ = chuckMatch.captured(3).toDouble(); // TZ值
+	}
+
 	// 保存旋转中心到结果中
 	QJsonObject obj;
 	obj["Result"] = "OK";
 	obj["Ret_Err"] = "Probe calibration completed successfully";
 	obj["RotationCenter"] = QJsonObject{{"Offset", centerX1}, {"X", centerX2}, {"Y", centerY}, {"Z", centerZ}};
+	obj["ChuckCenter"] = QJsonObject{{"X", chuckX}, {"Y", chuckY}, {"Z", chuckZ}};
 	m_probeCalibrationResult["CalibrationResult"] = obj;
 
 	// 保存状态
