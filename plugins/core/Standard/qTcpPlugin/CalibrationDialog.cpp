@@ -404,7 +404,7 @@ void CalibrationDialog::onGeneratePositions()
 	QSpinBox* countSpinBox = new QSpinBox();
 	countSpinBox->setMinimum(2);
 	countSpinBox->setMaximum(30);
-	countSpinBox->setValue(7);
+	countSpinBox->setValue(10);
 	countLayout->addWidget(countLabel);
 	countLayout->addWidget(countSpinBox);
 	layout->addLayout(countLayout);

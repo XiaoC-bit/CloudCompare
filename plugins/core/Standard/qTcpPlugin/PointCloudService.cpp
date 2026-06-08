@@ -63,7 +63,7 @@ namespace
 	const QString CALIBRATION_CNC_PATH                = "/c/AC/";
 	const QString PROBE_CNC_PATH                      = "/c/BC/"; // 工件、电极的检测程序放在BC路径下
 	const double  CALIBRATION_RADIUS             = 12.5;
-	const double  CALIBRATION_RMS_THRESHOLD      = 0.012;
+	const double  CALIBRATION_RMS_THRESHOLD      = 0.0135;
 	const double  CALIBRATION_RESIDUAL_THRESHOLD = 0.12;
 	const int     CALIBRATION_MAX_FIT_RETRIES    = 3;
 	const QString PART_INSPECT_RESULT_FILE_NAME = "O1236";
@@ -2773,7 +2773,7 @@ bool PointCloudService::handleFitSphere(const QJsonObject& params, QTcpSocket* s
 	bool                success    = false;
 	int                 fitResult  = CCCoreLib::GeometricalAnalysisTools::NoError;
 
-	while (retryCount <= maxRetries)
+	while (retryCount < maxRetries)
 	{
 		fitResult = CCCoreLib::GeometricalAnalysisTools::DetectSphereRobust(
 		    cloud, outliersRatio, center, fitRadius, rms, !autoDetectRadius, nullptr, confidence);
@@ -3866,7 +3866,7 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 			fitParams["autoDetectRadius"] = false;
 			fitParams["radius"]           = CALIBRATION_RADIUS;
 			fitParams["rms"]              = CALIBRATION_RMS_THRESHOLD;
-			fitParams["retries"]          = 3;
+			fitParams["retries"]          = 1;
 
 			if (handleFitSphere(fitParams, nullptr, QString(), centerX, centerY, centerZ, rms) && rms < CALIBRATION_RMS_THRESHOLD)
 			{
@@ -3886,10 +3886,10 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 
 		if (!fitSuccess)
 		{
-			m_cameraCalibrationResult["Result"] = "NG";
-			m_cameraCalibrationResult["Ret_Err"]  = QString("Sphere fitting failed at position %1 after %2 retries").arg(i + 1).arg(CALIBRATION_MAX_FIT_RETRIES);
-			saveCalibrationStatus();
-			return false;
+			if (progressCallback) {
+				progressCallback(i + 1, positions.size(), QString("位置%1拟合失败，继续下一个位置...").arg(i + 1));
+			}
+			continue;
 		}
 
 		
@@ -3900,6 +3900,16 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		fitItem["scanner"] = QJsonArray{centerX, centerY, centerZ};
 		fitItem["rms"]     = rms;
 		fitResults.append(fitItem);
+	}
+
+	if (scannerPoints.size() < 7)
+	{
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Calibration failed: only %1 out of %2 positions were successfully fitted (minimum 7 required)").arg(scannerPoints.size()).arg(positions.size());
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
 	}
 
 	if (progressCallback) {
@@ -3994,8 +4004,8 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		progressCallback(positions.size(), positions.size(), QString("保存标定结果..."));
 	}
 
-	saveCalibrationStatus();
 	m_Status = MachineStatus::Idle;
+	saveCalibrationStatus();
 	return residualOk;
 }
 
