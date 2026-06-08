@@ -63,8 +63,8 @@ namespace
 	const QString CALIBRATION_CNC_PATH                = "/c/AC/";
 	const QString PROBE_CNC_PATH                      = "/c/BC/"; // 工件、电极的检测程序放在BC路径下
 	const double  CALIBRATION_RADIUS             = 12.5;
-	const double  CALIBRATION_RMS_THRESHOLD      = 0.0135;
-	const double  CALIBRATION_RESIDUAL_THRESHOLD = 0.12;
+	const double  CALIBRATION_RMS_THRESHOLD      = 0.0125;
+	const double  CALIBRATION_RESIDUAL_THRESHOLD = 0.0125;
 	const int     CALIBRATION_MAX_FIT_RETRIES    = 3;
 	const QString PART_INSPECT_RESULT_FILE_NAME = "O1236";
 	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1236";
@@ -3916,15 +3916,102 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		progressCallback(positions.size(), positions.size(), QString("计算变换矩阵..."));
 	}
 
+	std::vector<bool> validPoints(scannerPoints.size(), true);
+	std::vector<int>  removedIndices;
 	CalibrationRigidTransform transform;
-	if (!computeRigidTransform(scannerPoints, machinePoints, transform))
+	std::vector<Eigen::Vector3d> validScannerPoints;
+	std::vector<Eigen::Vector3d> validMachinePoints;
+
+	auto buildValidPoints = [&]() {
+		validScannerPoints.clear();
+		validMachinePoints.clear();
+		for (size_t i = 0; i < scannerPoints.size(); ++i)
+		{
+			if (validPoints[i])
+			{
+				validScannerPoints.push_back(scannerPoints[i]);
+				validMachinePoints.push_back(machinePoints[i]);
+			}
+		}
+	};
+
+	while (true)
 	{
+		buildValidPoints();
+
+		if (!computeRigidTransform(validScannerPoints, validMachinePoints, transform))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = "Calibration matrix computation failed: at least 3 corresponding calibration points are required";
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+
+		if (validScannerPoints.size() <= 7)
+		{
+			break;
+		}
+
+		size_t maxResidualIdx = 0;
+		double maxResidual    = 0.0;
+
+		for (size_t i = 0; i < validScannerPoints.size(); ++i)
+		{
+			const Eigen::Vector3d calc  = transform.R * validScannerPoints[i] + transform.T;
+			const double          error = (calc - validMachinePoints[i]).norm();
+
+			if (error > maxResidual)
+			{
+				maxResidual    = error;
+				maxResidualIdx = i;
+			}
+		}
+
+		if (maxResidual > CALIBRATION_RESIDUAL_THRESHOLD)
+		{
+			for (size_t i = 0; i < scannerPoints.size(); ++i)
+			{
+				if (validPoints[i] && scannerPoints[i] == validScannerPoints[maxResidualIdx])
+				{
+					validPoints[i] = false;
+					removedIndices.push_back(static_cast<int>(i) + 1);
+					m_app->dispToConsole(QString("[TcpPlugin][Calibration] Removing outlier point %1 with residual %2 mm").arg(i + 1).arg(maxResidual));
+					break;
+				}
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	buildValidPoints();
+
+	if (validScannerPoints.size() < 7)
+	{
+		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = "Calibration matrix computation failed: at least 3 corresponding calibration points are required";
+		obj["Ret_Err"] = QString("Calibration failed: insufficient valid points after outlier removal: %1 (need at least 7)").arg(validScannerPoints.size());
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return false;
+	}
+
+	m_app->dispToConsole(QString("[TcpPlugin][Calibration] Final valid points: %1, removed points: %2").arg(validScannerPoints.size()).arg(removedIndices.size()));
+	if (!removedIndices.empty())
+	{
+		QString removedList;
+		for (size_t i = 0; i < removedIndices.size(); ++i)
+		{
+			if (i > 0) removedList += ", ";
+			removedList += QString::number(removedIndices[i]);
+		}
+		m_app->dispToConsole(QString("[TcpPlugin][Calibration] Removed point indices: %1").arg(removedList));
 	}
 
 	const Eigen::Matrix4d matrix = toMatrix4d(transform);
@@ -3941,16 +4028,27 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		matrixRows.append(rowArray);
 	}
 
-	for (size_t i = 0; i < scannerPoints.size(); ++i)
+	for (size_t i = 0; i < validScannerPoints.size(); ++i)
 	{
-		const Eigen::Vector3d calc  = transform.R * scannerPoints[i] + transform.T;
-		const double          error = (calc - machinePoints[i]).norm();
+		const Eigen::Vector3d calc  = transform.R * validScannerPoints[i] + transform.T;
+		const double          error = (calc - validMachinePoints[i]).norm();
 		residuals.append(error);
 		if (error > CALIBRATION_RESIDUAL_THRESHOLD)
 		{
 			residualOk = false;
 		}
 		m_app->dispToConsole(QString("[TcpPlugin][Calibration] Point %1 residual: %2 mm").arg(static_cast<int>(i + 1)).arg(error));
+	}
+
+	if (!residualOk && validScannerPoints.size() <= 7)
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Calibration failed: minimum 7 points reached but residuals still exceed threshold");
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
 	}
 
 	QString matrixText;
