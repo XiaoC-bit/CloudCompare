@@ -198,6 +198,7 @@ private:
         void onNameChanged(const QString& text);
         void onSelectFile();
 		void onGetDeviceCoordinate();
+        void onUseChuckCenter();
         void onOk();
         void updateOkButton();
     };

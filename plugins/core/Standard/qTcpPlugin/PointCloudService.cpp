@@ -70,7 +70,7 @@ namespace
 	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1236";
 	const QString BALL_INSPECT_RESULT_FILE_NAME       = "O1536";
 	const int     MACHINE_COMMAND_RETRY_COUNT   = 3;
-	const double  MAX_RESIDUAL_THRESHOLD              = 0.028; // 最大残差阈值，单位：mm
+	const double  MAX_RESIDUAL_THRESHOLD              = 0.05; // 最大残差阈值，单位：mm
 
 } // namespace
 

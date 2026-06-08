@@ -886,6 +886,9 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
 
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
+    QPushButton* useChuckCenterBtn = new QPushButton("使用卡盘原点", this);
+    useChuckCenterBtn->setFixedSize(120, 28);
+    buttonLayout->addWidget(useChuckCenterBtn);
     QPushButton* getDeviceCoorBtn = new QPushButton(QIcon(":/CC/icons/connect.svg"), "从设备获取", this);
     getDeviceCoorBtn->setFixedSize(120, 28);
     buttonLayout->addWidget(getDeviceCoorBtn);
@@ -908,6 +911,7 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
 
     connect(m_nameEdit, &QLineEdit::textChanged, this, &AddPartDialog::onNameChanged);
     connect(selectFileBtn, &QPushButton::clicked, this, &AddPartDialog::onSelectFile);
+    connect(useChuckCenterBtn, &QPushButton::clicked, this, &AddPartDialog::onUseChuckCenter);
     connect(getDeviceCoorBtn, &QPushButton::clicked, this, &AddPartDialog::onGetDeviceCoordinate);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     connect(okBtn, &QPushButton::clicked, this, &AddPartDialog::onOk);
@@ -966,6 +970,57 @@ void PartElectrodeConfigDialog::AddPartDialog::onGetDeviceCoordinate()
     } else {
         QMessageBox::warning(this, "失败", QString("获取设备坐标失败: %1").arg(errorMessage));
     }
+}
+
+void PartElectrodeConfigDialog::AddPartDialog::onUseChuckCenter()
+{
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString filePath = appDir + "/Template/probe_calibration_status.json";
+
+    QFile file(filePath);
+    if (!file.exists()) {
+        QMessageBox::warning(this, "警告", "未找到探针校准配置文件");
+        return;
+    }
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "错误", "无法打开探针校准配置文件");
+        return;
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QMessageBox::warning(this, "错误", "解析探针校准配置文件失败");
+        return;
+    }
+
+    QJsonObject root = doc.object();
+    if (!root.contains("CalibrationResult")) {
+        QMessageBox::warning(this, "错误", "配置文件中没有校准结果");
+        return;
+    }
+
+    QJsonObject calibrationResult = root["CalibrationResult"].toObject();
+    if (!calibrationResult.contains("ChuckCenter")) {
+        QMessageBox::warning(this, "错误", "配置文件中没有卡盘中心数据");
+        return;
+    }
+
+    QJsonObject chuckCenter = calibrationResult["ChuckCenter"].toObject();
+
+    double x = chuckCenter.value("X").toDouble(0.0);
+    double y = chuckCenter.value("Y").toDouble(0.0);
+    double z = chuckCenter.value("Z").toDouble(0.0);
+
+    m_zeroXEdit->setText(QString::number(x, 'f', 3));
+    m_zeroYEdit->setText(QString::number(y, 'f', 3));
+    m_zeroZEdit->setText(QString::number(z, 'f', 3));
+    m_zeroBEdit->setText("0");
+    m_zeroCEdit->setText("0");
 }
 
 void PartElectrodeConfigDialog::AddPartDialog::updateOkButton()
