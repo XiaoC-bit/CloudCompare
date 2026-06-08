@@ -832,7 +832,7 @@ PartElectrodeConfigDialog::AddPartDialog::AddPartDialog(QWidget* parent)
     , m_isEditMode(false)
 {
     setWindowTitle("新增工件");
-    setFixedSize(500, 350);
+    setFixedSize(700, 350);
     setModal(true);
 
     QVBoxLayout* mainLayout = new QVBoxLayout(this);

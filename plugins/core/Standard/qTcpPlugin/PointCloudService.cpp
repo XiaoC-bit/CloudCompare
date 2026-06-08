@@ -7424,7 +7424,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				return false;
 			}
 			// 发送文件到机床
-			if (!sendFileToMachine(PROBE_CNC_PATH, probeProgPath, &errorMessage))
+			if (!sendFileToMachine( probeProgPath, &errorMessage))
 			{
 				QJsonObject result;
 				QJsonObject obj;
@@ -7436,7 +7436,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 			}
 
 			// 设置主程序
-			if (!setMainProgram(PROBE_CNC_PATH ,& errorMessage))
+			if (!setMainProgram(& errorMessage))
 			{
 				QJsonObject result;
 				QJsonObject obj;
@@ -8462,7 +8462,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	if (!sendFileToMachine(PROBE_CNC_PATH,electrodeFile, &errorMessage))
+	if (!sendFileToMachine(electrodeFile, &errorMessage))
 	{
 		QJsonObject result;
 		QJsonObject obj;
@@ -8475,7 +8475,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	if (!setMainProgram(PROBE_CNC_PATH ,& errorMessage))
+	if (!setMainProgram(& errorMessage))
 	{
 		QJsonObject result;
 		QJsonObject obj;
