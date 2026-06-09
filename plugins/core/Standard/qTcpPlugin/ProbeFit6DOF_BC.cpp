@@ -228,8 +228,8 @@ bool ProbeFit6DOF_BC::solve(Result& result) const
 	VectorXd pred = A * x;
 	VectorXd res  = dev - pred;
 
-	result.R           = R;
-	result.t           = t;
+	result.R           = R.transpose();
+	result.t           = -R.transpose() * t;
 	result.centroid    = centroid;
 	result.omega       = omega;
 	result.rms         = std::sqrt(res.squaredNorm() / N);

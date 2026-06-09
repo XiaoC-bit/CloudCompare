@@ -227,7 +227,7 @@ void EdmProgramDialog::calculateCompensation(const Eigen::Matrix4d& T_icp)
 
 	// 工件坐标系原点（G54）在机床坐标系下的坐标
 	// 工件坐标系相对机床坐标系只有纯平移，无旋转
-	const Eigen::Vector3d P_workpiece = {-24.705, -93.46, -104.237};
+	const Eigen::Vector3d P_workpiece = {-27.301, -97.19, -102.721};
 
 	const double signB = 1.0;
 	const double signC = 1.0;

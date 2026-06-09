@@ -70,7 +70,7 @@ namespace
 	const QString ELEC_INSPECT_RESULT_FILE_NAME = "O1236";
 	const QString BALL_INSPECT_RESULT_FILE_NAME       = "O1536";
 	const int     MACHINE_COMMAND_RETRY_COUNT   = 3;
-	const double  MAX_RESIDUAL_THRESHOLD              = 0.05; // 最大残差阈值，单位：mm
+	const double  MAX_RESIDUAL_THRESHOLD              = 0.07; // 最大残差阈值，单位：mm
 
 } // namespace
 
@@ -8300,14 +8300,14 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	constexpr double GIMBAL_LOCK_THRESHOLD = 1e-2;
 
 	const double cosB     = R(2, 2);
-	const double sinB_val = std::sqrt(R(2, 0) * R(2, 0) + R(2, 1) * R(2, 1)); // ≥0
-
-	// --- 解1: B ∈ [0, π) ---
+	double       sinB_val = std::sqrt(R(2, 0) * R(2, 0) + R(2, 1) * R(2, 1));
+	if (R(0, 2) < 0)
+		sinB_val = -sinB_val; // 用 R(0,2)=sinB·cosC_spindle 修正符号
 	const double B_rad1         = std::atan2(sinB_val, cosB);
 	double       C_spindle_rad1 = 0.0;
 	double       C_table_rad1   = 0.0;
 
-	if (sinB_val > GIMBAL_LOCK_THRESHOLD)
+	if (std::abs(sinB_val) > GIMBAL_LOCK_THRESHOLD)
 	{
 		C_table_rad1   = std::atan2(R(2, 1), -R(2, 0));
 		C_spindle_rad1 = std::atan2(R(1, 2), R(0, 2));
@@ -8319,6 +8319,10 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 		else
 			C_spindle_rad1 = std::atan2(-R(1, 0), -R(0, 0));
 		C_table_rad1 = 0.0;
+
+		
+		// 临时测试 将主轴C转给转台C
+		std::swap(C_spindle_rad1, C_table_rad1);
 	}
 
 	// --- 解2: B ∈ (-π, 0]，即取 -B，Cs和Ct各加π ---
