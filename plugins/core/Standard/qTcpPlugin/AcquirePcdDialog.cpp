@@ -580,28 +580,38 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 
 	if (m_alignCaptureBtn->isChecked())
 	{
-		// Step 1 将点云还原到机床坐标系下。
-		Eigen::Matrix4d finalMatrix;
-		// Step 2 将点云平移回机床坐标系的原点
-		Eigen::Matrix4d mMoveToMachineZero;
-		mMoveToMachineZero << 1, 0, 0, m_captureXEdit->text().toDouble(),
-		    0, 1, 0, m_captureYEdit->text().toDouble(),
-		    0, 0, 1, m_captureZEdit->text().toDouble(),
-		    0,
-		    0,
-		    0,
-		    1;
-		// Step 3 将点云还原到工件坐标系下
-		Eigen::Matrix4d mMoveToPartZero;
-		mMoveToPartZero << 1, 0, 0, -m_modelXEdit->text().toDouble(),
-		    0, 1, 0, -m_modelYEdit->text().toDouble(),
-		    0, 0, 1, -m_modelZEdit->text().toDouble(),
-		    0,
-		    0,
-		    0,
-		    1;
+		// 读取拍摄点位的XYZ和BC角度
+		const double captureX   = m_captureXEdit->text().toDouble();
+		const double captureY   = m_captureYEdit->text().toDouble();
+		const double captureZ   = m_captureZEdit->text().toDouble();
+		const double captureB   = m_captureBEdit->text().toDouble(); // 单位：度
+		const double captureC   = m_captureCEdit->text().toDouble(); // 单位：度
 
-		finalMatrix = mMoveToPartZero * mMoveToMachineZero * m_pointCloudService->getHandEyeMatrix();
+		// 读取模型原点的机械坐标（B=0,C=0时工件原点对应的机床坐标）
+		const double modelX     = m_modelXEdit->text().toDouble();
+		const double modelY     = m_modelYEdit->text().toDouble();
+		const double modelZ     = m_modelZEdit->text().toDouble();
+
+		// 获取BC轴旋转中心（机床坐标系）
+		const Eigen::Vector3d pivotB = m_pointCloudService->getBAxisCenter();
+		const Eigen::Vector3d pivotC = m_pointCloudService->getCAxisCenter();
+
+		// Step 1: 手眼矩阵 —— 将点云从相机坐标系变换到机床坐标系（在当前姿态下）
+		// Step 2: 通过机床运动变换矩阵，将点云从当前机床姿态还原到B=0,C=0时的位置
+		//         buildRobotMotion 构建的是从(0,0,0,0°,0°)到(captureX,Y,Z,B,C)的正向变换，
+		//         取逆即为从拍摄姿态还原到零位。
+		const Eigen::Matrix4d mRobotMotion = PointCloudService::buildRobotMotion(
+		    captureX, captureY, captureZ, -captureB, captureC, pivotB, pivotC);
+
+		// Step 3: 从机床零位平移到工件坐标系（模型原点即工件坐标系原点对应的机床坐标取反）
+		Eigen::Matrix4d mMoveToPartZero = Eigen::Matrix4d::Identity();
+		mMoveToPartZero(0, 3) = -modelX;
+		mMoveToPartZero(1, 3) = -modelY;
+		mMoveToPartZero(2, 3) = -modelZ;
+
+		// 最终变换：工件坐标系 = mMoveToPartZero * inv(mRobotMotion) * handEye
+		const Eigen::Matrix4d finalMatrix =
+		    mMoveToPartZero * mRobotMotion * m_pointCloudService->getHandEyeMatrix();
 
 		cloud->setGLTransformation(ccGLMatrix(finalMatrix.data()));
 		cloud->applyGLTransformation_recursive();

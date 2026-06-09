@@ -1697,7 +1697,7 @@ Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z
     T_XYZ.block<3, 1>(0, 3) = Eigen::Vector3d(x, y, z);
 
     // 合成：先 B 轴旋转，再 C 轴旋转，最后平移
-    return T_B * T_C * T_XYZ;
+	return T_B * T_C  *T_XYZ;
 }
 
 bool PointCloudService::executeApplyTransformation(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage)

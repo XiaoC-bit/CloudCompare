@@ -156,7 +156,7 @@ class PointCloudService : public QObject
 	bool executeEdmProgram(double x, double y, double z, double b, double c);
 	bool executeApplyTransformation(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage); // 内部应用变换函数
     
-  private:
+  public:
 	enum class MachineStatus
 	{
 		Idle,
