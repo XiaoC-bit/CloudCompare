@@ -1686,17 +1686,18 @@ Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z
     // B 轴变换（机床坐标系下绕 pivot_B 旋转）
     Eigen::Matrix4d T_B = makePivotTransform(Ry, pivot_B);
 
-    // 将 pivot_C 从机床坐标系变换到 B 轴局部坐标系
-    Eigen::Vector3d pivot_C_local = Ry.transpose() * (pivot_C - pivot_B);
-
-    // C 轴变换（B 轴局部坐标系下绕 pivot_C_local 旋转）
-    Eigen::Matrix4d T_C = makePivotTransform(Rz, pivot_C_local);
+    // C 轴安装在 B 轴上，pivot_C 为 B=0 时机床坐标系下的 C 轴旋转中心。
+    // C 轴旋转发生在 B 轴旋转之前（从工件角度：先绕 C 转，再随 B 转）。
+    // 因此直接用机床坐标系下的 pivot_C 做 C 轴旋转，然后再整体施加 B 轴旋转。
+    Eigen::Matrix4d T_C = makePivotTransform(Rz, pivot_C);
 
     // XYZ 平移
     Eigen::Matrix4d T_XYZ = Eigen::Matrix4d::Identity();
     T_XYZ.block<3, 1>(0, 3) = Eigen::Vector3d(x, y, z);
 
-    // 合成：先 B 轴旋转，再 C 轴旋转，最后平移
+    // 合成：从右到左依次作用于工件点 —— 先 C 旋转，再 B 旋转，最后 XYZ 平移
+    // T_XYZ * T_B * T_C: 对列向量点 p，变换顺序为 T_C -> T_B -> T_XYZ
+    
 	return T_B * T_C  *T_XYZ;
 }
 
