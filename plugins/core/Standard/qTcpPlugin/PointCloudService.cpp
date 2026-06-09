@@ -8226,7 +8226,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 									if (row.size() == 4) {
 										hasIcpMatrix = true;
 										for (int j = 0; j < 4; j++) {
-											T_icp(i, j) = row[j].toDouble();
+											T_icp(j, i) = row[j].toDouble();
 										}
 									}
 								}
@@ -8258,7 +8258,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 						if (row.size() == 4) {
 							hasIcpMatrix = true;
 							for (int j = 0; j < 4; j++) {
-								T_electrode_icp(i, j) = row[j].toDouble();
+								T_electrode_icp(j, i) = row[j].toDouble();
 							}
 						}
 					}
@@ -8320,8 +8320,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 			C_spindle_rad1 = std::atan2(-R(1, 0), -R(0, 0));
 		C_table_rad1 = 0.0;
 
-		
-		// 临时测试 将主轴C转给转台C
+		//临时
 		std::swap(C_spindle_rad1, C_table_rad1);
 	}
 
@@ -8351,9 +8350,22 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 		C_table_rad   = C_table_rad2;
 	}
 
-	const double B_deg         = B_rad * 180.0 / M_PI;
-	const double C_spindle_deg = C_spindle_rad * 180.0 / M_PI;
-	const double C_table_deg   = C_table_rad * 180.0 / M_PI;
+	double B_deg         = B_rad * 180.0 / M_PI;
+	double C_spindle_deg = C_spindle_rad * 180.0 / M_PI;
+	double C_table_deg   = C_table_rad * 180.0 / M_PI;
+
+	if (std::abs(B_deg) <= 0.01)
+	{
+		B_deg = B_rad = 0;
+	}
+	if (std::abs(C_spindle_deg) <= 0.01)
+	{
+		C_spindle_deg = C_spindle_rad = 0;
+	}
+	if (std::abs(C_table_deg) <= 0.01)
+	{
+		C_table_deg = C_table_rad = 0;
+	}
 
 	// --- Step 2 & 3: 构造 Rb、Rc，令 R_bc = Rb·Rc，并将工件坐标系下的 T_icp 转换到机床坐标系 ---
 	// R_bc = Ry(B)·Rz(C_table)，只保留 BC 转台旋转部分（去掉主轴C）
@@ -8452,7 +8464,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	QString electrodeFile = partConfigDir + "/" + electrodeType + ".nc";
+	QString electrodeFile = partConfigDir + "/"  + electrodeType + ".nc";
 	if (!QFile::exists(electrodeFile))
 	{
 		QJsonObject result;
@@ -8520,7 +8532,8 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 
 	QString cncPath = "/h/lnc8/prog/";
 	QString cncFile = ELEC_INSPECT_RESULT_FILE_NAME;
-	QString localFile = "D:\\Elec\\" + rfid + ".res";
+	QString localFile = appDir + "/Temp/" + rfid + ".res";
+
 
 	if (!downloadFileFromMachine(cncPath, cncFile, localFile, &errorMessage))
 	{
@@ -8536,9 +8549,9 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	}
 
 	ProbeFit6DOF_BC::G54Config measureG54;
-	measureG54.xyz   = Eigen::Vector3d(-51.837, -82.130, -93.148);
+	measureG54.xyz   = Eigen::Vector3d(-52.945, -93.163, -34.18);
 	measureG54.B_deg = 0.0;
-	measureG54.C_deg = 0.0;
+	measureG54.C_deg = 359.917;
 
 
 	// ── 拟合器 ──
@@ -8694,7 +8707,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
 
 	PoseXYZABC pose = extractXYZABC(transformMatrix);
-	if (pose.A > 0.01) {
+	if (std::abs(pose.A) > 0.01) {
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
@@ -8706,7 +8719,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		m_Status = MachineStatus::Idle;
 		return false;
 	}
-	if(pose.B > 0.01){
+	if(std::abs(pose.B) > 0.01){
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;
 		QJsonObject obj;
