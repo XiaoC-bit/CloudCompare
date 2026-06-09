@@ -8548,10 +8548,47 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
+	QString probeCalibPath = appDir + "/Template/probe_calibration_status.json";
+
+	QFile probeCalibFile(probeCalibPath);
+	double chuckX = 0.0, chuckY = 0.0, chuckZ = 0.0;
+
+	if (probeCalibFile.exists() && probeCalibFile.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		QByteArray data = probeCalibFile.readAll();
+		probeCalibFile.close();
+
+		QJsonParseError parseError;
+		QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+		if (parseError.error == QJsonParseError::NoError && doc.isObject())
+		{
+			QJsonObject root = doc.object();
+			if (root.contains("CalibrationResult"))
+			{
+				QJsonObject calibrationResult = root["CalibrationResult"].toObject();
+				if (calibrationResult.contains("ChuckCenter"))
+				{
+					QJsonObject chuckCenter = calibrationResult["ChuckCenter"].toObject();
+					chuckX = chuckCenter.value("X").toDouble(0.0);
+					chuckY = chuckCenter.value("Y").toDouble(0.0);
+					chuckZ = chuckCenter.value("Z").toDouble(0.0);
+				}
+			}
+		}
+	}
+
+	/*ProbeFit6DOF_BC::G54Config measureG54;
+	measureG54.xyz   = Eigen::Vector3d(chuckX, chuckY, chuckZ);
+	measureG54.B_deg = 0.0;
+	measureG54.C_deg = 0.0;*/
+
+
+	//临时
 	ProbeFit6DOF_BC::G54Config measureG54;
 	measureG54.xyz   = Eigen::Vector3d(-52.945, -93.163, -34.18);
 	measureG54.B_deg = 0.0;
 	measureG54.C_deg = 359.917;
+
 
 
 	// ── 拟合器 ──
