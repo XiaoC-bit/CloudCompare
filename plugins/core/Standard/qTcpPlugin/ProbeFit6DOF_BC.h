@@ -122,6 +122,7 @@ class ProbeFit6DOF_BC
 	 */
 	bool solve(Result& result) const;
 
+	bool solveKabsch(Result& result) const;
 	/**
 	 * 剥离指定火花机旋转中心，得到最终补偿值
 	 *

@@ -601,7 +601,7 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 		//         buildRobotMotion 构建的是从(0,0,0,0°,0°)到(captureX,Y,Z,B,C)的正向变换，
 		//         取逆即为从拍摄姿态还原到零位。
 		const Eigen::Matrix4d mRobotMotion = PointCloudService::buildRobotMotion(
-		    captureX, captureY, captureZ, -captureB, -captureC, pivotB, pivotC);
+		    -captureX, -captureY, -captureZ, captureB, captureC, pivotB, pivotC);
 
 		// Step 3: 从机床零位平移到工件坐标系（模型原点即工件坐标系原点对应的机床坐标取反）
 		Eigen::Matrix4d mMoveToPartZero = Eigen::Matrix4d::Identity();
@@ -611,7 +611,7 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 
 		// 最终变换：工件坐标系 = mMoveToPartZero * inv(mRobotMotion) * handEye
 		const Eigen::Matrix4d finalMatrix =
-		    mMoveToPartZero * mRobotMotion * m_pointCloudService->getHandEyeMatrix();
+		    mMoveToPartZero * mRobotMotion.inverse() * m_pointCloudService->getHandEyeMatrix();
 
 		cloud->setGLTransformation(ccGLMatrix(finalMatrix.data()));
 		cloud->applyGLTransformation_recursive();

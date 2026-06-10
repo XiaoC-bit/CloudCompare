@@ -1698,7 +1698,7 @@ Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z
     // 合成：从右到左依次作用于工件点 —— 先 C 旋转，再 B 旋转，最后 XYZ 平移
     // T_XYZ * T_B * T_C: 对列向量点 p，变换顺序为 T_C -> T_B -> T_XYZ
     
-	return T_C*T_B * T_XYZ;
+	return T_XYZ * T_B * T_C;
 }
 
 bool PointCloudService::executeApplyTransformation(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage)
@@ -3635,17 +3635,21 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		saveCalibrationStatus();
 		return false;
 	}
-
-	if (!startMachine(&errorMessage))
+	//临时
+	if (0)
 	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["Result"]                                  = "NG";
-		obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
-		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		saveCalibrationStatus();
-		return false;
+		if (!startMachine(&errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"]                                  = "NG";
+			obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
 	}
+	
 
 	if (!waitForMachineIdle(-1, &errorMessage))
 	{
@@ -3724,7 +3728,13 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 			{
 				double x = match.captured(1).toDouble() + partX;
 				double y = match.captured(2).toDouble() + partY;
-				double z = match.captured(3).toDouble() + partZ;
+				double tmp = match.captured(3).toDouble();
+				if (tmp < -10)
+				{
+					//标准球特殊处理
+					tmp = -12.5;
+				}
+				double z   = tmp + partZ;
 				probePoints.emplace_back(x, y, z);
 			}
 		}
@@ -7166,7 +7176,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				//         buildRobotMotion 构建的是从(0,0,0,0°,0°)到(x,y,z,B,C)的正向变换，
 				//         取逆即为从拍摄姿态还原到零位。
 				const Eigen::Matrix4d mRobotMotion = buildRobotMotion(
-				    x, y, z, -b, -c, m_bAxisCenter, m_cAxisCenter);
+				    -x, -y, -z, b, c, m_bAxisCenter, m_cAxisCenter);
 
 				// Step 3: 从机床零位平移到工件坐标系（模型原点即工件坐标系原点对应的机床坐标取反）
 				Eigen::Matrix4d mMoveToPartZero = Eigen::Matrix4d::Identity();
@@ -7175,7 +7185,7 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				mMoveToPartZero(2, 3) = -ZeroZ;
 
 				// 最终变换：工件坐标系 = mMoveToPartZero * mRobotMotion * handEye
-				const Eigen::Matrix4d finalMatrix = mMoveToPartZero * mRobotMotion * m_cameraCalibrationMatrix;
+				const Eigen::Matrix4d finalMatrix = mMoveToPartZero * mRobotMotion.inverse() * m_cameraCalibrationMatrix;
 				if (!executeApplyTransformation(cloudName, ccGLMatrixd(finalMatrix.data()), false, &errorMessage))
 				{
 					QJsonObject result;
@@ -8581,7 +8591,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	ProbeFit6DOF_BC::G54Config measureG54;
 	measureG54.xyz   = Eigen::Vector3d(-52.945, -93.163, -34.18);
 	measureG54.B_deg = 0.0;
-	measureG54.C_deg = 359.917;
+	measureG54.C_deg = 0;
 
 
 
@@ -8687,7 +8697,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	}
 
 	ProbeFit6DOF_BC::Result probeResult;
-	if (!fitter.solve(probeResult))
+	if (!fitter.solveKabsch(probeResult))
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject result;

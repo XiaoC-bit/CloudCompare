@@ -240,6 +240,84 @@ bool ProbeFit6DOF_BC::solve(Result& result) const
 	return true;
 }
 
+
+bool ProbeFit6DOF_BC::solveKabsch(Result& result) const
+{
+	using namespace Eigen;
+	const int N = static_cast<int>(points_.size());
+	if (N < 3)
+		return false;
+
+	MatrixXd                nominal(N, 3), actual(N, 3);
+	std::vector<ProbePoint> pts = points_;
+
+	for (int i = 0; i < N; ++i)
+	{
+		nominal.row(i) = resetMeasureRotation(pts[i].nominal, pts[i].B_deg, pts[i].C_deg, g54_, B_center_machine_, C_center_machine_);
+		actual.row(i)  = resetMeasureRotation(pts[i].actual, pts[i].B_deg, pts[i].C_deg, g54_, B_center_machine_, C_center_machine_);
+	}
+
+	// 质心
+	Vector3d centP = nominal.colwise().mean();
+	Vector3d centQ = actual.colwise().mean();
+
+	// 去质心
+	MatrixXd Pc = nominal.rowwise() - centP.transpose();
+	MatrixXd Qc = actual.rowwise() - centQ.transpose();
+
+	// SVD
+	Matrix3d            H = Pc.transpose() * Qc;
+	JacobiSVD<Matrix3d> svd(H, ComputeFullU | ComputeFullV);
+	Matrix3d            U = svd.matrixU();
+	Matrix3d            V = svd.matrixV();
+
+	// 处理反射（det=-1的情况）
+	Matrix3d D = Matrix3d::Identity();
+	D(2, 2)    = (V * U.transpose()).determinant();
+
+	Matrix3d R = V * D * U.transpose();
+	Vector3d t = centQ - R * centP;
+
+	// 提取欧拉角 ZYX：C(Rz) B(Ry) A(Rx)
+	double angleC = atan2(R(1, 0), R(0, 0));
+	double angleB = atan2(-R(2, 0), sqrt(R(2, 1) * R(2, 1) + R(2, 2) * R(2, 2)));
+	double angleA = atan2(R(2, 1), R(2, 2));
+
+	// 残差（point-to-point 欧氏距离）
+	result.residuals.resize(N);
+	double sumSq  = 0.0;
+	double maxRes = 0.0;
+	int    maxIdx = 0;
+	for (int i = 0; i < N; ++i)
+	{
+		Vector3d err        = actual.row(i).transpose() - (R * nominal.row(i).transpose() + t);
+		result.residuals[i] = err.norm();
+		sumSq += result.residuals[i] * result.residuals[i];
+		if (result.residuals[i] > maxRes)
+		{
+			maxRes = result.residuals[i];
+			maxIdx = i;
+		}
+	}
+
+	result.R                = R;
+	result.t                = t;
+	result.centroid         = centP;
+	result.omega            = Vector3d(angleA, angleB, angleC); // 复用omega字段存欧拉角
+	result.rms              = sqrt(sumSq / N);
+	result.maxResidual      = maxRes;
+	result.maxResidualIndex = maxIdx;
+
+	// NG判断
+	/*double toDeg  = 180.0 / M_PI;
+	result.angleA = angleA * toDeg;
+	result.angleB = angleB * toDeg;
+	result.angleC = angleC * toDeg;
+	result.isNG   = (fabs(result.angleA) > toleranceA_deg_) || (fabs(result.angleB) > toleranceB_deg_);*/
+
+	return true;
+}
+
 // ─────────────────────────────────────────────
 // 补偿计算（分轴剥离火花机旋转中心）
 // ─────────────────────────────────────────────
