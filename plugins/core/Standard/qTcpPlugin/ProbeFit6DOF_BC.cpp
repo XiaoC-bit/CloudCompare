@@ -266,7 +266,8 @@ bool ProbeFit6DOF_BC::solveKabsch(Result& result) const
 	MatrixXd Qc = actual.rowwise() - centQ.transpose();
 
 	// SVD
-	Matrix3d            H = Pc.transpose() * Qc;
+	//Matrix3d            H = Pc.transpose() * Qc;
+	Matrix3d            H = Qc.transpose() * Pc; // actual → nominal
 	JacobiSVD<Matrix3d> svd(H, ComputeFullU | ComputeFullV);
 	Matrix3d            U = svd.matrixU();
 	Matrix3d            V = svd.matrixV();
@@ -276,7 +277,8 @@ bool ProbeFit6DOF_BC::solveKabsch(Result& result) const
 	D(2, 2)    = (V * U.transpose()).determinant();
 
 	Matrix3d R = V * D * U.transpose();
-	Vector3d t = centQ - R * centP;
+
+	Vector3d t = centP - R * centQ; // t使 R·actual + t ≈ nominal
 
 	// 提取欧拉角 ZYX：C(Rz) B(Ry) A(Rx)
 	double angleC = atan2(R(1, 0), R(0, 0));
@@ -290,7 +292,8 @@ bool ProbeFit6DOF_BC::solveKabsch(Result& result) const
 	int    maxIdx = 0;
 	for (int i = 0; i < N; ++i)
 	{
-		Vector3d err        = actual.row(i).transpose() - (R * nominal.row(i).transpose() + t);
+		Vector3d err = nominal.row(i).transpose() - (R * actual.row(i).transpose() + t);
+
 		result.residuals[i] = err.norm();
 		sumSq += result.residuals[i] * result.residuals[i];
 		if (result.residuals[i] > maxRes)
