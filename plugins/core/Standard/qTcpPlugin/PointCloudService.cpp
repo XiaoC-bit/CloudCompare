@@ -3635,19 +3635,15 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		saveCalibrationStatus();
 		return false;
 	}
-	//临时
-	if (0)
+	if (!startMachine(&errorMessage))
 	{
-		if (!startMachine(&errorMessage))
-		{
-			m_Status = MachineStatus::Idle;
-			QJsonObject obj;
-			obj["Result"]                                  = "NG";
-			obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
-			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			saveCalibrationStatus();
-			return false;
-		}
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"]                                  = "NG";
+		obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
 	}
 	
 
@@ -7452,17 +7448,15 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 			}
 
 			// 启动机床
-			if (0) {
-				if (!startMachine(&errorMessage))
-				{
-					QJsonObject result;
-					QJsonObject obj;
-					obj["Result"]           = "NG";
-					obj["Ret_Err"]          = QString("Failed to start machine: %1").arg(errorMessage);
-					result["InspectResult"] = obj;
-					savePartInspectResult(rfid, result);
-					return false;
-				}
+			if (!startMachine(&errorMessage))
+			{
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to start machine: %1").arg(errorMessage);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
 			}
 			
 
