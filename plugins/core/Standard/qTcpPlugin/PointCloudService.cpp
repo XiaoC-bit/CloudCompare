@@ -1698,7 +1698,7 @@ Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z
     // 合成：从右到左依次作用于工件点 —— 先 C 旋转，再 B 旋转，最后 XYZ 平移
     // T_XYZ * T_B * T_C: 对列向量点 p，变换顺序为 T_C -> T_B -> T_XYZ
     
-	return T_B * T_C  *T_XYZ;
+	return T_C*T_B * T_XYZ;
 }
 
 bool PointCloudService::executeApplyTransformation(const QString& objectName, const ccGLMatrixd& matrix, bool applyToGlobal, QString* errorMessage)
@@ -7161,28 +7161,21 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					m_Status = MachineStatus::Idle;
 					return false;
 				}
-				//Step 1 将点云还原到机床坐标系下。
-				Eigen::Matrix4d finalMatrix;
-				// Step 2 将点云平移回机床坐标系的原点
-				Eigen::Matrix4d mMoveToMachineZero;
-				mMoveToMachineZero << 1, 0, 0, x,
-				    0, 1, 0, y,
-				    0, 0, 1, z,
-				    0,
-				    0,
-				    0,
-				    1;
-				// Step 3 将点云还原到工件坐标系下
-				Eigen::Matrix4d mMoveToPartZero;
-				mMoveToPartZero << 1, 0, 0, -ZeroX,
-				    0, 1, 0, -ZeroY,
-				    0, 0, 1, -ZeroZ,
-				    0,
-				    0,
-				    0,
-				    1;
+				// Step 1: 手眼矩阵 —— 将点云从相机坐标系变换到机床坐标系（在当前姿态下）
+				// Step 2: 通过机床运动变换矩阵，将点云从当前机床姿态还原到B=0,C=0时的位置
+				//         buildRobotMotion 构建的是从(0,0,0,0°,0°)到(x,y,z,B,C)的正向变换，
+				//         取逆即为从拍摄姿态还原到零位。
+				const Eigen::Matrix4d mRobotMotion = buildRobotMotion(
+				    x, y, z, -b, -c, m_bAxisCenter, m_cAxisCenter);
 
-				finalMatrix = mMoveToPartZero * mMoveToMachineZero * m_cameraCalibrationMatrix;
+				// Step 3: 从机床零位平移到工件坐标系（模型原点即工件坐标系原点对应的机床坐标取反）
+				Eigen::Matrix4d mMoveToPartZero = Eigen::Matrix4d::Identity();
+				mMoveToPartZero(0, 3) = -ZeroX;
+				mMoveToPartZero(1, 3) = -ZeroY;
+				mMoveToPartZero(2, 3) = -ZeroZ;
+
+				// 最终变换：工件坐标系 = mMoveToPartZero * mRobotMotion * handEye
+				const Eigen::Matrix4d finalMatrix = mMoveToPartZero * mRobotMotion * m_cameraCalibrationMatrix;
 				if (!executeApplyTransformation(cloudName, ccGLMatrixd(finalMatrix.data()), false, &errorMessage))
 				{
 					QJsonObject result;
