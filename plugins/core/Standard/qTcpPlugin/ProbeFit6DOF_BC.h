@@ -74,6 +74,144 @@ class ProbeFit6DOF_BC
 	};
 
 	// ─────────────────────────────────────────
+	// 电极管轴线结构（用于双管电极计算）
+	// ─────────────────────────────────────────
+
+	/**
+	 * 管轴线：由两点定义的空间直线
+	 *   origin  — 轴线上靠近工件端的点（测量点之一）
+	 *   direction — 单位方向向量（从 origin 指向另一端）
+	 *   midpoint  — 两测量点的中点
+	 */
+	struct TubeAxis
+	{
+		Eigen::Vector3d origin;    // 轴线起点（端点 A）
+		Eigen::Vector3d endpoint;  // 轴线终点（端点 B）
+		Eigen::Vector3d direction; // 单位方向向量 (B-A).normalized()
+		Eigen::Vector3d midpoint;  // (A+B)/2
+	};
+
+	/**
+	 * 双管电极测量结果 & 补偿量
+	 *
+	 * 坐标系约定（与调用方一致）：
+	 *   X — 机床左右（或工件宽度方向）
+	 *   Y — 两管间距方向
+	 *   Z — 电极轴线主方向（进给方向）
+	 *
+	 * 补偿量定义：
+	 *   deltaC  — 绕 Z 轴的旋转偏差 [deg]，正值 = 需顺时针补偿
+	 *   deltaY  — 两管中点连线在 Y 方向的平移偏差 [mm]
+	 *   deltaZ  — 两管中点在 Z 方向的平移偏差 [mm]
+	 */
+	struct ElectrodeResult
+	{
+		TubeAxis tube1Actual;   // 管1 实测轴线
+		TubeAxis tube2Actual;   // 管2 实测轴线
+
+		TubeAxis tube1Nominal;  // 管1 理论轴线
+		TubeAxis tube2Nominal;  // 管2 理论轴线
+
+		double parallelAngleDeg; // 两管实测轴线夹角 [deg]（理想为 0）
+
+		double actualSpacing;    // 实测中心间距 [mm]（两管中点连线长度在 XY 平面投影）
+		double spacingError;     // 间距误差 = actualSpacing - nominalSpacing [mm]
+
+		double deltaC;           // C 轴旋转补偿量 [deg]
+		double deltaY;           // Y 方向平移补偿量 [mm]
+		double deltaZ;           // Z 方向平移补偿量 [mm]
+
+		bool parallelOK;         // 平行度是否在公差内
+		bool spacingOK;          // 间距是否在公差内
+	};
+
+	// ─────────────────────────────────────────
+	// 双管电极补偿计算
+	// ─────────────────────────────────────────
+
+	/**
+	 * 从一组散点拟合空间直线轴线（主成分方向，PCA/SVD）
+	 *
+	 * 输入：任意数量的空间点（至少 2 个），通常为每段 8 个测量点
+	 *
+	 * 输出：TubeAxis
+	 *   direction — 点云主方向（单位向量，SVD 最大奇异值对应列）
+	 *   midpoint  — 点云质心
+	 *   origin    — 质心沿 -direction 方向延伸到点云范围端点
+	 *   endpoint  — 质心沿 +direction 方向延伸到点云范围端点
+	 *
+	 * 算法：对去质心后的点矩阵做 SVD，取第一右奇异向量作为轴线方向
+	 */
+	static TubeAxis fitTubeAxis(const std::vector<Eigen::Vector3d>& points);
+
+	/**
+	 * 顶层接口：直接输入 4 × N 组测量点（实测 + 理论），一次计算电极补偿量
+	 *
+	 * 数据组织（每根管各有两段，每段 N 个点，N 通常为 8）：
+	 *   tube1_actual_seg1   — 管1 第1段实测点（靠近工件端，N 个点）
+	 *   tube1_actual_seg2   — 管1 第2段实测点（远离工件端，N 个点）
+	 *   tube2_actual_seg1   — 管2 第1段实测点
+	 *   tube2_actual_seg2   — 管2 第2段实测点
+	 *   tube1_nominal_seg1  — 管1 第1段理论点
+	 *   tube1_nominal_seg2  — 管1 第2段理论点
+	 *   tube2_nominal_seg1  — 管2 第1段理论点
+	 *   tube2_nominal_seg2  — 管2 第2段理论点
+	 *
+	 * 内部步骤：
+	 *   1. 对每段点云调用 fitTubeAxis()，得到各段轴线
+	 *   2. 将同一管的两段轴线合并：方向取两段方向的平均（重新 SVD 或平均后归一化），
+	 *      origin/endpoint 取两段端点在主方向上的极值
+	 *   3. 调用 computeElectrodeCompensation() 得到最终结果
+	 */
+	static ElectrodeResult computeElectrodeFromPoints(
+	    const std::vector<Eigen::Vector3d>& tube1_actual_seg1,
+	    const std::vector<Eigen::Vector3d>& tube1_actual_seg2,
+	    const std::vector<Eigen::Vector3d>& tube2_actual_seg1,
+	    const std::vector<Eigen::Vector3d>& tube2_actual_seg2,
+	    const std::vector<Eigen::Vector3d>& tube1_nominal_seg1,
+	    const std::vector<Eigen::Vector3d>& tube1_nominal_seg2,
+	    const std::vector<Eigen::Vector3d>& tube2_nominal_seg1,
+	    const std::vector<Eigen::Vector3d>& tube2_nominal_seg2,
+	    double                              nominalSpacing,
+	    double                              parallelTol_deg = 0.5,
+	    double                              spacingTol_mm   = 0.05);
+
+	/**
+	 * 由两根管的实测/理论端点计算电极补偿量
+	 *
+	 * 输入：
+	 *   tube1A/B_actual   — 管1 两端的实测点（G54 坐标系，已完成 BC 还原）
+	 *   tube2A/B_actual   — 管2 两端的实测点
+	 *   tube1A/B_nominal  — 管1 两端的理论点
+	 *   tube2A/B_nominal  — 管2 两端的理论点
+	 *   nominalSpacing    — 两管理论中心间距 [mm]
+	 *   parallelTol_deg   — 平行度公差 [deg]
+	 *   spacingTol_mm     — 间距公差 [mm]
+	 *
+	 * 输出：ElectrodeResult（见结构体说明）
+	 *
+	 * 算法：
+	 *   1. 由端点构造各管轴线（方向 & 中点）
+	 *   2. 平行度：两实测轴线方向向量夹角
+	 *   3. 间距：两管中点连线在 XY 平面内的投影长度
+	 *   4. deltaC：两管中点连线方向与理论连线方向的夹角（绕 Z 轴）
+	 *   5. deltaY：两管中点平均值在 Y 方向的偏差
+	 *   6. deltaZ：两管中点平均值在 Z 方向的偏差
+	 */
+	static ElectrodeResult computeElectrodeCompensation(
+	    const Eigen::Vector3d& tube1A_actual,
+	    const Eigen::Vector3d& tube1B_actual,
+	    const Eigen::Vector3d& tube2A_actual,
+	    const Eigen::Vector3d& tube2B_actual,
+	    const Eigen::Vector3d& tube1A_nominal,
+	    const Eigen::Vector3d& tube1B_nominal,
+	    const Eigen::Vector3d& tube2A_nominal,
+	    const Eigen::Vector3d& tube2B_nominal,
+	    double                 nominalSpacing,
+	    double                 parallelTol_deg = 0.5,
+	    double                 spacingTol_mm   = 0.05);
+
+	// ─────────────────────────────────────────
 	// 构造
 	// ─────────────────────────────────────────
 

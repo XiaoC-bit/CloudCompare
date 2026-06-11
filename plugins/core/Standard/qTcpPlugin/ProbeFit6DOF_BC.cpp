@@ -322,6 +322,221 @@ bool ProbeFit6DOF_BC::solveKabsch(Result& result) const
 }
 
 // ─────────────────────────────────────────────
+// 双管电极补偿计算
+// ─────────────────────────────────────────────
+
+/**
+ * fitTubeAxis — 从 N 个点（N≥2）拟合空间直线轴线
+ *
+ * 算法：PCA / SVD
+ *   1. 计算点云质心 centroid
+ *   2. 对去质心矩阵做 JacobiSVD，第一右奇异向量即主方向 dir
+ *   3. 将每个点投影到轴线（标量参数 t = (p-c)·dir），取 min/max
+ *   4. origin = c + t_min * dir，endpoint = c + t_max * dir
+ */
+ProbeFit6DOF_BC::TubeAxis
+ProbeFit6DOF_BC::fitTubeAxis(const std::vector<Eigen::Vector3d>& pts)
+{
+    using namespace Eigen;
+
+    const int N = static_cast<int>(pts.size());
+
+    // 1. 质心
+    Vector3d centroid = Vector3d::Zero();
+    for (const auto& p : pts)
+        centroid += p;
+    centroid /= N;
+
+    // 2. 去质心矩阵 (N×3)
+    MatrixXd A(N, 3);
+    for (int i = 0; i < N; ++i)
+        A.row(i) = (pts[i] - centroid).transpose();
+
+    // 3. SVD — 第一列右奇异向量 = 主方向
+    JacobiSVD<MatrixXd> svd(A, ComputeThinV);
+    Vector3d            dir = svd.matrixV().col(0).normalized();
+
+    // 4. 投影区间
+    double tMin = std::numeric_limits<double>::max();
+    double tMax = -std::numeric_limits<double>::max();
+    for (const auto& p : pts)
+    {
+        double t = (p - centroid).dot(dir);
+        if (t < tMin) tMin = t;
+        if (t > tMax) tMax = t;
+    }
+
+    TubeAxis ax;
+    ax.midpoint  = centroid;
+    ax.direction = dir;
+    ax.origin    = centroid + tMin * dir;
+    ax.endpoint  = centroid + tMax * dir;
+    return ax;
+}
+
+/**
+ * mergeTubeAxes — 将同一根管的两段轴线（已各自拟合好）合并为一条整体轴线
+ *
+ * 策略：
+ *   1. 合并两段所有点（用 origin/endpoint/midpoint 近似代表各段极值）
+ *   2. 对 6 个代表点重新调用 fitTubeAxis
+ *
+ * 这里直接把两段的 origin、midpoint、endpoint 拼成 6 个点再 fitTubeAxis，
+ * 等效于对整管做一次 PCA。
+ */
+static ProbeFit6DOF_BC::TubeAxis mergeTubeAxes(const ProbeFit6DOF_BC::TubeAxis& seg1,
+                                                const ProbeFit6DOF_BC::TubeAxis& seg2)
+{
+    std::vector<Eigen::Vector3d> pts = {
+        seg1.origin, seg1.midpoint, seg1.endpoint,
+        seg2.origin, seg2.midpoint, seg2.endpoint
+    };
+    return ProbeFit6DOF_BC::fitTubeAxis(pts);
+}
+
+/**
+ * computeElectrodeFromPoints — 顶层接口
+ *
+ * 每根管提供两段点云（每段通常 8 点），共 4 × N_seg 个实测点 + 同样数量理论点。
+ *
+ * 步骤：
+ *   1. 对 8 段点云分别调用 fitTubeAxis()
+ *   2. 对同一管的两段轴线调用 mergeTubeAxes()，得到 4 条整管轴线
+ *   3. 调用 computeElectrodeCompensation()
+ */
+ProbeFit6DOF_BC::ElectrodeResult ProbeFit6DOF_BC::computeElectrodeFromPoints(
+    const std::vector<Eigen::Vector3d>& tube1_actual_seg1,
+    const std::vector<Eigen::Vector3d>& tube1_actual_seg2,
+    const std::vector<Eigen::Vector3d>& tube2_actual_seg1,
+    const std::vector<Eigen::Vector3d>& tube2_actual_seg2,
+    const std::vector<Eigen::Vector3d>& tube1_nominal_seg1,
+    const std::vector<Eigen::Vector3d>& tube1_nominal_seg2,
+    const std::vector<Eigen::Vector3d>& tube2_nominal_seg1,
+    const std::vector<Eigen::Vector3d>& tube2_nominal_seg2,
+    double                              nominalSpacing,
+    double                              parallelTol_deg,
+    double                              spacingTol_mm)
+{
+    // ── 1. 每段拟合轴线 ──────────────────────────────────────────────────────
+    TubeAxis t1a_s1 = fitTubeAxis(tube1_actual_seg1);
+    TubeAxis t1a_s2 = fitTubeAxis(tube1_actual_seg2);
+    TubeAxis t2a_s1 = fitTubeAxis(tube2_actual_seg1);
+    TubeAxis t2a_s2 = fitTubeAxis(tube2_actual_seg2);
+
+    TubeAxis t1n_s1 = fitTubeAxis(tube1_nominal_seg1);
+    TubeAxis t1n_s2 = fitTubeAxis(tube1_nominal_seg2);
+    TubeAxis t2n_s1 = fitTubeAxis(tube2_nominal_seg1);
+    TubeAxis t2n_s2 = fitTubeAxis(tube2_nominal_seg2);
+
+    // ── 2. 合并两段为整管轴线 ────────────────────────────────────────────────
+    TubeAxis tube1Actual  = mergeTubeAxes(t1a_s1, t1a_s2);
+    TubeAxis tube2Actual  = mergeTubeAxes(t2a_s1, t2a_s2);
+    TubeAxis tube1Nominal = mergeTubeAxes(t1n_s1, t1n_s2);
+    TubeAxis tube2Nominal = mergeTubeAxes(t2n_s1, t2n_s2);
+
+    // ── 3. 调用已有接口计算补偿量 ────────────────────────────────────────────
+    return computeElectrodeCompensation(
+        tube1Actual.origin,   tube1Actual.endpoint,
+        tube2Actual.origin,   tube2Actual.endpoint,
+        tube1Nominal.origin,  tube1Nominal.endpoint,
+        tube2Nominal.origin,  tube2Nominal.endpoint,
+        nominalSpacing,
+        parallelTol_deg,
+        spacingTol_mm);
+}
+
+/**
+ * computeElectrodeCompensation
+ *
+ * 算法说明：
+ *   1. 由两端点构造各管轴线（方向向量 & 中点）
+ *   2. 平行度 parallelAngleDeg：两实测轴线方向向量的夹角（acos of dot product）
+ *   3. 实测间距 actualSpacing：两管中点连线在 XY 平面内的投影长度
+ *   4. deltaC：两管实测中点连线方向与理论中点连线方向在 XY 平面内的夹角（绕 Z 轴）
+ *      公式：deltaC = atan2(id × in, id · in)，其中
+ *            id = (actualMid2 - actualMid1).normalized() 在 XY 平面的投影
+ *            in = (nominalMid2 - nominalMid1).normalized() 在 XY 平面的投影
+ *   5. deltaY：两管实测中点均值 与 理论中点均值 的 Y 方向偏差
+ *      公式：deltaY = actualMidAvg.y() - nominalMidAvg.y()
+ *   6. deltaZ：两管实测中点均值 与 理论中点均值 的 Z 方向偏差
+ *      公式：deltaZ = actualMidAvg.z() - nominalMidAvg.z()
+ */
+ProbeFit6DOF_BC::ElectrodeResult ProbeFit6DOF_BC::computeElectrodeCompensation(
+    const Eigen::Vector3d& tube1A_actual,
+    const Eigen::Vector3d& tube1B_actual,
+    const Eigen::Vector3d& tube2A_actual,
+    const Eigen::Vector3d& tube2B_actual,
+    const Eigen::Vector3d& tube1A_nominal,
+    const Eigen::Vector3d& tube1B_nominal,
+    const Eigen::Vector3d& tube2A_nominal,
+    const Eigen::Vector3d& tube2B_nominal,
+    double                 nominalSpacing,
+    double                 parallelTol_deg,
+    double                 spacingTol_mm)
+{
+    using namespace Eigen;
+
+    ElectrodeResult res;
+
+    // ── 1. 构造轴线 ──────────────────────────────────────────────────────────
+
+    auto makeAxis = [](const Vector3d& A, const Vector3d& B) -> TubeAxis {
+        TubeAxis ax;
+        ax.origin    = A;
+        ax.endpoint  = B;
+        ax.direction = (B - A).normalized();
+        ax.midpoint  = 0.5 * (A + B);
+        return ax;
+    };
+
+    res.tube1Actual  = makeAxis(tube1A_actual,  tube1B_actual);
+    res.tube2Actual  = makeAxis(tube2A_actual,  tube2B_actual);
+    res.tube1Nominal = makeAxis(tube1A_nominal, tube1B_nominal);
+    res.tube2Nominal = makeAxis(tube2A_nominal, tube2B_nominal);
+
+    // ── 2. 平行度：两实测轴线夹角 ────────────────────────────────────────────
+
+    double cosAngle       = std::clamp(std::abs(res.tube1Actual.direction.dot(res.tube2Actual.direction)), 0.0, 1.0);
+    res.parallelAngleDeg  = rad2deg(std::acos(cosAngle));
+    res.parallelOK        = (res.parallelAngleDeg <= parallelTol_deg);
+
+    // ── 3. 实测间距（XY 平面投影）────────────────────────────────────────────
+
+    Vector3d midDiff_actual = res.tube2Actual.midpoint - res.tube1Actual.midpoint;
+    // XY 平面投影长度
+    res.actualSpacing = Vector2d(midDiff_actual.x(), midDiff_actual.y()).norm();
+    res.spacingError  = res.actualSpacing - nominalSpacing;
+    res.spacingOK     = (std::abs(res.spacingError) <= spacingTol_mm);
+
+    // ── 4. deltaC：绕 Z 轴旋转偏差 ──────────────────────────────────────────
+    //   id = 实测中点连线在 XY 平面的单位向量
+    //   in = 理论中点连线在 XY 平面的单位向量
+    //   deltaC = signed angle from in to id（右手 Z+ 为正）
+
+    Vector3d midDiff_nominal = res.tube2Nominal.midpoint - res.tube1Nominal.midpoint;
+
+    Vector2d id2(midDiff_actual.x(),  midDiff_actual.y());
+    Vector2d in2(midDiff_nominal.x(), midDiff_nominal.y());
+
+    // 叉积的 z 分量（2D）= id2.x()*in2.y() - id2.y()*in2.x()
+    // 点积
+    double cross2d = id2.x() * in2.y() - id2.y() * in2.x();
+    double dot2d   = id2.dot(in2);
+    // deltaC: 需要把 id 转回到 in 的方向，补偿量 = -angle(id, in)
+    res.deltaC = rad2deg(std::atan2(-cross2d, dot2d));
+
+    // ── 5. deltaY / deltaZ：中点均值的平移偏差 ───────────────────────────────
+
+    Vector3d actualMidAvg  = 0.5 * (res.tube1Actual.midpoint  + res.tube2Actual.midpoint);
+    Vector3d nominalMidAvg = 0.5 * (res.tube1Nominal.midpoint + res.tube2Nominal.midpoint);
+
+    res.deltaY = actualMidAvg.y() - nominalMidAvg.y();
+    res.deltaZ = actualMidAvg.z() - nominalMidAvg.z();
+
+    return res;
+}
+
+// ─────────────────────────────────────────────
 // 补偿计算（分轴剥离火花机旋转中心）
 // ─────────────────────────────────────────────
 

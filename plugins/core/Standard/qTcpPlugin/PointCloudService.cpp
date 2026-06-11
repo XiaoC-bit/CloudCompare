@@ -3296,6 +3296,20 @@ bool PointCloudService::acquirePcdInternal(const QJsonObject& params,
 		return false;
 	}
 
+	if (params.contains("cameraProgram"))
+	{
+		int programNo = params.value("cameraProgram").toInt();
+		
+		LONG lRc = LJS8IF_ChangeActiveProgram((LONG)cfg.deviceId, (BYTE)programNo);
+		if (errCode != LJS8IF_RC_OK)
+		{
+			LJS8IF_Finalize();
+			sendError(socket, QString("Failed to change active program (err=%1)").arg(lRc), idCode);
+			return false;
+		}
+	}
+
+
 	if (!useAsync)
 	{
 		errCode = LJS8_ACQ_Acquire(cfg.deviceId, pwHeightImage, pbyLuminanceImage, &setParam, &getParam);
@@ -3592,7 +3606,7 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	const QString templateContent = QTextStream(&templateNc).readAll();
 	templateNc.close();
 
-	Eigen::Vector3d sphereCenter_M(10, 10, 10);
+	Eigen::Vector3d sphereCenter_M(-113.059, -86.758, -57.803-12.5);
 	double sphereRadius = 0.0;
 
 	QFile probeNc(probeBallInspectFile);
@@ -3635,17 +3649,20 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		saveCalibrationStatus();
 		return false;
 	}
-	if (!startMachine(&errorMessage))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["Result"]                                  = "NG";
-		obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
-		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		saveCalibrationStatus();
-		return false;
-	}
-	
+
+	//临时
+	if (0) {
+		if (!startMachine(&errorMessage))
+		{
+			m_Status = MachineStatus::Idle;
+			QJsonObject obj;
+			obj["Result"]                                  = "NG";
+			obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
+			m_cameraCalibrationResult["CalibrationResult"] = obj;
+			saveCalibrationStatus();
+			return false;
+		}
+	}	
 
 	if (!waitForMachineIdle(-1, &errorMessage))
 	{
@@ -3856,6 +3873,7 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 			QJsonObject   acquireParams;
 			acquireParams["async"]      = true;
 			acquireParams["outputName"] = cloudName;
+			acquireParams["cameraProgram"] = 0;
 			if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr))
 			{
 				continue;

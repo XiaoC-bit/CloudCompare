@@ -488,6 +488,14 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 		return false;
 	}
 
+	LONG lRc = LJS8IF_ChangeActiveProgram((LONG)cfg.deviceId, (BYTE)0);
+	if (errCode != LJS8IF_RC_OK)
+	{
+		LJS8IF_Finalize();
+		return false;
+	}
+
+
 	errCode = LJS8_ACQ_StartAsync(cfg.deviceId, &setParam);
 	if (errCode == LJS8IF_RC_OK)
 	{
