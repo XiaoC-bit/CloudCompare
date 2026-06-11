@@ -4722,6 +4722,7 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				QJsonObject acquireParams;
 				acquireParams["async"]      = true;
 				acquireParams["outputName"] = cloudName;
+				acquireParams["cameraProgram"] = 1;
 				if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr))
 				{
 					QJsonObject result;
@@ -7174,7 +7175,8 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				cloudNames.append(cloudName);
 				QJsonObject acquireParams;
 				acquireParams["async"] = true;
-				acquireParams["outputName"] = cloudName;
+				acquireParams["outputName"]    = cloudName;
+				acquireParams["cameraProgram"] = 1;
 				if (!acquirePcdInternal(acquireParams, nullptr, QString(), nullptr)) {
 					QJsonObject result;
 					QJsonObject obj;

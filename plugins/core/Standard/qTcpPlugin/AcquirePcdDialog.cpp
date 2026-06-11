@@ -104,6 +104,39 @@ void AcquirePcdDialog::setupUI()
 
     mainLayout->addWidget(captureOptionGroup);
 
+    // 相机程序选择
+    QGroupBox* cameraProgramGroup = new QGroupBox("相机程序", this);
+    QHBoxLayout* cameraProgramLayout = new QHBoxLayout(cameraProgramGroup);
+    cameraProgramLayout->setSpacing(10);
+
+    QLabel* cameraProgramLabel = new QLabel("拍摄模式:", this);
+    m_cameraProgramCombo = new QComboBox(this);
+    m_cameraProgramCombo->addItem("高反光物体模式 (标准球)", QVariant(0));
+    m_cameraProgramCombo->addItem("低反光物体模式 (金属工件)", QVariant(1));
+    m_cameraProgramCombo->setToolTip(
+        "高反光物体模式：适用于标准球等反光较强的物体\n"
+        "低反光物体模式：适用于金属工件等反光较弱的物体"
+    );
+
+    QLabel* cameraProgramHint = new QLabel("<span style='color: #666; font-size: 12px;'>点击了解模式区别</span>", this);
+    cameraProgramHint->setToolTip(
+        "<strong>高反光物体模式 (程序0):</strong>\n"
+        "- 适用于：标准球、光滑表面物体\n"
+        "- 特点：曝光时间较短，减少反光过曝\n"
+        "- 适合拍摄高反射率材料\n\n"
+        "<strong>低反光物体模式 (程序1):</strong>\n"
+        "- 适用于：金属工件、电极\n"
+        "- 特点：曝光时间较长，增强细节\n"
+        "- 适合拍摄低反射率材料"
+    );
+
+    cameraProgramLayout->addWidget(cameraProgramLabel);
+    cameraProgramLayout->addWidget(m_cameraProgramCombo);
+    cameraProgramLayout->addWidget(cameraProgramHint);
+    cameraProgramLayout->addStretch();
+
+    mainLayout->addWidget(cameraProgramGroup);
+
     // 当前拍摄点位
     m_capturePositionGroup = new QGroupBox("当前拍摄点位", this);
     QGridLayout* captureLayout = new QGridLayout(m_capturePositionGroup);
@@ -488,8 +521,9 @@ bool AcquirePcdDialog::acquirePointCloud(const QString& outputName)
 		return false;
 	}
 
-	LONG lRc = LJS8IF_ChangeActiveProgram((LONG)cfg.deviceId, (BYTE)0);
-	if (errCode != LJS8IF_RC_OK)
+	BYTE cameraProgram = static_cast<BYTE>(m_cameraProgramCombo->currentData().toInt());
+	LONG lRc = LJS8IF_ChangeActiveProgram((LONG)cfg.deviceId, cameraProgram);
+	if (lRc != LJS8IF_RC_OK)
 	{
 		LJS8IF_Finalize();
 		return false;

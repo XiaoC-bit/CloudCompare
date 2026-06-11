@@ -9,6 +9,7 @@
 #include <QRadioButton>
 #include <QLineEdit>
 #include <QGroupBox>
+#include <QComboBox>
 
 class ccMainAppInterface;
 class PointCloudService;
@@ -75,4 +76,7 @@ private:
     QLabel* m_schematicLabel;
     QLabel* m_instructionLabel;
     QWidget* m_infoFrame;
+
+    // 相机程序选择
+    QComboBox* m_cameraProgramCombo;
 };

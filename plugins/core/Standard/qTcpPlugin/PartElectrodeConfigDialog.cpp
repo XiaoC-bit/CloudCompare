@@ -1479,6 +1479,15 @@ void PartElectrodeConfigDialog::onSelectInspectionProgram(int row)
     QString electrodeName = partData.electrodes[row].electrodeName;
     QString targetFilePath = targetDir + "/" + electrodeName + ".nc";
 
+    // 如果目标文件已存在，先删除
+    QFile targetFile(targetFilePath);
+    if (targetFile.exists()) {
+        if (!targetFile.remove()) {
+            showErrorMessage("无法替换已存在的文件: " + targetFile.errorString());
+            return;
+        }
+    }
+
     QFile sourceFile(filePath);
     if (!sourceFile.copy(targetFilePath)) {
         showErrorMessage("文件拷贝失败: " + sourceFile.errorString());
@@ -1521,6 +1530,15 @@ void PartElectrodeConfigDialog::onSelectProbeProgram(int row)
 
     QString electrodeName = partData.electrodes[row].electrodeName;
 	QString targetFilePath = targetDir + "/" + m_currentPartName + "_" + electrodeName + ".nc";
+
+    // 如果目标文件已存在，先删除
+    QFile targetFile(targetFilePath);
+    if (targetFile.exists()) {
+        if (!targetFile.remove()) {
+            showErrorMessage("无法替换已存在的文件: " + targetFile.errorString());
+            return;
+        }
+    }
 
     QFile sourceFile(filePath);
     if (!sourceFile.copy(targetFilePath)) {
