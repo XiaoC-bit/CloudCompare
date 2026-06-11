@@ -3650,19 +3650,16 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 		return false;
 	}
 
-	//临时
-	if (0) {
-		if (!startMachine(&errorMessage))
-		{
-			m_Status = MachineStatus::Idle;
-			QJsonObject obj;
-			obj["Result"]                                  = "NG";
-			obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
-			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			saveCalibrationStatus();
-			return false;
-		}
-	}	
+	if (!startMachine(&errorMessage))
+	{
+		m_Status = MachineStatus::Idle;
+		QJsonObject obj;
+		obj["Result"]                                  = "NG";
+		obj["Ret_Err"]                                 = QString("Failed to start machine for probe inspection: %1").arg(errorMessage);
+		m_cameraCalibrationResult["CalibrationResult"] = obj;
+		saveCalibrationStatus();
+		return false;
+	}
 
 	if (!waitForMachineIdle(-1, &errorMessage))
 	{
@@ -3706,82 +3703,26 @@ bool PointCloudService::executeCalibration(const QVector<QVector3D>& positions, 
 	QString     content = in.readAll();
 	resultFile.close();
 
-	std::vector<Eigen::Vector3d> probePoints;
-	
-	QStringList lines = content.split('\n', Qt::SkipEmptyParts);
-	if (lines.isEmpty())
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject obj;
-		obj["Result"]                                  = "NG";
-		obj["Ret_Err"]                                 = "Probe result file is empty";
-		m_cameraCalibrationResult["CalibrationResult"] = obj;
-		saveCalibrationStatus();
-		return false;
-	}
-
-	double partX = 0.0, partY = 0.0, partZ = 0.0;
-	QString lastLine = lines.last().trimmed();
 	QRegularExpression partRegex(R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))");
-	QRegularExpressionMatch partMatch = partRegex.match(lastLine);
-	if (partMatch.hasMatch())
-	{
-		partX = partMatch.captured(1).toDouble();
-		partY = partMatch.captured(2).toDouble();
-		partZ = partMatch.captured(3).toDouble();
-	}
-
-	for (int i = 0; i < lines.size() - 1; i += 4)
-	{
-		if (i + 3 < lines.size() - 1)
-		{
-			QString targetLine = lines[i + 3].trimmed();
-			QRegularExpressionMatch match = partRegex.match(targetLine);
-			if (match.hasMatch())
-			{
-				double x = match.captured(1).toDouble() + partX;
-				double y = match.captured(2).toDouble() + partY;
-				double tmp = match.captured(3).toDouble();
-				if (tmp < -10)
-				{
-					//标准球特殊处理
-					tmp = -12.5;
-				}
-				double z   = tmp + partZ;
-				probePoints.emplace_back(x, y, z);
-			}
-		}
-	}
-
-	if (probePoints.size() >= 4)
-	{
-		if (fitSphere(probePoints, sphereCenter_M, sphereRadius))
-		{
-			if (progressCallback)
-			{
-				progressCallback(0, positions.size(), QString("球心拟合完成: (%1, %2, %3), 半径: %4").arg(sphereCenter_M.x()).arg(sphereCenter_M.y()).arg(sphereCenter_M.z()).arg(sphereRadius));
-			}
-		}
-		else
-		{
-			m_Status = MachineStatus::Idle;
-			QJsonObject obj;
-			obj["Result"]                                  = "NG";
-			obj["Ret_Err"]                                 = "Failed to fit sphere from probe points";
-			m_cameraCalibrationResult["CalibrationResult"] = obj;
-			saveCalibrationStatus();
-			return false;
-		}
-	}
-	else
+	QRegularExpressionMatch partMatch = partRegex.match(content);
+	if (!partMatch.hasMatch())
 	{
 		m_Status = MachineStatus::Idle;
 		QJsonObject obj;
 		obj["Result"]                                  = "NG";
-		obj["Ret_Err"]                                 = QString("Insufficient probe points: %1 (need at least 4)").arg(probePoints.size());
+		obj["Ret_Err"]                                 = "Failed to parse probe result file";
 		m_cameraCalibrationResult["CalibrationResult"] = obj;
 		saveCalibrationStatus();
 		return false;
+	}
+
+	sphereCenter_M.x() = partMatch.captured(1).toDouble();
+	sphereCenter_M.y() = partMatch.captured(2).toDouble();
+	sphereCenter_M.z() = partMatch.captured(3).toDouble();
+
+	if (progressCallback)
+	{
+		progressCallback(0, positions.size(), QString("球心坐标: (%1, %2, %3)").arg(sphereCenter_M.x()).arg(sphereCenter_M.y()).arg(sphereCenter_M.z()));
 	}
 
 	for (int i = 0; i < positions.size(); ++i)
