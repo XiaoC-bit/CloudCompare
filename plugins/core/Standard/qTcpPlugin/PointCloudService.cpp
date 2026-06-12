@@ -4883,18 +4883,18 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 					matrixArray.append(rowArray);
 				}
 
-				QJsonObject holeIcpReuslt;
-				holeIcpReuslt["holdId"]    = holdId;
-				holeIcpReuslt["icpMatrix"] = matrixArray;
+				QJsonObject holeIcpResult;
+				holeIcpResult["holdId"]    = holdId;
+				holeIcpResult["icpMatrix"] = matrixArray;
 
 				// 存储电极放电位置信息
 				if (holePos.contains("electrodePos"))
 				{
 					QJsonObject electrodePos      = holePos["electrodePos"].toObject();
-					holeIcpReuslt["electrodePos"] = electrodePos;
+					holeIcpResult["electrodePos"] = electrodePos;
 				}
 
-				icpResults.push_back(holeIcpReuslt);
+				icpResults.push_back(holeIcpResult);
 			}
 		}
 		else if (inspectType == "probe")
@@ -5120,8 +5120,8 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				return;
 			}
 
-			QJsonObject holeIcpReuslt;
-			holeIcpReuslt["holdId"]    = holdId;
+			QJsonObject holeIcpResult;
+			holeIcpResult["holdId"]    = holdId;
 
 			// 构建 4x4 变换矩阵
 			Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
@@ -5139,27 +5139,27 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 				}
 				matrixArray.append(rowArray);
 			}
-			holeIcpReuslt["icpMatrix"] = matrixArray;
+			holeIcpResult["icpMatrix"] = matrixArray;
 
 			// 存储质心
 			QJsonArray centroidArray;
 			centroidArray.append(probeResult.centroid.x());
 			centroidArray.append(probeResult.centroid.y());
 			centroidArray.append(probeResult.centroid.z());
-			holeIcpReuslt["centroid"] = centroidArray;
+			holeIcpResult["centroid"] = centroidArray;
 
 			// 存储旋转向量
 			QJsonArray omegaArray;
 			omegaArray.append(probeResult.omega.x());
 			omegaArray.append(probeResult.omega.y());
 			omegaArray.append(probeResult.omega.z());
-			holeIcpReuslt["omega"] = omegaArray;
+			holeIcpResult["omega"] = omegaArray;
 
 			// 存储拟合精度指标
-			holeIcpReuslt["rms"]              = probeResult.rms;
-			holeIcpReuslt["maxResidual"]      = probeResult.maxResidual;
-			holeIcpReuslt["maxResidualIndex"] = probeResult.maxResidualIndex;
-			holeIcpReuslt["dof"]              = probeResult.dof;
+			holeIcpResult["rms"]              = probeResult.rms;
+			holeIcpResult["maxResidual"]      = probeResult.maxResidual;
+			holeIcpResult["maxResidualIndex"] = probeResult.maxResidualIndex;
+			holeIcpResult["dof"]              = probeResult.dof;
 
 			// 存储残差列表
 			QJsonArray residualsArray;
@@ -5167,16 +5167,16 @@ void PointCloudService::partInspectFuncMock(const QJsonObject& params)
 			{
 				residualsArray.append(residual);
 			}
-			holeIcpReuslt["residuals"] = residualsArray;
+			holeIcpResult["residuals"] = residualsArray;
 
 			// 存储电极放电位置信息
 			if (holePos.contains("electrodePos"))
 			{
 				QJsonObject electrodePos      = holePos["electrodePos"].toObject();
-				holeIcpReuslt["electrodePos"] = electrodePos;
+				holeIcpResult["electrodePos"] = electrodePos;
 			}
 
-			icpResults.push_back(holeIcpReuslt);
+			icpResults.push_back(holeIcpResult);
 		}
 	}
 
@@ -7332,17 +7332,17 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 					matrixArray.append(rowArray);
 				}
 
-				QJsonObject holeIcpReuslt;
-				holeIcpReuslt["holdId"] = holdId;
-				holeIcpReuslt["icpMatrix"] = matrixArray;
+				QJsonObject holeIcpResult;
+				holeIcpResult["holdId"] = holdId;
+				holeIcpResult["icpMatrix"] = matrixArray;
 
 				// 存储电极放电位置信息
 				if (holePos.contains("electrodePos")) {
 					QJsonObject electrodePos = holePos["electrodePos"].toObject();
-					holeIcpReuslt["electrodePos"] = electrodePos;
+					holeIcpResult["electrodePos"] = electrodePos;
 				}
 
-				icpResults.push_back(holeIcpReuslt);
+				icpResults.push_back(holeIcpResult);
 			}
 		}
 		else if (inspectType == "probe")
@@ -7451,207 +7451,351 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				return false;
 			}
 
-
-			ProbeFit6DOF_BC::G54Config measureG54;
-			measureG54.xyz   = Eigen::Vector3d(
-				zeroPositions.value("X").toDouble(),
-			    zeroPositions.value("Y").toDouble(),
-			    zeroPositions.value("Z").toDouble());
-			measureG54.B_deg = 0.0;
-			measureG54.C_deg = 0.0;
-
-
-			// ── 拟合器 ──
-			ProbeFit6DOF_BC fitter(measureG54, m_bAxisCenter, m_cAxisCenter);
-
-			// 解析文件
-			QFile file(localFile);
-			if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+			
+			QFile resultFile(localFile);
+			if (!resultFile.open(QIODevice::ReadOnly | QIODevice::Text))
 			{
 				m_Status = MachineStatus::Idle;
 				QJsonObject result;
 				QJsonObject obj;
 				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
+				obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(resultFile.errorString());
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
 				return false;
 			}
 
-			// ── 解析数据并添加测点 ──
-			QTextStream in(&file);
+			QTextStream in(&resultFile);
 			QString     content = in.readAll();
-			file.close();
+			resultFile.close();
 
-			// 正则：匹配一组数据（支持任意空白分隔）
-			// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
-			QRegularExpression regex(
-			    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
-			    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
-			    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
-			    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
-			);
-
-			QRegularExpressionMatchIterator it         = regex.globalMatch(content);
-			int                             pointCount = 0;
-
-			bool ok = false;
-			while (it.hasNext())
-			{
-				QRegularExpressionMatch match = it.next();
-
-				double B = match.captured(1).toDouble(&ok);
-				if (!ok)
-					break;
-				double C = match.captured(2).toDouble(&ok);
-				if (!ok)
-					break;
-
-				double I = match.captured(3).toDouble(&ok);
-				if (!ok)
-					break;
-				double J = match.captured(4).toDouble(&ok);
-				if (!ok)
-					break;
-				double K = match.captured(5).toDouble(&ok);
-				if (!ok)
-					break;
-
-				double theoX = match.captured(6).toDouble(&ok);
-				if (!ok)
-					break;
-				double theoY = match.captured(7).toDouble(&ok);
-				if (!ok)
-					break;
-				double theoZ = match.captured(8).toDouble(&ok);
-				if (!ok)
-					break;
-
-				double actualX = match.captured(9).toDouble(&ok);
-				if (!ok)
-					break;
-				double actualY = match.captured(10).toDouble(&ok);
-				if (!ok)
-					break;
-				double actualZ = match.captured(11).toDouble(&ok);
-				if (!ok)
-					break;
-
-				fitter.addPoint({theoX, theoY, theoZ},
-				                {actualX, actualY, actualZ},
-				                {I, J, K},
-				                B,
-				                C);
-				pointCount++;
-			}
-
-			// 如果有任何解析失败，直接报异常
-			if (!ok)
+			QStringList lines = content.split('\n', Qt::SkipEmptyParts);
+			if (lines.isEmpty())
 			{
 				m_Status = MachineStatus::Idle;
 				QJsonObject result;
 				QJsonObject obj;
 				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
+				obj["Ret_Err"]          = "Inspection result file is empty";
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
 				return false;
 			}
 
-			ProbeFit6DOF_BC::Result probeResult;
-			if (!fitter.solve(probeResult))
+
+			QString       mergedCloudName = QString("Hole_%1").arg(i + 1);
+			ccPointCloud* cloud           = new ccPointCloud(mergedCloudName);
+			cloud->reserve(lines.size());
+
+			for (const QString& line : lines)
+			{
+				QString trimmedLine = line.trimmed();
+				if (trimmedLine.isEmpty())
+					continue;
+
+				QStringList coords = trimmedLine.split(',');
+				if (coords.size() >= 3)
+				{
+					bool   okX, okY, okZ;
+					double x = coords[0].trimmed().toDouble(&okX);
+					double y = coords[1].trimmed().toDouble(&okY);
+					double z = coords[2].trimmed().toDouble(&okZ);
+
+					if (okX && okY && okZ)
+					{
+						cloud->addPoint(CCVector3(x, y, z));
+					}
+				}
+			}
+
+			if (cloud->size() == 0)
+			{
+				delete cloud;
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = "No valid points found in inspection result file";
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
+			}
+
+			m_app->addToDB(cloud);
+			m_app->dispToConsole(QString("[TcpPlugin] Inspection point cloud created: %1 points").arg(cloud->size()));
+
+
+			QJsonObject icpParams;
+			icpParams["source"]         = mergedCloudName;
+			icpParams["target"]         = "Theoretical_Model";
+			icpParams["maxIterations"]  = 100;
+			icpParams["tolerance"]      = 0.001;
+			icpParams["minRMSDecrease"] = 1e-5;
+			icpParams["maxThreadCount"] = 14;
+
+			QString    errorMessage;
+			ccGLMatrix transMat;
+			double     finalRms = 1;
+			if (!icpInternal(icpParams, finalRms, &errorMessage, &transMat))
 			{
 				m_Status = MachineStatus::Idle;
 				QJsonObject result;
 				QJsonObject obj;
 				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+				obj["Ret_Err"]          = QString("Failed to perform ICP registration: %1").arg(errorMessage);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
 				return false;
 			}
 
-			if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
+			if (finalRms > MAX_RESIDUAL_THRESHOLD)
 			{
 				m_Status = MachineStatus::Idle;
 				QJsonObject result;
 				QJsonObject obj;
 				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (RMS: %1)").arg(probeResult.rms);
-				result["InspectResult"] = obj;
-				savePartInspectResult(rfid, result);
-				return false;
-			}
-			if (probeResult.maxResidual > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的残差阈值
-			{
-				m_Status = MachineStatus::Idle;
-				QJsonObject result;
-				QJsonObject obj;
-				obj["Result"]           = "NG";
-				obj["Ret_Err"]          = QString("Probe fitting has large residuals (Max Residual: %1)").arg(probeResult.maxResidual);
+				obj["Ret_Err"]          = QString("ICP registration result is not accurate enough (RMS: %1)").arg(finalRms);
 				result["InspectResult"] = obj;
 				savePartInspectResult(rfid, result);
 				return false;
 			}
 
-			QJsonObject holeIcpReuslt;
-			holeIcpReuslt["holdId"] = holdId;
-
-			// 构建 4x4 变换矩阵
-			Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
-			transformMatrix.block<3, 3>(0, 0) = probeResult.R;
-			// transformMatrix.block<3, 1>(0, 3) = probeResult.t;  // 原来：t 在第4列
-			transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
-
-			// 存储变换矩阵
 			QJsonArray matrixArray;
 			for (int i = 0; i < 4; ++i)
 			{
 				QJsonArray rowArray;
 				for (int j = 0; j < 4; ++j)
 				{
-					rowArray.append(transformMatrix(i, j));
+					rowArray.append(transMat.data()[i * 4 + j]);
 				}
 				matrixArray.append(rowArray);
 			}
-			holeIcpReuslt["icpMatrix"] = matrixArray;
 
-			// 存储质心
-			QJsonArray centroidArray;
-			centroidArray.append(probeResult.centroid.x());
-			centroidArray.append(probeResult.centroid.y());
-			centroidArray.append(probeResult.centroid.z());
-			holeIcpReuslt["centroid"] = centroidArray;
-
-			// 存储旋转向量
-			QJsonArray omegaArray;
-			omegaArray.append(probeResult.omega.x());
-			omegaArray.append(probeResult.omega.y());
-			omegaArray.append(probeResult.omega.z());
-			holeIcpReuslt["omega"] = omegaArray;
-
-			// 存储拟合精度指标
-			holeIcpReuslt["rms"]              = probeResult.rms;
-			holeIcpReuslt["maxResidual"]      = probeResult.maxResidual;
-			holeIcpReuslt["maxResidualIndex"] = probeResult.maxResidualIndex;
-			holeIcpReuslt["dof"]              = probeResult.dof;
-
-			// 存储残差列表
-			QJsonArray residualsArray;
-			for (double residual : probeResult.residuals)
-			{
-				residualsArray.append(residual);
-			}
-			holeIcpReuslt["residuals"] = residualsArray;
+			
+			QJsonObject holeIcpResult;
+			holeIcpResult["holdId"]    = holdId;
+			holeIcpResult["icpMatrix"] = matrixArray;
+			holeIcpResult["rms"]       = finalRms;
 
 			// 存储电极放电位置信息
 			if (holePos.contains("electrodePos"))
 			{
 				QJsonObject electrodePos      = holePos["electrodePos"].toObject();
-				holeIcpReuslt["electrodePos"] = electrodePos;
+				holeIcpResult["electrodePos"] = electrodePos;
 			}
 
-			icpResults.push_back(holeIcpReuslt);
+			icpResults.push_back(holeIcpResult);
+
+
+			/*QJsonObject holeIcpResult;
+			holeIcpResult["icpMatrix"] = matrixArray;
+			holeIcpResult["rms"]       = finalRms;
+
+			icpResults.push_back(holeIcpResult);*/
+
+
+			//原来使用 6BOF 算法，现在改成ICP
+			if (0) {
+				ProbeFit6DOF_BC::G54Config measureG54;
+				measureG54.xyz = Eigen::Vector3d(
+				    zeroPositions.value("X").toDouble(),
+				    zeroPositions.value("Y").toDouble(),
+				    zeroPositions.value("Z").toDouble());
+				measureG54.B_deg = 0.0;
+				measureG54.C_deg = 0.0;
+
+				// ── 拟合器 ──
+				ProbeFit6DOF_BC fitter(measureG54, m_bAxisCenter, m_cAxisCenter);
+
+				// 解析文件
+				QFile file(localFile);
+				if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+				{
+					m_Status = MachineStatus::Idle;
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return false;
+				}
+
+				// ── 解析数据并添加测点 ──
+				QTextStream in(&file);
+				QString     content = in.readAll();
+				file.close();
+
+				// 正则：匹配一组数据（支持任意空白分隔）
+				// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
+				QRegularExpression regex(
+				    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
+				    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
+				    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
+				    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
+				);
+
+				QRegularExpressionMatchIterator it         = regex.globalMatch(content);
+				int                             pointCount = 0;
+
+				bool ok = false;
+				while (it.hasNext())
+				{
+					QRegularExpressionMatch match = it.next();
+
+					double B = match.captured(1).toDouble(&ok);
+					if (!ok)
+						break;
+					double C = match.captured(2).toDouble(&ok);
+					if (!ok)
+						break;
+
+					double I = match.captured(3).toDouble(&ok);
+					if (!ok)
+						break;
+					double J = match.captured(4).toDouble(&ok);
+					if (!ok)
+						break;
+					double K = match.captured(5).toDouble(&ok);
+					if (!ok)
+						break;
+
+					double theoX = match.captured(6).toDouble(&ok);
+					if (!ok)
+						break;
+					double theoY = match.captured(7).toDouble(&ok);
+					if (!ok)
+						break;
+					double theoZ = match.captured(8).toDouble(&ok);
+					if (!ok)
+						break;
+
+					double actualX = match.captured(9).toDouble(&ok);
+					if (!ok)
+						break;
+					double actualY = match.captured(10).toDouble(&ok);
+					if (!ok)
+						break;
+					double actualZ = match.captured(11).toDouble(&ok);
+					if (!ok)
+						break;
+
+					fitter.addPoint({theoX, theoY, theoZ},
+					                {actualX, actualY, actualZ},
+					                {I, J, K},
+					                B,
+					                C);
+					pointCount++;
+				}
+
+				// 如果有任何解析失败，直接报异常
+				if (!ok)
+				{
+					m_Status = MachineStatus::Idle;
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return false;
+				}
+
+				ProbeFit6DOF_BC::Result probeResult;
+				if (!fitter.solve(probeResult))
+				{
+					m_Status = MachineStatus::Idle;
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return false;
+				}
+
+				if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
+				{
+					m_Status = MachineStatus::Idle;
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (RMS: %1)").arg(probeResult.rms);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return false;
+				}
+				if (probeResult.maxResidual > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的残差阈值
+				{
+					m_Status = MachineStatus::Idle;
+					QJsonObject result;
+					QJsonObject obj;
+					obj["Result"]           = "NG";
+					obj["Ret_Err"]          = QString("Probe fitting has large residuals (Max Residual: %1)").arg(probeResult.maxResidual);
+					result["InspectResult"] = obj;
+					savePartInspectResult(rfid, result);
+					return false;
+				}
+
+				QJsonObject holeIcpResult;
+				holeIcpResult["holdId"] = holdId;
+
+				// 构建 4x4 变换矩阵
+				Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
+				transformMatrix.block<3, 3>(0, 0) = probeResult.R;
+				// transformMatrix.block<3, 1>(0, 3) = probeResult.t;  // 原来：t 在第4列
+				transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
+
+				// 存储变换矩阵
+				QJsonArray matrixArray;
+				for (int i = 0; i < 4; ++i)
+				{
+					QJsonArray rowArray;
+					for (int j = 0; j < 4; ++j)
+					{
+						rowArray.append(transformMatrix(i, j));
+					}
+					matrixArray.append(rowArray);
+				}
+				holeIcpResult["icpMatrix"] = matrixArray;
+
+				// 存储质心
+				QJsonArray centroidArray;
+				centroidArray.append(probeResult.centroid.x());
+				centroidArray.append(probeResult.centroid.y());
+				centroidArray.append(probeResult.centroid.z());
+				holeIcpResult["centroid"] = centroidArray;
+
+				// 存储旋转向量
+				QJsonArray omegaArray;
+				omegaArray.append(probeResult.omega.x());
+				omegaArray.append(probeResult.omega.y());
+				omegaArray.append(probeResult.omega.z());
+				holeIcpResult["omega"] = omegaArray;
+
+				// 存储拟合精度指标
+				holeIcpResult["rms"]              = probeResult.rms;
+				holeIcpResult["maxResidual"]      = probeResult.maxResidual;
+				holeIcpResult["maxResidualIndex"] = probeResult.maxResidualIndex;
+				holeIcpResult["dof"]              = probeResult.dof;
+
+				// 存储残差列表
+				QJsonArray residualsArray;
+				for (double residual : probeResult.residuals)
+				{
+					residualsArray.append(residual);
+				}
+				holeIcpResult["residuals"] = residualsArray;
+
+				// 存储电极放电位置信息
+				if (holePos.contains("electrodePos"))
+				{
+					QJsonObject electrodePos      = holePos["electrodePos"].toObject();
+					holeIcpResult["electrodePos"] = electrodePos;
+				}
+
+				icpResults.push_back(holeIcpResult);
+			}
 		}
 	}
 
