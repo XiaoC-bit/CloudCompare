@@ -7485,27 +7485,84 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 
 			QString       mergedCloudName = QString("Hole_%1").arg(i + 1);
 			ccPointCloud* cloud           = new ccPointCloud(mergedCloudName);
-			cloud->reserve(lines.size());
+			cloud->reserve(lines.size()/4);
 
-			for (const QString& line : lines)
+
+			// 正则：匹配一组数据（支持任意空白分隔）
+			// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
+			QRegularExpression regex(
+			    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
+			    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
+			    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
+			    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
+			);
+
+			QRegularExpressionMatchIterator it         = regex.globalMatch(content);
+			int                             pointCount = 0;
+
+			bool ok = false;
+			while (it.hasNext())
 			{
-				QString trimmedLine = line.trimmed();
-				if (trimmedLine.isEmpty())
-					continue;
+				QRegularExpressionMatch match = it.next();
 
-				QStringList coords = trimmedLine.split(',');
-				if (coords.size() >= 3)
-				{
-					bool   okX, okY, okZ;
-					double x = coords[0].trimmed().toDouble(&okX);
-					double y = coords[1].trimmed().toDouble(&okY);
-					double z = coords[2].trimmed().toDouble(&okZ);
+				double B = match.captured(1).toDouble(&ok);
+				if (!ok)
+					break;
+				double C = match.captured(2).toDouble(&ok);
+				if (!ok)
+					break;
 
-					if (okX && okY && okZ)
-					{
-						cloud->addPoint(CCVector3(x, y, z));
-					}
-				}
+				double I = match.captured(3).toDouble(&ok);
+				if (!ok)
+					break;
+				double J = match.captured(4).toDouble(&ok);
+				if (!ok)
+					break;
+				double K = match.captured(5).toDouble(&ok);
+				if (!ok)
+					break;
+
+				double theoX = match.captured(6).toDouble(&ok);
+				if (!ok)
+					break;
+				double theoY = match.captured(7).toDouble(&ok);
+				if (!ok)
+					break;
+				double theoZ = match.captured(8).toDouble(&ok);
+				if (!ok)
+					break;
+
+				double actualX = match.captured(9).toDouble(&ok);
+				if (!ok)
+					break;
+				double actualY = match.captured(10).toDouble(&ok);
+				if (!ok)
+					break;
+				double actualZ = match.captured(11).toDouble(&ok);
+				if (!ok)
+					break;
+
+				/*fitter.addPoint({theoX, theoY, theoZ},
+				                {actualX, actualY, actualZ},
+				                {I, J, K},
+				                B,
+				                C);*/
+
+				cloud->addPoint(CCVector3(actualX, actualY, actualZ));
+
+				pointCount++;
+			}
+				// 如果有任何解析失败，直接报异常
+			if (!ok)
+			{
+				m_Status = MachineStatus::Idle;
+				QJsonObject result;
+				QJsonObject obj;
+				obj["Result"]           = "NG";
+				obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
+				result["InspectResult"] = obj;
+				savePartInspectResult(rfid, result);
+				return false;
 			}
 
 			if (cloud->size() == 0)
