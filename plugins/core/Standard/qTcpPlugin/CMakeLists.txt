@@ -59,6 +59,7 @@ if( PLUGIN_STANDARD_QTCP )
 		AcquirePcdDialog.cpp
 		SparkMachineProgramDialog.h
 		SparkMachineProgramDialog.cpp
+		ResFileParser.h
 	)
 
 	target_compile_features( ${PROJECT_NAME} PRIVATE cxx_std_17 )

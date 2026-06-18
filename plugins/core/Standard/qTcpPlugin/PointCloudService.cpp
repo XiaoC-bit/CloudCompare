@@ -43,6 +43,7 @@
 #include "LJS8_ACQ.h"
 #include "ccRegistrationTools.h"
 #include "ProbeFit6DOF_BC.h"
+#include "ResFileParser.h"
 
 
 #ifndef CC_ORIGINAL_CLOUD_INDEX_SF_NAME
@@ -8743,166 +8744,170 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	measureG54.C_deg = 0.0;*/
 
 
-	//临时
-	ProbeFit6DOF_BC::G54Config measureG54;
-	measureG54.xyz   = Eigen::Vector3d(-52.945, -93.163, -34.18);
-	measureG54.B_deg = 0.0;
-	measureG54.C_deg = 0;
-
-
-
-	// ── 拟合器 ──
-	ProbeFit6DOF_BC fitter(measureG54, m_bAxisCenter, m_cAxisCenter);
-
-	// 解析文件
-	QFile file(localFile);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+	ResFileParser parser;
+	if (!parser.load(localFile.toStdString()))
 	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = QString("Failed to open inspection result file: %1").arg(file.errorString());
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
+		std::cerr << "Failed to load file: ../R1.res\n";
+		return 1;
 	}
 
-	// ── 解析数据并添加测点 ──
-	QTextStream in(&file);
-	QString     content = in.readAll();
-	file.close();
+	std::cout << "\n=== Rectangular Axis Analysis ===\n";
 
-	// 正则：匹配一组数据（支持任意空白分隔）
-	// B值 C值\n I值 J值 K值\n X值 Y值 Z值\n X值 Y值 Z值
-	QRegularExpression regex(
-	    R"(B([-\d.]+)\s+C([-\d.]+)\s+)"              // B C
-	    R"(I([-\d.]+)\s+J([-\d.]+)\s+K([-\d.]+)\s+)" // I J K
-	    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+)\s+)" // 理论点
-	    R"(X([-\d.]+)\s+Y([-\d.]+)\s+Z([-\d.]+))"    // 实际点
-	);
+	const double kParallelTol = 0.5; // Parallelism threshold: angle < 0.5 deg => parallel
+	const double kDistTol     = 0.1; // Distance tolerance: |actual - theory| < 0.1 mm => pass
 
-	QRegularExpressionMatchIterator it         = regex.globalMatch(content);
-	int                             pointCount = 0;
-
-	bool ok = false;
-	while (it.hasNext())
+	// 3D line-to-line distance (shortest distance between two skew lines)
+	// Each line defined by a point p and unit direction d
+	auto lineToLineDist = [](const Eigen::Vector3d& p1, const Eigen::Vector3d& d1, const Eigen::Vector3d& p2, const Eigen::Vector3d& d2) -> double
 	{
-		QRegularExpressionMatch match = it.next();
+		Eigen::Vector3d n     = d1.cross(d2);
+		double          nNorm = n.norm();
+		if (nNorm < 1e-9)
+			return d1.cross(p2 - p1).norm(); // parallel lines: point-to-line distance
+		return std::abs(n.dot(p2 - p1)) / nNorm;
+	};
 
-		double B = match.captured(1).toDouble(&ok);
-		if (!ok)
-			break;
-		double C = match.captured(2).toDouble(&ok);
-		if (!ok)
-			break;
+	auto axisCenter = [](const RectAxisResult& ax) -> Eigen::Vector3d
+	{
+		return (ax.center_lo + ax.center_hi) * 0.5;
+	};
 
-		double I = match.captured(3).toDouble(&ok);
-		if (!ok)
-			break;
-		double J = match.captured(4).toDouble(&ok);
-		if (!ok)
-			break;
-		double K = match.captured(5).toDouble(&ok);
-		if (!ok)
-			break;
+	// Axis 1: pts 0-15  (startLo=0, startHi=8)
+	RectAxisResult ax1    = parser.fitRectAxis(0, 8, true);
+	RectAxisResult ax1_th = parser.fitRectAxis(0, 8, false);
+	// Axis 2: pts 16-31 (startLo=16, startHi=24)
+	RectAxisResult ax2    = parser.fitRectAxis(16, 24, true);
+	RectAxisResult ax2_th = parser.fitRectAxis(16, 24, false);
 
-		double theoX = match.captured(6).toDouble(&ok);
-		if (!ok)
-			break;
-		double theoY = match.captured(7).toDouble(&ok);
-		if (!ok)
-			break;
-		double theoZ = match.captured(8).toDouble(&ok);
-		if (!ok)
-			break;
-
-		double actualX = match.captured(9).toDouble(&ok);
-		if (!ok)
-			break;
-		double actualY = match.captured(10).toDouble(&ok);
-		if (!ok)
-			break;
-		double actualZ = match.captured(11).toDouble(&ok);
-		if (!ok)
-			break;
-
-		fitter.addPoint({theoX, theoY, theoZ},
-		                {actualX, actualY, actualZ},
-		                {I, J, K},
-		                B,
-		                C);
-		pointCount++;
+	if (1)
+	{
+		// --- Print basic axis information ---
+		auto printAxis = [](const char* name, const RectAxisResult& ax)
+		{
+			std::cout << "  " << name << " low-Z center:  ("
+			          << ax.center_lo.x() << ", " << ax.center_lo.y() << ", " << ax.center_lo.z() << ")\n";
+			std::cout << "  " << name << " high-Z center: ("
+			          << ax.center_hi.x() << ", " << ax.center_hi.y() << ", " << ax.center_hi.z() << ")\n";
+			std::cout << "  " << name << " direction:     ("
+			          << ax.direction.x() << ", " << ax.direction.y() << ", " << ax.direction.z() << ")\n";
+		};
+		printAxis("actual axis1", ax1);
+		printAxis("actual axis2", ax2);
+		printAxis("theory axis1", ax1_th);
+		printAxis("theory axis2", ax2_th);
 	}
 
-	// 如果有任何解析失败，直接报异常
-	if (!ok)
+	// --- 1. 两根实际轴线的平行度检测  ---
+	// 通过点积求出两根线之间的夹角，利用余弦定理
+	double cosParallel = std::abs(ax1.direction.dot(ax2.direction));
+	if (cosParallel > 1.0)
+		cosParallel = 1.0;
+	double angleBetween = std::acos(cosParallel) * 180.0 / M_PI;
+	std::cout << "\n[Parallelism Check]\n";
+	std::cout << "  actual axis1 vs axis2 angle: " << angleBetween << " deg  "
+	          << (angleBetween < kParallelTol ? "[OK] parallel" : "[NG] not parallel") << "\n";
+
+	// 理论的两根柱子的夹角，实际并不需要计算
+	if (0)
 	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = QString("Failed to parse inspection data at point %1.").arg(pointCount + 1);
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
+		double cosParTh = std::abs(ax1_th.direction.dot(ax2_th.direction));
+		if (cosParTh > 1.0)
+			cosParTh = 1.0;
+		double angleThBetween = std::acos(cosParTh) * 180.0 / M_PI;
+		std::cout << "  theory axis1 vs axis2 angle: " << angleThBetween << " deg\n";
 	}
 
-	ProbeFit6DOF_BC::Result probeResult;
-	if (!fitter.solveKabsch(probeResult))
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = "Failed to fit probe data: at least 6 points required";
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
-	}
+	// --- 2. 检查两根轴线之间的距离，是否跟理论的距离在公差之内 ---
+	Eigen::Vector3d c1    = axisCenter(ax1);
+	Eigen::Vector3d c2    = axisCenter(ax2);
+	Eigen::Vector3d c1_th = axisCenter(ax1_th);
+	Eigen::Vector3d c2_th = axisCenter(ax2_th);
 
-	if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (RMS: %1)").arg(probeResult.rms);
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
-	}
+	double distActual = lineToLineDist(c1, ax1.direction, c2, ax2.direction);
+	double distTheory = lineToLineDist(c1_th, ax1_th.direction, c2_th, ax2_th.direction);
+	double distDiff   = std::abs(distActual - distTheory);
 
-	if(probeResult.maxResidual > MAX_RESIDUAL_THRESHOLD)
-	{
-		m_Status = MachineStatus::Idle;
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"]           = "NG";
-		obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (Max Residual: %1)").arg(probeResult.maxResidual);
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
-	}
+	std::cout << "\n[Axis Distance Check]\n";
+	std::cout << "  actual distance: " << distActual << " mm\n";
+	std::cout << "  theory distance: " << distTheory << " mm\n";
+	std::cout << "  difference:      " << distDiff << " mm  "
+	          << (distDiff < kDistTol ? "[OK] within tolerance" : "[NG] out of tolerance") << "\n";
+
+	// --- 3. 组合线补偿（平移与旋转耦合）---**
+	// 目标：在XY平面内求解刚体变换T（先旋转R，再平移t），**
+	// 将实际组合线映射到理论组合线上。**
+	// **
+	// 策略：**
+	//   - 旋转中心：以理论轴1圆心（c1_th）作为固定参考点。**
+	//   - 第1步：计算XY平面内的旋转角dTheta，使实际方向向量vAct对齐到理论方向向量vTh。**
+	//   - 第2步：以原点为中心对实际轴1圆心c1施加旋转R(dTheta)，**
+	//             然后计算平移量 t = c1_th - R*c1。**
+	//   由此得到真正的耦合（旋转+平移）刚体变换结果。**
+
+	Eigen::Vector3d vTh  = (c2_th - c1_th).normalized(); // theory combined-line direction
+	Eigen::Vector3d vAct = (c2 - c1).normalized();       // actual combined-line direction
+
+	// XY rotation angle: dTheta = angle(vTh) - angle(vAct)  (positive = CCW)
+	double angleActXY = std::atan2(vAct.y(), vAct.x()) * 180.0 / M_PI;
+	double angleThXY  = std::atan2(vTh.y(), vTh.x()) * 180.0 / M_PI;
+	// 将角度规范化到 -180 ~ +180 之间
+	double dThetaDeg = angleThXY - angleActXY;
+	while (dThetaDeg > 180.0)
+		dThetaDeg -= 360.0;
+	while (dThetaDeg <= -180.0)
+		dThetaDeg += 360.0;
+	double dThetaRad = dThetaDeg * M_PI / 180.0;
+
+	// 2D rotation matrix R (applied to XY components)
+	Eigen::Matrix2d R;
+	R << std::cos(dThetaRad), -std::sin(dThetaRad),
+	    std::sin(dThetaRad), std::cos(dThetaRad);
+
+	Eigen::Vector2d c1_xy(c1.x(), c1.y());
+	Eigen::Vector2d c2_xy(c2.x(), c2.y());
+	Eigen::Vector2d c1_th_xy(c1_th.x(), c1_th.y());
+	Eigen::Vector2d c2_th_xy(c2_th.x(), c2_th.y());
+
+	// Translation: t = c1_th - R*c1  (XY plane)
+	Eigen::Vector2d t_xy = c1_th_xy - R * c1_xy;
+	double          tz   = c1_th.z() - c1.z();
+
+	// Verify: apply T to c2, check residual against c2_th
+	Eigen::Vector2d rc2_xy  = R * c2_xy + t_xy;
+	Eigen::Vector2d err2_xy = rc2_xy - c2_th_xy;
+
+	// Extract components for downstream use (if needed)
+	double tx    = t_xy.x();
+	double ty    = t_xy.y();
+	double err2x = err2_xy.x();
+	double err2y = err2_xy.y();
+
+	// Build 4x4 rigid-body transform matrix T (XY rotation + XYZ translation)
+	Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
+
+	// Top-left 2x2: rotation in XY plane
+	transformMatrix.block<2, 2>(0, 0) = R;
+
+	// Last column (translation)
+	transformMatrix(0, 3) = tx;
+	transformMatrix(1, 3) = ty;
+	transformMatrix(2, 3) = tz;
+
+	//if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
+	//{
+	//	m_Status = MachineStatus::Idle;
+	//	QJsonObject result;
+	//	QJsonObject obj;
+	//	obj["Result"]           = "NG";
+	//	obj["Ret_Err"]          = QString("Probe fitting result is not accurate enough (RMS: %1)").arg(probeResult.rms);
+	//	result["InspectResult"] = obj;
+	//	m_electrodeInspectResult = result;
+	//	saveElectrodeInspectResult(rfid, result);
+	//	m_Status = MachineStatus::Idle;
+	//	return false;
+	//}
 
 	QJsonObject partResult;
-
-	// 构建 4x4 变换矩阵
-	Eigen::Matrix4d transformMatrix   = Eigen::Matrix4d::Identity();
-	transformMatrix.block<3, 3>(0, 0) = probeResult.R;
-	//transformMatrix.block<3, 1>(0, 3) = probeResult.t;
-	transformMatrix.block<1, 3>(3, 0) = probeResult.t.transpose(); // 改为：t 在第4行
-
 	PoseXYZABC pose = extractXYZABC(transformMatrix);
 	if (std::abs(pose.A) > 0.01) {
 		m_Status = MachineStatus::Idle;
@@ -8943,33 +8948,21 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	}
 	partResult["icpMatrix"] = matrixArray;
 
-	// 存储质心
-	QJsonArray centroidArray;
-	centroidArray.append(probeResult.centroid.x());
-	centroidArray.append(probeResult.centroid.y());
-	centroidArray.append(probeResult.centroid.z());
-	partResult["centroid"] = centroidArray;
-
-	// 存储旋转向量
-	QJsonArray omegaArray;
-	omegaArray.append(probeResult.omega.x());
-	omegaArray.append(probeResult.omega.y());
-	omegaArray.append(probeResult.omega.z());
-	partResult["omega"] = omegaArray;
+	
 
 	// 存储拟合精度指标
-	partResult["rms"]              = probeResult.rms;
+	/*partResult["rms"]              = probeResult.rms;
 	partResult["maxResidual"]      = probeResult.maxResidual;
 	partResult["maxResidualIndex"] = probeResult.maxResidualIndex;
-	partResult["dof"]              = probeResult.dof;
+	partResult["dof"]              = probeResult.dof;*/
 
 	// 存储残差列表
-	QJsonArray residualsArray;
+	/*QJsonArray residualsArray;
 	for (double residual : probeResult.residuals)
 	{
 		residualsArray.append(residual);
 	}
-	partResult["residuals"] = residualsArray;
+	partResult["residuals"] = residualsArray;*/
 
 	QJsonObject res;
 	QJsonObject obj;
