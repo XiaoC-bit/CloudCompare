@@ -148,22 +148,19 @@ static Eigen::Vector3d fitLine2D(const std::vector<Eigen::Vector2d>& pts)
 // But since the rectangle has 2 pairs of parallel edges we need 4 lines total.
 //
 // Implementation: use all-pairs line fitting with direction clustering.
-inline RectFitResult fitRect2D(const std::vector<Eigen::Vector3d>& pts)
+inline bool fitRect2D(const std::vector<Eigen::Vector3d>& pts, RectFitResult& result)
 {
-    if (pts.size() < 8) throw std::invalid_argument("fitRect2D: need 8 points");
+    if (pts.size() < 8) return false;
 
     double zsum = 0.0;
     for (auto& p : pts) zsum += p.z();
 
-    // Convert to 2D
     std::vector<Eigen::Vector2d> xy;
     xy.reserve(pts.size());
     for (auto& p : pts) {
         xy.push_back(Eigen::Vector2d(p.x(), p.y()));
-        zsum += 0; // already accumulated above
     }
 
-    // PCA: find the two principal axes of the 8 points
     Eigen::Vector2d mean = Eigen::Vector2d::Zero();
     for (auto& p : xy) mean += p;
     mean /= (double)xy.size();
@@ -173,18 +170,17 @@ inline RectFitResult fitRect2D(const std::vector<Eigen::Vector3d>& pts)
         double dx = p.x() - mean.x(), dy = p.y() - mean.y();
         sxx += dx * dx;  sxy += dx * dy;  syy += dy * dy;
     }
-    // Principal direction (largest eigenvalue):
+
     double tr   = sxx + syy;
     double disc = std::sqrt(std::max(0.0, (sxx - syy) * (sxx - syy) / 4.0 + sxy * sxy));
-    double lam1 = tr / 2.0 + disc;   // largest eigenvalue
-    Eigen::Vector2d v1;  // principal direction
+    double lam1 = tr / 2.0 + disc;
+    Eigen::Vector2d v1;
     if (std::abs(sxy) > 1e-12)
         v1 = Eigen::Vector2d(lam1 - syy, sxy).normalized();
     else
         v1 = (sxx >= syy) ? Eigen::Vector2d(1, 0) : Eigen::Vector2d(0, 1);
-    Eigen::Vector2d v2(-v1.y(), v1.x());  // secondary direction (perpendicular)
+    Eigen::Vector2d v2(-v1.y(), v1.x());
 
-    // Project all points onto v1 and v2
     std::vector<double> proj1(xy.size()), proj2(xy.size());
     for (size_t i = 0; i < xy.size(); i++) {
         Eigen::Vector2d d = xy[i] - mean;
@@ -192,35 +188,22 @@ inline RectFitResult fitRect2D(const std::vector<Eigen::Vector3d>& pts)
         proj2[i] = v2.dot(d);
     }
 
-    // Split into two groups along v1 (edges parallel to v2) by sign of proj1
-    // and two groups along v2 (edges parallel to v1) by sign of proj2.
-    // Group A: large |proj2| → edges parallel to v1 (top/bottom)
-    // Group B: large |proj1| → edges parallel to v2 (left/right)
-    // For each direction, split into positive and negative sides.
     std::vector<Eigen::Vector2d> grpA_pos, grpA_neg, grpB_pos, grpB_neg;
     for (size_t i = 0; i < xy.size(); i++) {
-        // Points on edges perpendicular to v2 have large |proj2|
-        // Points on edges perpendicular to v1 have large |proj1|
         if (std::abs(proj2[i]) >= std::abs(proj1[i])) {
-            // This point is on a face whose normal is ~v2 (top/bottom edge)
             if (proj2[i] >= 0) grpA_pos.push_back(xy[i]);
             else               grpA_neg.push_back(xy[i]);
         } else {
-            // This point is on a face whose normal is ~v1 (left/right edge)
             if (proj1[i] >= 0) grpB_pos.push_back(xy[i]);
             else               grpB_neg.push_back(xy[i]);
         }
     }
 
-    // Need at least 1 point per group to fit a line (ideally 2)
     if (grpA_pos.empty() || grpA_neg.empty() || grpB_pos.empty() || grpB_neg.empty())
-        throw std::runtime_error("fitRect2D: cannot separate points into 4 edge groups");
+        return false;
 
-    // Fit one line per edge group
     auto fitGrp = [](const std::vector<Eigen::Vector2d>& g) -> Eigen::Vector3d {
         if (g.size() == 1) {
-            // Single point: cannot determine line direction from this group alone.
-            // Return a placeholder (will be combined with known direction).
             return Eigen::Vector3d(0, 0, 0);
         }
         return fitLine2D(g);
@@ -231,8 +214,6 @@ inline RectFitResult fitRect2D(const std::vector<Eigen::Vector3d>& pts)
     Eigen::Vector3d lineB_pos = fitGrp(grpB_pos);
     Eigen::Vector3d lineB_neg = fitGrp(grpB_neg);
 
-    // Intersect: 4 corners = (A_pos ∩ B_pos), (A_pos ∩ B_neg), (A_neg ∩ B_pos), (A_neg ∩ B_neg)
-    // Then average → center
     const double kDetThresh = 1e-6;
     Eigen::Vector2d centerSum = Eigen::Vector2d::Zero();
     int validCount = 0;
@@ -253,26 +234,20 @@ inline RectFitResult fitRect2D(const std::vector<Eigen::Vector3d>& pts)
     intersect2(lineA_neg, lineB_neg);
 
     if (validCount == 0)
-        throw std::runtime_error("fitRect2D: all edge line pairs are parallel");
+        return false;
 
-    RectFitResult res;
-    res.center = centerSum / (double)validCount;
-    res.z = zsum / (double)pts.size();
-    return res;
+    result.center = centerSum / (double)validCount;
+    result.z = zsum / (double)pts.size();
+    return true;
 }
 
 // ============================================================
 //  Circle fitting: least-squares fit to N points in the same Z plane
 // ============================================================
-inline CircleFitResult fitCircle2D(const std::vector<Eigen::Vector3d>& pts)
+inline bool fitCircle2D(const std::vector<Eigen::Vector3d>& pts, CircleFitResult& result)
 {
-    // Algebraic least-squares circle fit (Pratt/Coope method)
-    // Equation: (x-cx)^2 + (y-cy)^2 = r^2
-    // Expanded: x^2+y^2 - 2cx*x - 2cy*y + (cx^2+cy^2-r^2) = 0
-    // Let A=2cx, B=2cy, C=r^2-cx^2-cy^2, so x^2+y^2 = A*x + B*y + C
-    // Solve [A,B,C] in least-squares sense
     int n = (int)pts.size();
-    if (n < 3) throw std::invalid_argument("fitCircle2D: need at least 3 points");
+    if (n < 3) return false;
 
     Eigen::MatrixXd M(n, 3);
     Eigen::VectorXd rhs(n);
@@ -286,18 +261,17 @@ inline CircleFitResult fitCircle2D(const std::vector<Eigen::Vector3d>& pts)
         rhs(i)  = x * x + y * y;
         zsum   += pts[i].z();
     }
-    // Least-squares: [A, B, C] = (M'M)^-1 M' rhs
+
     Eigen::Vector3d abc = M.colPivHouseholderQr().solve(rhs);
 
     double cx = abc(0) / 2.0;
     double cy = abc(1) / 2.0;
     double r  = std::sqrt(abc(2) + cx * cx + cy * cy);
 
-    CircleFitResult res;
-    res.center = Eigen::Vector3d(cx, cy, zsum / n);
-    res.radius = r;
-    res.z      = zsum / n;
-    return res;
+    result.center = Eigen::Vector3d(cx, cy, zsum / n);
+    result.radius = r;
+    result.z      = zsum / n;
+    return true;
 }
 
 // ============================================================
@@ -371,45 +345,41 @@ public:
 	}
 
 
-    // ---- Fit circle from 'count' consecutive points starting at 'start' ----
-    CircleFitResult fitCircle(int start, int count, bool useActual = true) const
+    bool fitCircle(int start, int count, CircleFitResult& result, bool useActual = true) const
     {
         std::vector<Eigen::Vector3d> pts;
         for (int i = start; i < start + count && i < (int)points.size(); i++)
             pts.push_back(useActual ? points[i].actual : points[i].theory);
-        return fitCircle2D(pts);
+        return fitCircle2D(pts, result);
     }
 
-    // ---- Fit tube axis from two groups of points (low-Z / high-Z, each 'count' points) ----
-    // startLo: start index of low-Z group, startHi: start index of high-Z group
-    TubeAxisResult fitTubeAxis(int startLo, int startHi, int count, bool useActual = true) const
+    bool fitTubeAxis(int startLo, int startHi, int count, TubeAxisResult& result, bool useActual = true) const
     {
-        auto cLo = fitCircle(startLo, count, useActual);
-        auto cHi = fitCircle(startHi, count, useActual);
+        CircleFitResult cLo, cHi;
+        if (!fitCircle(startLo, count, cLo, useActual)) return false;
+        if (!fitCircle(startHi, count, cHi, useActual)) return false;
 
-        TubeAxisResult ax;
-        ax.center_lo = cLo.center;
-        ax.center_hi = cHi.center;
-        ax.z_lo      = cLo.z;
-        ax.z_hi      = cHi.z;
-        ax.direction = (cHi.center - cLo.center).normalized();
-        return ax;
+        result.center_lo = cLo.center;
+        result.center_hi = cHi.center;
+        result.z_lo      = cLo.z;
+        result.z_hi      = cHi.z;
+        result.direction = (cHi.center - cLo.center).normalized();
+        return true;
     }
 
-    // ---- Compute angular deviation between actual and theoretical axes ----
-    AngularDeviation calcAngularDeviation(int startLo, int startHi, int count) const
+    bool calcAngularDeviation(int startLo, int startHi, int count, AngularDeviation& result) const
     {
-        auto actual = fitTubeAxis(startLo, startHi, count, true);
-        auto theory = fitTubeAxis(startLo, startHi, count, false);
+        TubeAxisResult actual, theory;
+        if (!fitTubeAxis(startLo, startHi, count, actual, true)) return false;
+        if (!fitTubeAxis(startLo, startHi, count, theory, false)) return false;
 
-        AngularDeviation dev;
-        dev.actual_dir = actual.direction;
-        dev.theory_dir = theory.direction;
+        result.actual_dir = actual.direction;
+        result.theory_dir = theory.direction;
 
-        double cosAngle = std::abs(dev.actual_dir.dot(dev.theory_dir));
+        double cosAngle = std::abs(result.actual_dir.dot(result.theory_dir));
         cosAngle = std::min(cosAngle, 1.0);
-        dev.angle_deg = std::acos(cosAngle) * 180.0 / M_PI;
-        return dev;
+        result.angle_deg = std::acos(cosAngle) * 180.0 / M_PI;
+        return true;
     }
 
     // ---- Print all measurement points ----
@@ -427,30 +397,26 @@ public:
         }
     }
 
-    // ---- Fit rectangle center from 8 consecutive points (same Z height, 2 pts per face, 4 faces) ----
-    // start: starting index in points array
-    RectFitResult fitRect(int start, bool useActual = true) const
+    bool fitRect(int start, RectFitResult& result, bool useActual = true) const
    {
         std::vector<Eigen::Vector3d> pts;
         for (int i = start; i < start + 8 && i < (int)points.size(); i++)
             pts.push_back(useActual ? points[i].actual : points[i].theory);
-        return fitRect2D(pts);
+        return fitRect2D(pts, result);
     }
 
-    // ---- Fit rectangle axis from two groups of 8 points (low-Z / high-Z) ----
-    // startLo: start index of low-Z group (8 points), startHi: start index of high-Z group (8 points)
-    RectAxisResult fitRectAxis(int startLo, int startHi, bool useActual = true) const
+    bool fitRectAxis(int startLo, int startHi, RectAxisResult& result, bool useActual = true) const
     {
-        auto rLo = fitRect(startLo, useActual);
-        auto rHi = fitRect(startHi, useActual);
+        RectFitResult rLo, rHi;
+        if (!fitRect(startLo, rLo, useActual)) return false;
+        if (!fitRect(startHi, rHi, useActual)) return false;
 
-        RectAxisResult ax;
-        ax.center_lo = Eigen::Vector3d(rLo.center.x(), rLo.center.y(), rLo.z);
-        ax.center_hi = Eigen::Vector3d(rHi.center.x(), rHi.center.y(), rHi.z);
-        ax.z_lo      = rLo.z;
-        ax.z_hi      = rHi.z;
-        ax.direction = (ax.center_hi - ax.center_lo).normalized();
-        return ax;
+        result.center_lo = Eigen::Vector3d(rLo.center.x(), rLo.center.y(), rLo.z);
+        result.center_hi = Eigen::Vector3d(rHi.center.x(), rHi.center.y(), rHi.z);
+        result.z_lo      = rLo.z;
+        result.z_hi      = rHi.z;
+        result.direction = (result.center_hi - result.center_lo).normalized();
+        return true;
     }
 
     // ---- Analyze all tubes automatically (standard format: 2 Z heights x groupSize points per tube) ----
@@ -480,8 +446,17 @@ public:
                 continue;
             }
 
-            auto actual = fitTubeAxis(startLo, startHi, groupSize, true);
-            auto theory = fitTubeAxis(startLo, startHi, groupSize, false);
+            TubeAxisResult actual, theory;
+            if (!fitTubeAxis(startLo, startHi, groupSize, actual, true))
+            {
+                std::cout << "Tube " << t + 1 << ": failed to fit actual axis, skipped\n";
+                continue;
+            }
+            if (!fitTubeAxis(startLo, startHi, groupSize, theory, false))
+            {
+                std::cout << "Tube " << t + 1 << ": failed to fit theory axis, skipped\n";
+                continue;
+            }
 
             double cosA = std::abs(actual.direction.dot(theory.direction));
             cosA = std::min(cosA, 1.0);

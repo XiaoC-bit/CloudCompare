@@ -8832,11 +8832,30 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	};
 
 	// Axis 1: pts 0-15  (startLo=0, startHi=8)
-	RectAxisResult ax1    = parser.fitRectAxis(0, 8, true);
-	RectAxisResult ax1_th = parser.fitRectAxis(0, 8, false);
-	// Axis 2: pts 16-31 (startLo=16, startHi=24)
-	RectAxisResult ax2    = parser.fitRectAxis(16, 24, true);
-	RectAxisResult ax2_th = parser.fitRectAxis(16, 24, false);
+	auto fitRectAxisWithError = [&](int startLo, int startHi, RectAxisResult& result, bool useActual, const QString& errorMsg) -> bool {
+		if (!parser.fitRectAxis(startLo, startHi, result, useActual)) {
+			QJsonObject obj;
+			obj["Result"] = "NG";
+			obj["Ret_Err"] = errorMsg;
+			QJsonObject resultObj;
+			resultObj["InspectResult"] = obj;
+			m_electrodeInspectResult = resultObj;
+			saveElectrodeInspectResult(rfid, resultObj);
+			m_Status = MachineStatus::Idle;
+			return false;
+		}
+		return true;
+	};
+
+	RectAxisResult ax1, ax1_th, ax2, ax2_th;
+	if (!fitRectAxisWithError(0, 8, ax1, true, "Failed to fit rect axis 1 (actual)"))
+		return false;
+	if (!fitRectAxisWithError(0, 8, ax1_th, false, "Failed to fit rect axis 1 (theory)"))
+		return false;
+	if (!fitRectAxisWithError(16, 24, ax2, true, "Failed to fit rect axis 2 (actual)"))
+		return false;
+	if (!fitRectAxisWithError(16, 24, ax2_th, false, "Failed to fit rect axis 2 (theory)"))
+		return false;
 
 	if (1)
 	{
