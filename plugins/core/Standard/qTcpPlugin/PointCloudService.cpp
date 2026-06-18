@@ -8747,11 +8747,70 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	ResFileParser parser;
 	if (!parser.load(localFile.toStdString()))
 	{
-		std::cerr << "Failed to load file: ../R1.res\n";
-		return 1;
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Failed to load file: %1").arg(localFile);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
 	}
+	if (parser.heightPoints.size() != 2)
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Invalid file format: %1").arg(localFile);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	const auto& hp0 = parser.heightPoints[0];
+	const auto& hp1 = parser.heightPoints[1];
 
-	std::cout << "\n=== Rectangular Axis Analysis ===\n";
+	// Step 1: Check height differences
+	double actualDiff = std::abs(hp1.actual.z() - hp0.actual.z());
+	double theoryDiff = std::abs(hp1.theory.z() - hp0.theory.z());
+	double diffDiff   = std::abs(actualDiff - theoryDiff);
+
+	const double kHeightDiffTol = 0.05; // Height difference tolerance: 0.05 mm
+
+	std::cout << "\n=== Height Points Analysis ===\n";
+	std::cout << "Point 0: actual=(" << hp0.actual.x() << ", " << hp0.actual.y() << ", " << hp0.actual.z()
+				<< ") theory=(" << hp0.theory.x() << ", " << hp0.theory.y() << ", " << hp0.theory.z() << ")\n";
+	std::cout << "Point 1: actual=(" << hp1.actual.x() << ", " << hp1.actual.y() << ", " << hp1.actual.z()
+				<< ") theory=(" << hp1.theory.x() << ", " << hp1.theory.y() << ", " << hp1.theory.z() << ")\n";
+
+	std::cout << "\n[Height Difference Check]\n";
+	std::cout << "  Actual height diff:   " << actualDiff << " mm\n";
+	std::cout << "  Theory height diff:   " << theoryDiff << " mm\n";
+	std::cout << "  Difference:           " << diffDiff << " mm  "
+				<< (diffDiff < kHeightDiffTol ? "[OK] within tolerance" : "[NG] out of tolerance") << "\n";
+	if(diffDiff > kHeightDiffTol){
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Height difference out of tolerance: %1").arg(diffDiff);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	// Step 2: Calculate Z compensation based on average height
+	double avgActualZ = (hp0.actual.z() + hp1.actual.z()) * 0.5;
+	double avgTheoryZ = (hp0.theory.z() + hp1.theory.z()) * 0.5;
+	double zCompensation     = avgTheoryZ - avgActualZ;
+
+	std::cout << "\n[Z Direction Compensation]\n";
+	std::cout << "  Average actual Z:   " << avgActualZ << " mm\n";
+	std::cout << "  Average theory Z:   " << avgTheoryZ << " mm\n";
+	std::cout << "  Z compensation:     " << zCompensation << " mm  "
+				<< "(" << (zCompensation > 0 ? "positive" : "negative") << ")\n";
 
 	const double kParallelTol = 0.5; // Parallelism threshold: angle < 0.5 deg => parallel
 	const double kDistTol     = 0.1; // Distance tolerance: |actual - theory| < 0.1 mm => pass
@@ -8807,6 +8866,18 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	std::cout << "  actual axis1 vs axis2 angle: " << angleBetween << " deg  "
 	          << (angleBetween < kParallelTol ? "[OK] parallel" : "[NG] not parallel") << "\n";
 
+	if(angleBetween > kParallelTol){
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Parallelism check failed: %1").arg(angleBetween);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
 	// 理论的两根柱子的夹角，实际并不需要计算
 	if (0)
 	{
@@ -8833,6 +8904,18 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	std::cout << "  difference:      " << distDiff << " mm  "
 	          << (distDiff < kDistTol ? "[OK] within tolerance" : "[NG] out of tolerance") << "\n";
 
+	if(distDiff > kDistTol){
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Axis distance out of tolerance: %1").arg(distDiff);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+			  
 	// --- 3. 组合线补偿（平移与旋转耦合）---**
 	// 目标：在XY平面内求解刚体变换T（先旋转R，再平移t），**
 	// 将实际组合线映射到理论组合线上。**
@@ -8891,7 +8974,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	// Last column (translation)
 	transformMatrix(0, 3) = tx;
 	transformMatrix(1, 3) = ty;
-	transformMatrix(2, 3) = tz;
+	transformMatrix(2, 3) = zCompensation;
 
 	//if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
 	//{

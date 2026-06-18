@@ -308,54 +308,68 @@ class ResFileParser
 public:
     // ---- Public data ----
     std::vector<MeasurePoint> points;   // all parsed measurement points
+	std::vector<MeasurePoint> heightPoints;
 
-    // ---- Load file ----
-    bool load(const std::string& filepath)
-    {
-        points.clear();
-        std::ifstream f(filepath);
-        if (!f.is_open())
-        {
-            std::cerr << "[ResFileParser] Cannot open: " << filepath << "\n";
-            return false;
-        }
+	// ---- Load file ----
+	bool load(const std::string& filepath)
+	{
+		points.clear();
+		heightPoints.clear();
+		std::ifstream f(filepath);
+		if (!f.is_open())
+		{
+			std::cerr << "[ResFileParser] Cannot open: " << filepath << "\n";
+			return false;
+		}
 
-        std::vector<std::string> lines;
-        std::string line;
-        while (std::getline(f, line))
-        {
-            std::string content = stripLineNumber(line);
-            if (!content.empty())
-                lines.push_back(content);
-        }
+		std::vector<std::string> lines;
+		std::string              line;
+		while (std::getline(f, line))
+		{
+			std::string content = stripLineNumber(line);
+			if (!content.empty())
+				lines.push_back(content);
+		}
 
-        // Parse one measurement point per 4 lines
-        for (size_t i = 0; i + 3 < lines.size(); i += 4)
-        {
-            // Check if line 1 matches B... C... format
-            if (lines[i].find('B') == std::string::npos &&
-                lines[i].find('I') == std::string::npos)
-                continue;
+		// Parse one measurement point per 4 lines
+		size_t i = 0;
+		for (i = 0; i + 3 < lines.size(); i += 4)
+		{
+			// Check if line 1 matches B... C... format
+			if (lines[i].find('B') == std::string::npos && lines[i].find('I') == std::string::npos)
+				continue;
 
-            MeasurePoint mp;
-            // Line 2: I J K
-            if (!parseIJK(lines[i + 1], mp.ijk))
-            {
-                // Possibly line 1 is already IJK (variant format), skip
-                continue;
-            }
-            // Line 3: theoretical point
-            if (!parseXYZ(lines[i + 2], mp.theory)) continue;
-            // Line 4: actual point
-            if (!parseXYZ(lines[i + 3], mp.actual)) continue;
+			MeasurePoint mp;
+			// Line 2: I J K
+			if (!parseIJK(lines[i + 1], mp.ijk))
+			{
+				// Possibly line 1 is already IJK (variant format), skip
+				continue;
+			}
+			// Line 3: theoretical point
+			if (!parseXYZ(lines[i + 2], mp.theory))
+				continue;
+			// Line 4: actual point
+			if (!parseXYZ(lines[i + 3], mp.actual))
+				continue;
 
-            points.push_back(mp);
-        }
+			points.push_back(mp);
+		}
 
-        std::cout << "[ResFileParser] Loaded " << points.size()
-                  << " measure points from " << filepath << "\n";
-        return !points.empty();
-    }
+		if (points.size() >= 2)
+		{
+			heightPoints.push_back(points.back());
+			points.pop_back();
+			heightPoints.push_back(points.back());
+			points.pop_back();
+		}
+
+		std::cout << "[ResFileParser] Loaded " << points.size()
+				<< " measure points, " << heightPoints.size()
+				<< " height points from " << filepath << "\n";
+		return !points.empty();
+	}
+
 
     // ---- Fit circle from 'count' consecutive points starting at 'start' ----
     CircleFitResult fitCircle(int start, int count, bool useActual = true) const
