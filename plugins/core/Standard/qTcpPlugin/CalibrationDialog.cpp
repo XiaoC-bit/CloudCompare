@@ -23,7 +23,7 @@
 QVector<CalibrationDialog::Position> CalibrationDialog::loadDefaultPositions()
 {
     QString appDir = QCoreApplication::applicationDirPath();
-    QString calibrationPosFile = appDir + "/Template/CalibrationPos.json";
+    QString calibrationPosFile = appDir + "/Template/DefaultCalibrationPos.json";
 
     QFile file(calibrationPosFile);
     if (!file.exists()) {
@@ -394,7 +394,7 @@ void CalibrationDialog::onGeneratePositions()
 	stepSpinBox->setMinimum(0.1);
 	stepSpinBox->setMaximum(50);
 	stepSpinBox->setDecimals(1);
-	stepSpinBox->setValue(2.5);
+	stepSpinBox->setValue(3);
 	stepLayout->addWidget(stepLabel);
 	stepLayout->addWidget(stepSpinBox);
 	layout->addLayout(stepLayout);
