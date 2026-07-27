@@ -8590,6 +8590,96 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
 	return compensation;
 }
 
+/**
+ * 计算两条圆柱轴线（理论 vs 实际）之间：绕Z轴的旋转角 + Y方向平移补偿量。
+ *
+ * 输入几何假设：
+ *   - 圆柱轴线理论上平行于 X 轴。
+ *   - 每条轴线上取 2 个点，共 2 条轴线 => 4 个点。
+ *   - 每个点只有 X、Y 有效（X 为名义值，Y 为实测/理论值），Z 分量不使用。
+ *
+ * @param theoryPts   长度为4的理论点数组：[轴1-a, 轴1-b, 轴2-a, 轴2-b]
+ * @param actualPts   长度为4的实际点数组，顺序与 theoryPts 一一对应
+ * @param rotationCenter 旋转中心（只用 X、Y 分量）
+ * @param outThetaDeg    输出：绕Z轴的旋转角（度），实际相对理论的偏差
+ * @param outDeltaY      输出：去除旋转后的Y方向平移补偿量
+ * @return true 表示计算成功
+ */
+bool computeAxisRotationAndYTranslation(
+    const std::array<Eigen::Vector3d, 4>& theoryPts,
+    const std::array<Eigen::Vector3d, 4>& actualPts,
+    const Eigen::Vector3d&                rotationCenter,
+    double&                               outThetaDeg,
+    double&                               outDeltaY)
+{
+	// 索引约定：0,1 = 轴1的a,b点；2,3 = 轴2的a,b点
+	const Eigen::Vector3d& th1a = theoryPts[0];
+	const Eigen::Vector3d& th1b = theoryPts[1];
+	const Eigen::Vector3d& th2a = theoryPts[2];
+	const Eigen::Vector3d& th2b = theoryPts[3];
+
+	const Eigen::Vector3d& ac1a = actualPts[0];
+	const Eigen::Vector3d& ac1b = actualPts[1];
+	const Eigen::Vector3d& ac2a = actualPts[2];
+	const Eigen::Vector3d& ac2b = actualPts[3];
+
+	// ---- Step 1: 每条轴线的方向角（在 X-Y 平面内，只用 x(), y()）----
+	auto calcAngleDeg = [](const Eigen::Vector3d& p1, const Eigen::Vector3d& p2) -> double
+	{
+		double dx = p2.x() - p1.x();
+		double dy = p2.y() - p1.y();
+		return std::atan2(dy, dx) * 180.0 / M_PI;
+	};
+
+	double thAngle1 = calcAngleDeg(th1a, th1b);
+	double thAngle2 = calcAngleDeg(th2a, th2b);
+	double acAngle1 = calcAngleDeg(ac1a, ac1b);
+	double acAngle2 = calcAngleDeg(ac2a, ac2b);
+
+	// ---- Step 2: 每条轴线"实际相对理论"的偏转角 ----
+	auto normalizeDeg = [](double deg) -> double
+	{
+		while (deg > 180.0)
+			deg -= 360.0;
+		while (deg <= -180.0)
+			deg += 360.0;
+		return deg;
+	};
+
+	double dTheta1 = normalizeDeg(acAngle1 - thAngle1);
+	double dTheta2 = normalizeDeg(acAngle2 - thAngle2);
+
+	// ---- Step 3: 整体旋转角（两条轴线取平均）----
+	outThetaDeg     = (dTheta1 + dTheta2) * 0.5;
+	double thetaRad = outThetaDeg * M_PI / 180.0;
+
+	// ---- Step 4: 用旋转中心，把实际点旋转 -theta，抵消旋转影响，再算Y方向平移量 ----
+	Eigen::Matrix2d Rinv;
+	Rinv << std::cos(-thetaRad), -std::sin(-thetaRad),
+	    std::sin(-thetaRad), std::cos(-thetaRad);
+
+	Eigen::Vector2d center2d(rotationCenter.x(), rotationCenter.y());
+
+	auto deRotateY = [&](const Eigen::Vector3d& p) -> double
+	{
+		Eigen::Vector2d v(p.x(), p.y());
+		Eigen::Vector2d vRot = Rinv * (v - center2d) + center2d;
+		return vRot.y();
+	};
+
+	double ac1a_y = deRotateY(ac1a);
+	double ac1b_y = deRotateY(ac1b);
+	double ac2a_y = deRotateY(ac2a);
+	double ac2b_y = deRotateY(ac2b);
+
+	double actualYAvg = (ac1a_y + ac1b_y + ac2a_y + ac2b_y) * 0.25;
+	double theoryYAvg = (th1a.y() + th1b.y() + th2a.y() + th2b.y()) * 0.25;
+
+	outDeltaY = actualYAvg - theoryYAvg;
+
+	return true;
+}
+
 bool PointCloudService::executeElectrodeInspect(const QString& partType, const QString& electrodeType, const QString& rfid)
 {
 	m_Status = MachineStatus::Running;
@@ -8757,6 +8847,16 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		m_Status = MachineStatus::Idle;
 		return false;
 	}
+	std::array<Eigen::Vector3d, 4> theoryPts, actualPts;
+	for (int i = 0; i < 4; i++)
+	{
+		theoryPts[i] = parser.points.at(i).theory;
+		actualPts[i] = parser.points.at(i).actual;
+	}
+	Eigen::Vector3d spinZero(0, 0, 0);
+	double outThetaDeg, outDeltaY;
+	computeAxisRotationAndYTranslation(theoryPts, actualPts, spinZero, outThetaDeg, outDeltaY);
+
 	if (parser.heightPoints.size() != 2)
 	{
 		QJsonObject result;
