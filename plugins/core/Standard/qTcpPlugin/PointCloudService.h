@@ -3,6 +3,7 @@
 #include "Eigen/Dense"
 #include "Eigen/SVD"
 
+#include <array>
 #include <QJsonObject>
 #include <QMutex>
 #include <QObject>
@@ -247,6 +248,12 @@ class PointCloudService : public QObject
     static Eigen::Matrix3d rotZ(double rad);
     // SVD算法函数（暂时声明，后续实现）
     static Eigen::Matrix4d computeSVDTransform(const Eigen::MatrixXd& measuredPoints, const Eigen::MatrixXd& theoreticalPoints);
+    static bool computeAxisRotationAndYTranslation(
+        const std::array<Eigen::Vector3d, 4>& theoryPts,
+        const std::array<Eigen::Vector3d, 4>& actualPts,
+        const Eigen::Vector3d&                rotationCenter,
+        double&                               outThetaDeg,
+        double&                               outDeltaY);
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
 	void               sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());

@@ -8605,7 +8605,7 @@ PointCloudService::RTCPCompensation PointCloudService::computeRTCPCompensation(
  * @param outDeltaY      输出：去除旋转后的Y方向平移补偿量
  * @return true 表示计算成功
  */
-bool computeAxisRotationAndYTranslation(
+bool PointCloudService::computeAxisRotationAndYTranslation(
     const std::array<Eigen::Vector3d, 4>& theoryPts,
     const std::array<Eigen::Vector3d, 4>& actualPts,
     const Eigen::Vector3d&                rotationCenter,
