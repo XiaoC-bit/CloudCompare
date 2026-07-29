@@ -9196,7 +9196,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
  * @param outDeltaZ2 输出：圆柱2 的 ΔZ（便于日志/排查）
  * @return true 表示计算成功且通过一致性检查；false 表示两根圆柱 ΔZ 不一致（NG）
  */
-bool computeZTranslation(
+bool PointCloudService::computeZTranslation(
     double  theoryZ1,
     double  theoryZ2,
     double  actualZ1,
@@ -9256,4 +9256,75 @@ PointCloudService::PoseXYZABC PointCloudService::extractXYZABC(const Eigen::Matr
 	pose.C *= RAD2DEG;
 
 	return pose;
+}
+
+
+
+/**
+ * 计算两根圆柱 X 方向端点的平移补偿量（考虑第一步已求得的 Z 向旋转角 theta）。
+ *
+ * 几何前提：
+ *   - 圆柱平行 X 轴，端面为理想平整面，测头沿 X 方向碰端面，仅 X 分量为实测有效值。
+ *   - 测头碰端面时，Y 坐标固定使用该圆柱轴心的理论 Y 值（Y_center）。
+ *   - theta 为第一步算出的整体旋转角（绕 rotationCenter，实际相对理论），
+ *     用于反变换抵消旋转对 X 测量的耦合影响。
+ *
+ * @param thetaDeg        第一步算出的整体旋转角（角度制）
+ * @param rotationCenter   旋转中心（与第一步一致，只用 x()、y()）
+ * @param theoryPt1        圆柱1 理论端点坐标 (X_center1, Y_center1, *)
+ * @param actualPt1        圆柱1 实际端点观测 (X_measured1, Y_center1, *)
+ *                         —— y() 必须填入打点时使用的 Y_center1（不是测量值）
+ * @param theoryPt2        圆柱2 理论端点坐标 (X_center2, Y_center2, *)
+ * @param actualPt2        圆柱2 实际端点观测 (X_measured2, Y_center2, *)
+ *                         —— y() 必须填入打点时使用的 Y_center2
+ * @param consistencyTol   deltaX1 与 deltaX2 的一致性容差，超出判 NG
+ * @param outDeltaX        输出：整体 X 方向平移补偿量
+ * @param outDeltaX1       输出：圆柱1 的 deltaX（供日志/排查）
+ * @param outDeltaX2       输出：圆柱2 的 deltaX（供日志/排查）
+ * @return true 表示计算成功且通过一致性检查；false 表示不一致（NG）
+ */
+bool PointCloudService::computeXTranslation(
+    double                 thetaDeg,
+    const Eigen::Vector3d& rotationCenter,
+    const Eigen::Vector3d& theoryPt1,
+    const Eigen::Vector3d& actualPt1,
+    const Eigen::Vector3d& theoryPt2,
+    const Eigen::Vector3d& actualPt2,
+    double                 consistencyTol,
+    double&                outDeltaX,
+    double&                outDeltaX1,
+    double&                outDeltaX2)
+{
+	double thetaRad = thetaDeg * M_PI / 180.0;
+
+	// R(-theta)：把 actual 点反旋转回"未旋转"坐标系
+	Eigen::Matrix2d RinvT;
+	RinvT << std::cos(-thetaRad), -std::sin(-thetaRad),
+	    std::sin(-thetaRad), std::cos(-thetaRad);
+
+	Eigen::Vector2d center2d(rotationCenter.x(), rotationCenter.y());
+
+	auto deRotateX = [&](const Eigen::Vector3d& actualPt) -> double
+	{
+		Eigen::Vector2d v(actualPt.x(), actualPt.y());
+		Eigen::Vector2d vRot = RinvT * (v - center2d) + center2d;
+		return vRot.x();
+	};
+
+	double x1Corrected = deRotateX(actualPt1);
+	double x2Corrected = deRotateX(actualPt2);
+
+	outDeltaX1 = x1Corrected - theoryPt1.x();
+	outDeltaX2 = x2Corrected - theoryPt2.x();
+
+	double diff = std::abs(outDeltaX1 - outDeltaX2);
+	if (diff > consistencyTol)
+	{
+		// 两根圆柱的 X 向偏差不一致，不是整体刚性平移，调用方应判 NG
+		outDeltaX = 0.0;
+		return false;
+	}
+
+	outDeltaX = (outDeltaX1 + outDeltaX2) * 0.5;
+	return true;
 }

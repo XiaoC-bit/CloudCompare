@@ -254,6 +254,26 @@ class PointCloudService : public QObject
         const Eigen::Vector3d&                rotationCenter,
         double&                               outThetaDeg,
         double&                               outDeltaY);
+    static bool computeZTranslation(
+        double  theoryZ1,
+        double  theoryZ2,
+        double  actualZ1,
+        double  actualZ2,
+        double  consistencyTol,
+        double& outDeltaZ,
+        double& outDeltaZ1,
+        double& outDeltaZ2);
+    static bool computeXTranslation(
+        double                 thetaDeg,
+        const Eigen::Vector3d& rotationCenter,
+        const Eigen::Vector3d& theoryPt1,
+        const Eigen::Vector3d& actualPt1,
+        const Eigen::Vector3d& theoryPt2,
+        const Eigen::Vector3d& actualPt2,
+        double                 consistencyTol,
+        double&                outDeltaX,
+        double&                outDeltaX1,
+        double&                outDeltaX2);
     // 接口函数
    class ccHObject*   findByName(class ccHObject* node, const QString& name);
 	void               sendResponse(QTcpSocket* socket, bool ok, const QString& msg, const QString& idCode, const QJsonObject& extra = QJsonObject());
