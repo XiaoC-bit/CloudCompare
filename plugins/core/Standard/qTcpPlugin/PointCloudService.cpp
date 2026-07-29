@@ -8847,6 +8847,45 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		m_Status = MachineStatus::Idle;
 		return false;
 	}
+
+	// Validate point counts
+	if (parser.points.size() < 4)
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Invalid file format: need at least 4 measurement points, got %1").arg(parser.points.size());
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	if (parser.xPoints.size() < 2)
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Invalid file format: need 2 X-direction points, got %1").arg(parser.xPoints.size());
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+	if (parser.heightPoints.size() < 2)
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("Invalid file format: need 2 height points, got %1").arg(parser.heightPoints.size());
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
+
 	std::array<Eigen::Vector3d, 4> theoryPts, actualPts;
 	for (int i = 0; i < 4; i++)
 	{
@@ -8856,10 +8895,21 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	Eigen::Vector3d spinZero(0, 0, 0);
 	double outThetaDeg, outDeltaY;
 	bool ret = computeAxisRotationAndYTranslation(theoryPts, actualPts, spinZero, outThetaDeg, outDeltaY);
-	
-    double consistencyTol, outDeltaX, outDeltaX1, outDeltaX2;
-	consistencyTol = 0.02;
+	if (!ret)
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = "Failed to compute axis rotation and Y translation compensation";
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
 
+	double consistencyTol = 0.02;
+	double outDeltaX, outDeltaX1, outDeltaX2;
 	ret = computeXTranslation(
 		outThetaDeg,
 		spinZero,
@@ -8871,153 +8921,37 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		outDeltaX,
 		outDeltaX1,
 		outDeltaX2);
+	if (!ret)
+	{
+		QJsonObject result;
+		QJsonObject obj;
+		obj["Result"] = "NG";
+		obj["Ret_Err"] = QString("X translation consistency check failed: dX1=%1, dX2=%2")
+			.arg(outDeltaX1, 0, 'f', 4).arg(outDeltaX2, 0, 'f', 4);
+		result["InspectResult"] = obj;
+		m_electrodeInspectResult = result;
+		saveElectrodeInspectResult(rfid, result);
+		m_Status = MachineStatus::Idle;
+		return false;
+	}
 
 	double outDeltaZ, outDeltaZ1, outDeltaZ2;
 	ret = computeZTranslation(
-	    parser.heightPoints.at(0).theory.z(),
-	    parser.heightPoints.at(1).theory.z(),
-	    parser.heightPoints.at(0).actual.z(),
-	    parser.heightPoints.at(1).actual.z(),
-	    consistencyTol,
-	    outDeltaZ,
-	    outDeltaZ1,
-	    outDeltaZ2);
-
-
-
-	if (parser.heightPoints.size() != 2)
+		parser.heightPoints.at(0).theory.z(),
+		parser.heightPoints.at(1).theory.z(),
+		parser.heightPoints.at(0).actual.z(),
+		parser.heightPoints.at(1).actual.z(),
+		consistencyTol,
+		outDeltaZ,
+		outDeltaZ1,
+		outDeltaZ2);
+	if (!ret)
 	{
 		QJsonObject result;
 		QJsonObject obj;
 		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Invalid file format: %1").arg(localFile);
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
-	}
-	const auto& hp0 = parser.heightPoints[0];
-	const auto& hp1 = parser.heightPoints[1];
-
-	// Step 1: Check height differences
-	double actualDiff = std::abs(hp1.actual.z() - hp0.actual.z());
-	double theoryDiff = std::abs(hp1.theory.z() - hp0.theory.z());
-	double diffDiff   = std::abs(actualDiff - theoryDiff);
-
-	const double kHeightDiffTol = 0.05; // Height difference tolerance: 0.05 mm
-
-	std::cout << "\n=== Height Points Analysis ===\n";
-	std::cout << "Point 0: actual=(" << hp0.actual.x() << ", " << hp0.actual.y() << ", " << hp0.actual.z()
-				<< ") theory=(" << hp0.theory.x() << ", " << hp0.theory.y() << ", " << hp0.theory.z() << ")\n";
-	std::cout << "Point 1: actual=(" << hp1.actual.x() << ", " << hp1.actual.y() << ", " << hp1.actual.z()
-				<< ") theory=(" << hp1.theory.x() << ", " << hp1.theory.y() << ", " << hp1.theory.z() << ")\n";
-
-	std::cout << "\n[Height Difference Check]\n";
-	std::cout << "  Actual height diff:   " << actualDiff << " mm\n";
-	std::cout << "  Theory height diff:   " << theoryDiff << " mm\n";
-	std::cout << "  Difference:           " << diffDiff << " mm  "
-				<< (diffDiff < kHeightDiffTol ? "[OK] within tolerance" : "[NG] out of tolerance") << "\n";
-	if(diffDiff > kHeightDiffTol){
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Height difference out of tolerance: %1").arg(diffDiff);
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
-	}
-	// Step 2: Calculate Z compensation based on average height
-	double avgActualZ = (hp0.actual.z() + hp1.actual.z()) * 0.5;
-	double avgTheoryZ = (hp0.theory.z() + hp1.theory.z()) * 0.5;
-	double zCompensation     = avgTheoryZ - avgActualZ;
-
-	std::cout << "\n[Z Direction Compensation]\n";
-	std::cout << "  Average actual Z:   " << avgActualZ << " mm\n";
-	std::cout << "  Average theory Z:   " << avgTheoryZ << " mm\n";
-	std::cout << "  Z compensation:     " << zCompensation << " mm  "
-				<< "(" << (zCompensation > 0 ? "positive" : "negative") << ")\n";
-
-	const double kParallelTol = 0.5; // Parallelism threshold: angle < 0.5 deg => parallel
-	const double kDistTol     = 0.1; // Distance tolerance: |actual - theory| < 0.1 mm => pass
-
-	// 3D line-to-line distance (shortest distance between two skew lines)
-	// Each line defined by a point p and unit direction d
-	auto lineToLineDist = [](const Eigen::Vector3d& p1, const Eigen::Vector3d& d1, const Eigen::Vector3d& p2, const Eigen::Vector3d& d2) -> double
-	{
-		Eigen::Vector3d n     = d1.cross(d2);
-		double          nNorm = n.norm();
-		if (nNorm < 1e-9)
-			return d1.cross(p2 - p1).norm(); // parallel lines: point-to-line distance
-		return std::abs(n.dot(p2 - p1)) / nNorm;
-	};
-
-	auto axisCenter = [](const RectAxisResult& ax) -> Eigen::Vector3d
-	{
-		return (ax.center_lo + ax.center_hi) * 0.5;
-	};
-
-	// Axis 1: pts 0-15  (startLo=0, startHi=8)
-	auto fitRectAxisWithError = [&](int startLo, int startHi, RectAxisResult& result, bool useActual, const QString& errorMsg) -> bool {
-		if (!parser.fitRectAxis(startLo, startHi, result, useActual)) {
-			QJsonObject obj;
-			obj["Result"] = "NG";
-			obj["Ret_Err"] = errorMsg;
-			QJsonObject resultObj;
-			resultObj["InspectResult"] = obj;
-			m_electrodeInspectResult = resultObj;
-			saveElectrodeInspectResult(rfid, resultObj);
-			m_Status = MachineStatus::Idle;
-			return false;
-		}
-		return true;
-	};
-
-	RectAxisResult ax1, ax1_th, ax2, ax2_th;
-	if (!fitRectAxisWithError(0, 8, ax1, true, "Failed to fit rect axis 1 (actual)"))
-		return false;
-	if (!fitRectAxisWithError(0, 8, ax1_th, false, "Failed to fit rect axis 1 (theory)"))
-		return false;
-	if (!fitRectAxisWithError(16, 24, ax2, true, "Failed to fit rect axis 2 (actual)"))
-		return false;
-	if (!fitRectAxisWithError(16, 24, ax2_th, false, "Failed to fit rect axis 2 (theory)"))
-		return false;
-
-	if (1)
-	{
-		// --- Print basic axis information ---
-		auto printAxis = [](const char* name, const RectAxisResult& ax)
-		{
-			std::cout << "  " << name << " low-Z center:  ("
-			          << ax.center_lo.x() << ", " << ax.center_lo.y() << ", " << ax.center_lo.z() << ")\n";
-			std::cout << "  " << name << " high-Z center: ("
-			          << ax.center_hi.x() << ", " << ax.center_hi.y() << ", " << ax.center_hi.z() << ")\n";
-			std::cout << "  " << name << " direction:     ("
-			          << ax.direction.x() << ", " << ax.direction.y() << ", " << ax.direction.z() << ")\n";
-		};
-		printAxis("actual axis1", ax1);
-		printAxis("actual axis2", ax2);
-		printAxis("theory axis1", ax1_th);
-		printAxis("theory axis2", ax2_th);
-	}
-
-	// --- 1. 两根实际轴线的平行度检测  ---
-	// 通过点积求出两根线之间的夹角，利用余弦定理
-	double cosParallel = std::abs(ax1.direction.dot(ax2.direction));
-	if (cosParallel > 1.0)
-		cosParallel = 1.0;
-	double angleBetween = std::acos(cosParallel) * 180.0 / M_PI;
-	std::cout << "\n[Parallelism Check]\n";
-	std::cout << "  actual axis1 vs axis2 angle: " << angleBetween << " deg  "
-	          << (angleBetween < kParallelTol ? "[OK] parallel" : "[NG] not parallel") << "\n";
-
-	if(angleBetween > kParallelTol){
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Parallelism check failed: %1").arg(angleBetween);
+		obj["Ret_Err"] = QString("Z translation consistency check failed: dZ1=%1, dZ2=%2")
+			.arg(outDeltaZ1, 0, 'f', 4).arg(outDeltaZ2, 0, 'f', 4);
 		result["InspectResult"] = obj;
 		m_electrodeInspectResult = result;
 		saveElectrodeInspectResult(rfid, result);
@@ -9025,92 +8959,33 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	// 理论的两根柱子的夹角，实际并不需要计算
-	if (0)
-	{
-		double cosParTh = std::abs(ax1_th.direction.dot(ax2_th.direction));
-		if (cosParTh > 1.0)
-			cosParTh = 1.0;
-		double angleThBetween = std::acos(cosParTh) * 180.0 / M_PI;
-		std::cout << "  theory axis1 vs axis2 angle: " << angleThBetween << " deg\n";
-	}
 
-	// --- 2. 检查两根轴线之间的距离，是否跟理论的距离在公差之内 ---
-	Eigen::Vector3d c1    = axisCenter(ax1);
-	Eigen::Vector3d c2    = axisCenter(ax2);
-	Eigen::Vector3d c1_th = axisCenter(ax1_th);
-	Eigen::Vector3d c2_th = axisCenter(ax2_th);
 
-	double distActual = lineToLineDist(c1, ax1.direction, c2, ax2.direction);
-	double distTheory = lineToLineDist(c1_th, ax1_th.direction, c2_th, ax2_th.direction);
-	double distDiff   = std::abs(distActual - distTheory);
+	// --- Build 4x4 rigid-body transform matrix from new compensation values ---
+	// New method: computeAxisRotationAndYTranslation + computeXTranslation + computeZTranslation
+	//
+	// Sign convention:
+	//   outThetaDeg = actual_angle - theory_angle (how much actual is rotated relative to theory)
+	//   outDeltaX/Y/Z = deRotatedActual - theory (difference after removing rotation)
+	//
+	// To map actual points to theory points:
+	//   1. Rotate by (-outThetaDeg) to align directions
+	//   2. Translate by (-outDeltaX, -outDeltaY, -outDeltaZ) to align positions
+	double thetaRad = -outThetaDeg * M_PI / 180.0;
 
-	std::cout << "\n[Axis Distance Check]\n";
-	std::cout << "  actual distance: " << distActual << " mm\n";
-	std::cout << "  theory distance: " << distTheory << " mm\n";
-	std::cout << "  difference:      " << distDiff << " mm  "
-	          << (distDiff < kDistTol ? "[OK] within tolerance" : "[NG] out of tolerance") << "\n";
-
-	if(distDiff > kDistTol){
-		QJsonObject result;
-		QJsonObject obj;
-		obj["Result"] = "NG";
-		obj["Ret_Err"] = QString("Axis distance out of tolerance: %1").arg(distDiff);
-		result["InspectResult"] = obj;
-		m_electrodeInspectResult = result;
-		saveElectrodeInspectResult(rfid, result);
-		m_Status = MachineStatus::Idle;
-		return false;
-	}
-			  
-	// --- 3. 组合线补偿（平移与旋转耦合）---**
-	// 目标：在XY平面内求解刚体变换T（先旋转R，再平移t），**
-	// 将实际组合线映射到理论组合线上。**
-	// **
-	// 策略：**
-	//   - 旋转中心：以理论轴1圆心（c1_th）作为固定参考点。**
-	//   - 第1步：计算XY平面内的旋转角dTheta，使实际方向向量vAct对齐到理论方向向量vTh。**
-	//   - 第2步：以原点为中心对实际轴1圆心c1施加旋转R(dTheta)，**
-	//             然后计算平移量 t = c1_th - R*c1。**
-	//   由此得到真正的耦合（旋转+平移）刚体变换结果。**
-
-	Eigen::Vector3d vTh  = (c2_th - c1_th).normalized(); // theory combined-line direction
-	Eigen::Vector3d vAct = (c2 - c1).normalized();       // actual combined-line direction
-
-	// XY rotation angle: dTheta = angle(vTh) - angle(vAct)  (positive = CCW)
-	double angleActXY = std::atan2(vAct.y(), vAct.x()) * 180.0 / M_PI;
-	double angleThXY  = std::atan2(vTh.y(), vTh.x()) * 180.0 / M_PI;
-	// 将角度规范化到 -180 ~ +180 之间
-	double dThetaDeg = angleThXY - angleActXY;
-	while (dThetaDeg > 180.0)
-		dThetaDeg -= 360.0;
-	while (dThetaDeg <= -180.0)
-		dThetaDeg += 360.0;
-	double dThetaRad = dThetaDeg * M_PI / 180.0;
-
-	// 2D rotation matrix R (applied to XY components)
 	Eigen::Matrix2d R;
-	R << std::cos(dThetaRad), -std::sin(dThetaRad),
-	    std::sin(dThetaRad), std::cos(dThetaRad);
+	R << std::cos(thetaRad), -std::sin(thetaRad),
+	    std::sin(thetaRad), std::cos(thetaRad);
 
-	Eigen::Vector2d c1_xy(c1.x(), c1.y());
-	Eigen::Vector2d c2_xy(c2.x(), c2.y());
-	Eigen::Vector2d c1_th_xy(c1_th.x(), c1_th.y());
-	Eigen::Vector2d c2_th_xy(c2_th.x(), c2_th.y());
+	double tx = -outDeltaX;
+	double ty = -outDeltaY;
+	double tz = -outDeltaZ;
 
-	// Translation: t = c1_th - R*c1  (XY plane)
-	Eigen::Vector2d t_xy = c1_th_xy - R * c1_xy;
-	double          tz   = c1_th.z() - c1.z();
-
-	// Verify: apply T to c2, check residual against c2_th
-	Eigen::Vector2d rc2_xy  = R * c2_xy + t_xy;
-	Eigen::Vector2d err2_xy = rc2_xy - c2_th_xy;
-
-	// Extract components for downstream use (if needed)
-	double tx    = t_xy.x();
-	double ty    = t_xy.y();
-	double err2x = err2_xy.x();
-	double err2y = err2_xy.y();
+	std::cout << "\n=== New Compensation Results ===\n";
+	std::cout << "  outThetaDeg (Z rotation): " << outThetaDeg << " deg => matrix rotation: " << -outThetaDeg << " deg\n";
+	std::cout << "  outDeltaX: " << outDeltaX << " => tx: " << tx << " mm\n";
+	std::cout << "  outDeltaY: " << outDeltaY << " => ty: " << ty << " mm\n";
+	std::cout << "  outDeltaZ: " << outDeltaZ << " => tz: " << tz << " mm\n";
 
 	// Build 4x4 rigid-body transform matrix T (XY rotation + XYZ translation)
 	Eigen::Matrix4d transformMatrix = Eigen::Matrix4d::Identity();
@@ -9121,7 +8996,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	// Last column (translation)
 	transformMatrix(0, 3) = tx;
 	transformMatrix(1, 3) = ty;
-	transformMatrix(2, 3) = zCompensation;
+	transformMatrix(2, 3) = tz;
 
 	//if (probeResult.rms > MAX_RESIDUAL_THRESHOLD) // 根据实际情况设置合理的RMS阈值
 	//{
