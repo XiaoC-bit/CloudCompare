@@ -9180,6 +9180,46 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	return true;
 }
 
+/**
+ * 计算两根圆柱顶部最高点（理论 vs 实际）之间的 Z 方向平移补偿量。
+ *
+ * 前提：测头通过迭代搜索找到的最高点，Z 值已经是准确测量值，
+ *       X、Y 分量不使用（只作为参考，不参与计算）。
+ *
+ * @param theoryZ1   圆柱1 理论最高点 Z 值
+ * @param theoryZ2   圆柱2 理论最高点 Z 值
+ * @param actualZ1   圆柱1 实际测得最高点 Z 值
+ * @param actualZ2   圆柱2 实际测得最高点 Z 值
+ * @param consistencyTol  两根圆柱各自 ΔZ 的一致性容差，超出则认为不是整体平移，返回 false
+ * @param outDeltaZ  输出：整体 Z 方向平移补偿量
+ * @param outDeltaZ1 输出：圆柱1 的 ΔZ（便于日志/排查）
+ * @param outDeltaZ2 输出：圆柱2 的 ΔZ（便于日志/排查）
+ * @return true 表示计算成功且通过一致性检查；false 表示两根圆柱 ΔZ 不一致（NG）
+ */
+bool computeZTranslation(
+    double  theoryZ1,
+    double  theoryZ2,
+    double  actualZ1,
+    double  actualZ2,
+    double  consistencyTol,
+    double& outDeltaZ,
+    double& outDeltaZ1,
+    double& outDeltaZ2)
+{
+	outDeltaZ1 = actualZ1 - theoryZ1;
+	outDeltaZ2 = actualZ2 - theoryZ2;
+
+	double diff = std::abs(outDeltaZ1 - outDeltaZ2);
+	if (diff > consistencyTol)
+	{
+		// 两根圆柱的 Z 向偏差不一致，不是整体刚性平移，调用方应判 NG
+		outDeltaZ = 0.0;
+		return false;
+	}
+
+	outDeltaZ = (outDeltaZ1 + outDeltaZ2) * 0.5;
+	return true;
+}
 
 PointCloudService::PoseXYZABC PointCloudService::extractXYZABC(const Eigen::Matrix4d& T)
 {
