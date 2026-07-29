@@ -282,13 +282,15 @@ class ResFileParser
 public:
     // ---- Public data ----
     std::vector<MeasurePoint> points;   // all parsed measurement points
-	std::vector<MeasurePoint> heightPoints;
+  std::vector<MeasurePoint> heightPoints;//Z方向
+  std::vector<MeasurePoint> xPoints;//X方向
 
 	// ---- Load file ----
 	bool load(const std::string& filepath)
 	{
 		points.clear();
 		heightPoints.clear();
+		xPoints.clear();
 		std::ifstream f(filepath);
 		if (!f.is_open())
 		{
@@ -328,6 +330,14 @@ public:
 				continue;
 
 			points.push_back(mp);
+		}
+
+		if (points.size() >= 2)
+		{
+			xPoints.push_back(points.back());
+			points.pop_back();
+			xPoints.push_back(points.back());
+			points.pop_back();
 		}
 
 		if (points.size() >= 2)

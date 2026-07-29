@@ -8855,7 +8855,35 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 	}
 	Eigen::Vector3d spinZero(0, 0, 0);
 	double outThetaDeg, outDeltaY;
-	computeAxisRotationAndYTranslation(theoryPts, actualPts, spinZero, outThetaDeg, outDeltaY);
+	bool ret = computeAxisRotationAndYTranslation(theoryPts, actualPts, spinZero, outThetaDeg, outDeltaY);
+	
+    double consistencyTol, outDeltaX, outDeltaX1, outDeltaX2;
+	consistencyTol = 0.02;
+
+	ret = computeXTranslation(
+		outThetaDeg,
+		spinZero,
+		parser.xPoints.at(0).theory,
+		parser.xPoints.at(0).actual,
+		parser.xPoints.at(1).theory,
+		parser.xPoints.at(1).actual,
+		consistencyTol,
+		outDeltaX,
+		outDeltaX1,
+		outDeltaX2);
+
+	double outDeltaZ, outDeltaZ1, outDeltaZ2;
+	ret = computeZTranslation(
+	    parser.heightPoints.at(0).theory.z(),
+	    parser.heightPoints.at(1).theory.z(),
+	    parser.heightPoints.at(0).actual.z(),
+	    parser.heightPoints.at(1).actual.z(),
+	    consistencyTol,
+	    outDeltaZ,
+	    outDeltaZ1,
+	    outDeltaZ2);
+
+
 
 	if (parser.heightPoints.size() != 2)
 	{
