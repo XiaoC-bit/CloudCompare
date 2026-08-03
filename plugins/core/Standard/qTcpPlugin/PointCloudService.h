@@ -240,8 +240,12 @@ class PointCloudService : public QObject
     static Eigen::Matrix4d invertRigid(const Eigen::Matrix4d& T);
     static Eigen::Matrix4d makePivotTransform(const Eigen::Matrix3d& Rot, const Eigen::Vector3d& pivot);
     static Eigen::Matrix4d computeCameraMotion(const Eigen::Matrix4d& T_cam2robot, double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
-    static Eigen::Matrix4d buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
-    static Eigen::Matrix4d rigidTransform(const Eigen::MatrixXd& p, const Eigen::MatrixXd& q);
+	static Eigen::Matrix4d  buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
+
+	static Eigen::Matrix4d transformToZeroPose(double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C);
+
+    
+	static Eigen::Matrix4d  rigidTransform(const Eigen::MatrixXd& p, const Eigen::MatrixXd& q);
     static Eigen::Matrix4d makeTransform(const Eigen::Matrix3d& R, const Eigen::Vector3d& t);
     static Eigen::Matrix4d rotateAroundPoint(const Eigen::Matrix3d& R, const Eigen::Vector3d& center);
     static Eigen::Matrix3d rotY(double rad);

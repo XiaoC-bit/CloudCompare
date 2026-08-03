@@ -27,6 +27,8 @@
 
 struct MeasurePoint
 {
+	double          b;
+	double          c;
     Eigen::Vector3d ijk;        // probe direction
     Eigen::Vector3d theory;     // theoretical point
     Eigen::Vector3d actual;     // actual measured point
@@ -288,6 +290,7 @@ public:
 	// ---- Load file ----
 	bool load(const std::string& filepath)
 	{
+		std::vector<MeasurePoint> tmpPoints;
 		points.clear();
 		heightPoints.clear();
 		xPoints.clear();
@@ -309,7 +312,7 @@ public:
 
 		// Parse one measurement point per 4 lines
 		size_t i = 0;
-		for (i = 0; i + 3 < lines.size(); i += 4)
+		for (i = 0; i + 2 < lines.size(); i += 3)
 		{
 			// Check if line 1 matches B... C... format
 			if (lines[i].find('B') == std::string::npos && lines[i].find('I') == std::string::npos)
@@ -317,35 +320,53 @@ public:
 
 			MeasurePoint mp;
 			// Line 2: I J K
-			if (!parseIJK(lines[i + 1], mp.ijk))
-			{
-				// Possibly line 1 is already IJK (variant format), skip
-				continue;
-			}
+			//if (!parseIJK(lines[i + 1], mp.ijk))
+			//{
+			//	// Possibly line 1 is already IJK (variant format), skip
+			//	continue;
+			//}
 			// Line 3: theoretical point
-			if (!parseXYZ(lines[i + 2], mp.theory))
+
+			if (!parseBC(lines[i + 0],mp.b,mp.c ))
+				continue;
+
+
+			if (!parseXYZ(lines[i + 1], mp.theory))
 				continue;
 			// Line 4: actual point
-			if (!parseXYZ(lines[i + 3], mp.actual))
+			if (!parseXYZ(lines[i + 2], mp.actual))
 				continue;
 
-			points.push_back(mp);
+			tmpPoints.push_back(mp);
+		}
+		if (tmpPoints.size() != 10)
+		{
+			return false;
+		}
+		for (i = 0; i < 4; i++)
+		{
+			points.push_back(tmpPoints.back());
+			tmpPoints.pop_back();
 		}
 
-		if (points.size() >= 2)
+		if (tmpPoints.size() >= 6)
 		{
-			xPoints.push_back(points.back());
-			points.pop_back();
-			xPoints.push_back(points.back());
-			points.pop_back();
+			heightPoints.push_back(tmpPoints.back());
+			tmpPoints.pop_back();
+			tmpPoints.pop_back();
+			heightPoints.push_back(tmpPoints.back());
+			tmpPoints.pop_back();
+			tmpPoints.pop_back();
 		}
 
-		if (points.size() >= 2)
+		
+
+		if (tmpPoints.size() >= 2)
 		{
-			heightPoints.push_back(points.back());
-			points.pop_back();
-			heightPoints.push_back(points.back());
-			points.pop_back();
+			xPoints.push_back(tmpPoints.back());
+			tmpPoints.pop_back();
+			xPoints.push_back(tmpPoints.back());
+			tmpPoints.pop_back();
 		}
 
 		std::cout << "[ResFileParser] Loaded " << points.size()
@@ -532,7 +553,8 @@ private:
 
     static bool parseXYZ(const std::string& s, Eigen::Vector3d& v)
     {
-        static const std::regex xyzPattern(R"(X([+-]?[0-9]*\.?[0-9]+)\s+Y([+-]?[0-9]*\.?[0-9]+)\s+Z([+-]?[0-9]*\.?[0-9]+))");
+        //static const std::regex xyzPattern(R"(X([+-]?[0-9]*\.?[0-9]+)\s+Y([+-]?[0-9]*\.?[0-9]+)\s+Z([+-]?[0-9]*\.?[0-9]+))");
+		static const std::regex xyzPattern(R"(X([+-]?[0-9]*\.?[0-9]+)\s*Y([+-]?[0-9]*\.?[0-9]+)\s*Z([+-]?[0-9]*\.?[0-9]+))");
         std::smatch match;
         if (std::regex_search(s, match, xyzPattern))
         {
@@ -545,4 +567,19 @@ private:
         }
         return false;
     }
+
+	static bool parseBC(const std::string& s, double& b, double& c)
+	{
+		// 先尝试匹配 B 和 C 的格式（支持有无空格）
+		static const std::regex bcPattern(R"(B([+-]?[0-9]*\.?[0-9]+)\s*C([+-]?[0-9]*\.?[0-9]+))");
+		std::smatch             match;
+
+		if (std::regex_search(s, match, bcPattern))
+		{
+			b = std::stod(match[1].str());
+			c = std::stod(match[2].str());
+			return true;
+		}
+		return false;
+	}
 };

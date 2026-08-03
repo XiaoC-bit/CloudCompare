@@ -1667,6 +1667,34 @@ Eigen::Matrix4d PointCloudService::computeCameraMotion(const Eigen::Matrix4d& T_
     return T_robot2cam * T_robot_move * T_cam2robot;
 }
 
+
+Eigen::Matrix4d PointCloudService::transformToZeroPose(double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C)
+{
+	const double B = deg2rad(B_deg);
+	const double C = deg2rad(C_deg);
+
+	// B 轴旋转矩阵（绕 Y 轴）
+	Eigen::Matrix3d Ry;
+	Ry << cos(B), 0, sin(B),
+	    0, 1, 0,
+	    -sin(B), 0, cos(B);
+
+	// C 轴旋转矩阵（绕 Z 轴）
+	Eigen::Matrix3d Rz;
+	Rz << cos(C), -sin(C), 0,
+	    sin(C), cos(C), 0,
+	    0, 0, 1;
+
+	// B 轴变换（机床坐标系下绕 pivot_B 旋转）
+	Eigen::Matrix4d T_B = makePivotTransform(Ry, pivot_B);
+
+	// C 轴安装在 B 轴上，pivot_C 为 B=0 时机床坐标系下的 C 轴旋转中心。
+	// C 轴旋转发生在 B 轴旋转之前（从工件角度：先绕 C 转，再随 B 转）。
+	// 因此直接用机床坐标系下的 pivot_C 做 C 轴旋转，然后再整体施加 B 轴旋转。
+	Eigen::Matrix4d T_C = makePivotTransform(Rz, pivot_C);
+	return  T_B * T_C;
+}
+
 Eigen::Matrix4d PointCloudService::buildRobotMotion(double x, double y, double z, double B_deg, double C_deg, const Eigen::Vector3d& pivot_B, const Eigen::Vector3d& pivot_C)
 {
     const double B = deg2rad(B_deg);
@@ -8885,6 +8913,53 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		m_Status = MachineStatus::Idle;
 		return false;
 	}
+	for (auto& it : parser.xPoints)
+	{
+		Eigen::Matrix4d matrix = transformToZeroPose(
+		    it.b,
+		    it.c,
+		    this->getBAxisCenter(),
+		    this->getCAxisCenter());
+		it.theory += Eigen::Vector3d(
+		    chuckX, chuckY, chuckZ);
+		it.actual += Eigen::Vector3d(
+		    chuckX, chuckY, chuckZ);
+
+		it.theory = matrix.inverse() * it.theory;
+		it.actual = matrix.inverse() * it.actual;
+	}
+
+	for (auto& it : parser.heightPoints)
+	{
+		auto matrix = transformToZeroPose(
+		    it.b,
+		    it.c,
+		    this->getBAxisCenter(),
+		    this->getCAxisCenter());
+		it.theory += Eigen::Vector3d(
+		    chuckX, chuckY, chuckZ);
+		it.actual += Eigen::Vector3d(
+		    chuckX, chuckY, chuckZ);
+		it.theory = matrix.inverse() * it.theory;
+		it.actual = matrix.inverse() * it.actual;
+	}
+
+	for (auto& it : parser.points)
+	{
+		auto matrix = transformToZeroPose(
+		    it.b,
+		    it.c,
+		    this->getBAxisCenter(),
+		    this->getCAxisCenter());
+		it.theory += Eigen::Vector3d(
+		    chuckX, chuckY, chuckZ);
+		it.actual += Eigen::Vector3d(
+		    chuckX, chuckY, chuckZ);
+		it.theory = matrix.inverse() * it.theory;
+		it.actual = matrix.inverse() * it.actual;
+	}
+	
+
 
 	std::array<Eigen::Vector3d, 4> theoryPts, actualPts;
 	for (int i = 0; i < 4; i++)
