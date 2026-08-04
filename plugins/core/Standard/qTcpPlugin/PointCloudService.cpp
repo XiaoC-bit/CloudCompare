@@ -8925,8 +8925,9 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		it.actual += Eigen::Vector3d(
 		    chuckX, chuckY, chuckZ);
 
-		it.theory = matrix.inverse() * it.theory;
-		it.actual = matrix.inverse() * it.actual;
+		Eigen::Affine3d invM(matrix.inverse());
+		it.theory = invM * it.theory;
+		it.actual = invM * it.actual;
 	}
 
 	for (auto& it : parser.heightPoints)
@@ -8940,8 +8941,9 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		    chuckX, chuckY, chuckZ);
 		it.actual += Eigen::Vector3d(
 		    chuckX, chuckY, chuckZ);
-		it.theory = matrix.inverse() * it.theory;
-		it.actual = matrix.inverse() * it.actual;
+		Eigen::Affine3d invM(matrix.inverse());
+		it.theory = invM * it.theory;
+		it.actual = invM * it.actual;
 	}
 
 	for (auto& it : parser.points)
@@ -8955,8 +8957,9 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		    chuckX, chuckY, chuckZ);
 		it.actual += Eigen::Vector3d(
 		    chuckX, chuckY, chuckZ);
-		it.theory = matrix.inverse() * it.theory;
-		it.actual = matrix.inverse() * it.actual;
+		Eigen::Affine3d invM(matrix.inverse());
+		it.theory = invM * it.theory;
+		it.actual = invM * it.actual;
 	}
 	
 
@@ -8983,7 +8986,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	double consistencyTol = 0.02;
+	double consistencyTol = 0.029;
 	double outDeltaX, outDeltaX1, outDeltaX2;
 	ret = computeXTranslation(
 		outThetaDeg,
