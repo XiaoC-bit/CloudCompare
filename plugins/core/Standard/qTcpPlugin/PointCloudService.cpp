@@ -6958,6 +6958,39 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 	const QString templateContent = QTextStream(&templateNc).readAll();
 	templateNc.close();
 
+
+	QString probeCalibPath = appDir + "/Template/probe_calibration_status.json";
+
+	QFile  probeCalibFile(probeCalibPath);
+	double chuckX = 0.0, chuckY = 0.0, chuckZ = 0.0;
+
+	if (probeCalibFile.exists() && probeCalibFile.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		QByteArray data = probeCalibFile.readAll();
+		probeCalibFile.close();
+
+		QJsonParseError parseError;
+		QJsonDocument   doc = QJsonDocument::fromJson(data, &parseError);
+		if (parseError.error == QJsonParseError::NoError && doc.isObject())
+		{
+			QJsonObject root = doc.object();
+			if (root.contains("CalibrationResult"))
+			{
+				QJsonObject calibrationResult = root["CalibrationResult"].toObject();
+				if (calibrationResult.contains("ChuckCenter"))
+				{
+					QJsonObject chuckCenter = calibrationResult["ChuckCenter"].toObject();
+					chuckX                  = chuckCenter.value("X").toDouble(0.0);
+					chuckY                  = chuckCenter.value("Y").toDouble(0.0);
+					chuckZ                  = chuckCenter.value("Z").toDouble(0.0);
+				}
+			}
+		}
+	}
+
+
+
+
 	QString errorMessage;
 	QJsonArray icpResults;
 	// 处理每个打孔位置
@@ -7571,13 +7604,27 @@ bool PointCloudService::executePartInspect(const QString& partType, const QStrin
 				if (!ok)
 					break;
 
-				/*fitter.addPoint({theoX, theoY, theoZ},
-				                {actualX, actualY, actualZ},
-				                {I, J, K},
-				                B,
-				                C);*/
+				double ZeroX = 0.0, ZeroY = 0.0, ZeroZ = 0.0;
+				ZeroX = zeroPositions.value("X").toDouble();
+				ZeroY = zeroPositions.value("Y").toDouble();
+				ZeroZ = zeroPositions.value("Z").toDouble();
 
-				cloud->addPoint(CCVector3(actualX, actualY, actualZ));
+				Eigen::Vector3d zeroPoint(ZeroX, ZeroY, ZeroZ);
+
+				Eigen::Vector3d point(actualX, actualY, actualZ);
+
+				//此处可以用理论点来验证算法逻辑是否正确，已经验证过是可行的。
+				//Eigen::Vector3d point(theoX, theoY, theoZ);
+
+				auto matrix = transformToZeroPose(
+				    B,
+				    C,
+				    this->getBAxisCenter() - zeroPoint,
+				    this->getCAxisCenter() - zeroPoint);
+				Eigen::Affine3d invM(matrix.inverse());
+				point     = invM * point;
+
+				cloud->addPoint(CCVector3(point.x(), point.y(), point.z()));
 
 				pointCount++;
 			}
