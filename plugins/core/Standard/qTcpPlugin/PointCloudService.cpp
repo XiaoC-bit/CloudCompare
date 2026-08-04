@@ -8986,7 +8986,13 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		return false;
 	}
 
-	double consistencyTol = 0.029;
+
+	double consistencyTol = 0.02;
+	/*
+		由于现在用手动夹具，而且电极有点变形，所以容差设置大一点
+		理论上要满足精度要求，应该用0.02
+	*/
+	consistencyTol        = 0.2;
 	double outDeltaX, outDeltaX1, outDeltaX2;
 	ret = computeXTranslation(
 		outThetaDeg,
