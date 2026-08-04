@@ -8970,7 +8970,7 @@ bool PointCloudService::executeElectrodeInspect(const QString& partType, const Q
 		theoryPts[i] = parser.points.at(i).theory;
 		actualPts[i] = parser.points.at(i).actual;
 	}
-	Eigen::Vector3d spinZero(0, 0, 0);
+	Eigen::Vector3d spinZero =this->getCAxisCenter();
 	double outThetaDeg, outDeltaY;
 	bool ret = computeAxisRotationAndYTranslation(theoryPts, actualPts, spinZero, outThetaDeg, outDeltaY);
 	if (!ret)

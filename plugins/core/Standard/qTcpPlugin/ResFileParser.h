@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <deque>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -290,7 +291,7 @@ public:
 	// ---- Load file ----
 	bool load(const std::string& filepath)
 	{
-		std::vector<MeasurePoint> tmpPoints;
+		std::deque<MeasurePoint> tmpPoints;
 		points.clear();
 		heightPoints.clear();
 		xPoints.clear();
@@ -337,7 +338,7 @@ public:
 			if (!parseXYZ(lines[i + 2], mp.actual))
 				continue;
 
-			tmpPoints.push_back(mp);
+			tmpPoints.push_front(mp);
 		}
 		if (tmpPoints.size() != 10)
 		{
